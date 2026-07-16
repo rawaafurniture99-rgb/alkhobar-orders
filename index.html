@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Al Khobar Orders</title>
+  <meta name="theme-color" content="#B8873D" />
+  <meta name="description" content="تطبيق إدارة أوردرات وتصنيع رواعة فرنتشر" />
+
+  <!-- PWA: manifest + icons -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Al Khobar Orders" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Markazi+Text:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-app-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-auth-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.min.js"></script>
+
+  <style>
+    html, body { margin: 0; padding: 0; background: #F6F1E7; }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    window.FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCLhnNr5H8ce8Z_H5iajNhSCU2X1L02T7A",
+      authDomain: "al-khobar-orders.firebaseapp.com",
+      projectId: "al-khobar-orders",
+      storageBucket: "al-khobar-orders.firebasestorage.app",
+      messagingSenderId: "462225821034",
+      appId: "1:462225821034:web:00cbef6b71ec3f5b7da913",
+    };
+  </script>
+
+  <script>
+const { useState, useEffect, useCallback, useRef } = React;
+let firebaseReady = false;
+let auth, db;
+try {
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  firebaseReady = true;
+} catch (e) {
+  console.error("Firebase init failed", e);
+}
+const COLORS = {
+  bg: "#F6F1E7",
+  surface: "#FFFFFF",
+  ink: "#2A211B",
+  muted: "#8A7B6C",
+  border: "#E4DACB",
+  gold: "#B8873D",
+  goldSoft: "#F1E3C8",
+  teal: "#4F7C82",
+  rose: "#B5675A",
+  green: "#5C7A54",
+  danger: "#B54B3F"
+};
+const display = { fontFamily: "'Markazi Text', serif" };
+const body = { fontFamily: "'IBM Plex Sans Arabic', sans-serif" };
+const ORDER_CATEGORIES = [];
+const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0623\u062E\u0631\u0649"];
+const UNITS = ["\u0645\u062A\u0631", "\u0645\xB2", "\u0642\u0637\u0639\u0629", "\u0644\u0641\u0629", "\u0644\u0648\u062D", "\u0643\u062C\u0645"];
+const PIECE_UNITS = ["\u0633\u0645", "\u0645"];
+const MEASURED_TYPES = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C"];
+const CODED_TYPES = ["\u0642\u0645\u0627\u0634", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637"];
+const AVAILABILITY_OPTIONS = ["\u0645\u062A\u0648\u0641\u0631", "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631", "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628"];
+const PRODUCTION_STAGE_DEFS = [
+  { key: "carpentry", label: "\u0646\u062C\u0627\u0631\u0629" },
+  { key: "painting", label: "\u0635\u0628\u063A" },
+  { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F" },
+  { key: "packing_shipping", label: "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646" }
+];
+const STATUS_OPTIONS = [
+  { key: "not_started", label: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621", color: "#8A7B6C" },
+  { key: "in_progress", label: "\u062C\u0627\u0631\u064A \u0627\u0644\u0625\u0646\u062A\u0627\u062C", color: "#B8873D" },
+  { key: "done", label: "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", color: "#5C7A54" }
+];
+const DEFAULT_BRANDING = { name: "Al Khobar Orders", logo: null };
+function uid() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+function Emoji({ children, size = 16, color, style }) {
+  return /* @__PURE__ */ React.createElement("span", { style: { fontSize: size, lineHeight: 1, color, ...style } }, children);
+}
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+function compressImage(file, maxDim = 700, quality = 0.55) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) {
+          height = Math.round(height * maxDim / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round(width * maxDim / height);
+          height = maxDim;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function fileToAttachment(file, folder) {
+  const isImage = file.type && file.type.startsWith("image/");
+  const dataUrl = isImage ? await compressImage(file) : await readFileAsDataUrl(file);
+  return { name: file.name, dataUrl, kind: isImage ? "image" : "file" };
+}
+function emptyOrder() {
+  return {
+    id: uid(),
+    title: "",
+    clientName: "",
+    engineerName: "",
+    category: "",
+    manufacturingOrderFile: null,
+    approvalDate: "",
+    dateReceived: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+    materials: [],
+    quotes: [],
+    distribution: [],
+    productionQuoteItems: [],
+    productionStages: PRODUCTION_STAGE_DEFS.map((s) => ({ key: s.key, supplierName: "", price: "", durationDays: "", status: "not_started", startDate: "", endDate: "" })),
+    productionLog: []
+  };
+}
+function orderStatusLabel(order) {
+  const stages = order.productionStages || [];
+  const inProgress = PRODUCTION_STAGE_DEFS.find((def) => (stages.find((s) => s.key === def.key) || {}).status === "in_progress");
+  if (inProgress) return `\u062C\u0627\u0631\u064A: ${inProgress.label}`;
+  const lastDoneIndex = [...PRODUCTION_STAGE_DEFS].reverse().find((def) => (stages.find((s) => s.key === def.key) || {}).status === "done");
+  if (lastDoneIndex) {
+    const isLast = lastDoneIndex.key === PRODUCTION_STAGE_DEFS[PRODUCTION_STAGE_DEFS.length - 1].key;
+    return isLast ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : `\u062A\u0645: ${lastDoneIndex.label}`;
+  }
+  return "\u0644\u0645 \u064A\u0628\u062F\u0623 \u0627\u0644\u0625\u0646\u062A\u0627\u062C";
+}
+function orderExpectedEndDate(stage) {
+  if (!stage.startDate || !stage.durationDays) return null;
+  const d = new Date(stage.startDate);
+  d.setDate(d.getDate() + Number(stage.durationDays));
+  return d;
+}
+function orderIsOverdue(order) {
+  const today = /* @__PURE__ */ new Date();
+  today.setHours(0, 0, 0, 0);
+  return (order.productionStages || []).some((s) => {
+    if (s.status === "done") return false;
+    const expected = orderExpectedEndDate(s);
+    return expected && expected < today;
+  });
+}
+function computeMaterialsRollup(materials) {
+  const groups = {};
+  (materials || []).forEach((m) => {
+    const isMeasured = MEASURED_TYPES.includes(m.type);
+    if (isMeasured) {
+      const key = m.type + "::" + (m.materialName || m.description || "");
+      let areaM2 = 0;
+      (m.pieces || []).forEach((p) => {
+        const l = Number(p.length) || 0;
+        const w = Number(p.width) || 0;
+        let area = l * w;
+        if (p.unit === "\u0633\u0645") area = area / 1e4;
+        areaM2 += area;
+      });
+      if (!groups[key]) groups[key] = { type: m.type, label: m.materialName || m.description || m.type, unit: "\u0645\xB2", total: 0 };
+      groups[key].total += areaM2;
+    } else {
+      const key = m.type + "::" + (m.description || "") + "::" + (m.unit || "");
+      if (!groups[key]) groups[key] = { type: m.type, label: m.description || m.type, unit: m.unit || "", total: 0 };
+      groups[key].total += Number(m.quantity) || 0;
+    }
+  });
+  return Object.values(groups);
+}
+function downloadCsv(filename, rows) {
+  const csv = rows.map((r) => r.map((cell) => '"' + String(cell == null ? "" : cell).replace(/"/g, '""') + '"').join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function workspaceDocRef() {
+  return db.collection("workspace").doc("shared");
+}
+async function ensureWorkspaceDoc() {
+  const ref = workspaceDocRef();
+  const snap = await ref.get();
+  if (!snap.exists) {
+    await ref.set({ orders: [], suppliers: [], branding: DEFAULT_BRANDING, productionPieces: [], productionSuppliers: DEFAULT_PRODUCTION_SUPPLIERS });
+  }
+}
+function accessDocRef() {
+  return db.collection("workspace").doc("access");
+}
+async function ensureAccessDoc(email) {
+  const ref = accessDocRef();
+  const snap = await ref.get();
+  if (!snap.exists) {
+    const initial = { ownerEmail: email, allowedEmails: [email], members: [{ email, role: "admin", supplierScope: [] }] };
+    await ref.set(initial);
+    return initial;
+  }
+  const data = snap.data();
+  if (!data.members) data.members = [{ email: data.ownerEmail, role: "admin", supplierScope: [] }];
+  return data;
+}
+function App() {
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [access, setAccess] = useState(null);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [orders, setOrders] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [branding, setBranding] = useState(DEFAULT_BRANDING);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [syncError, setSyncError] = useState("");
+  const [tab, setTab] = useState("orders");
+  const [selectedId, setSelectedId] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState(null);
+  const [showNewOrder, setShowNewOrder] = useState(false);
+  const [showBranding, setShowBranding] = useState(false);
+  const [showTeam, setShowTeam] = useState(false);
+  const [showRoles, setShowRoles] = useState(false);
+  const [productionPieces, setProductionPieces] = useState([]);
+  const [productionSuppliers, setProductionSuppliers] = useState(DEFAULT_PRODUCTION_SUPPLIERS);
+  useEffect(() => {
+    if (!firebaseReady) {
+      setAuthChecked(true);
+      return;
+    }
+    const unsub = auth.onAuthStateChanged((u) => {
+      setUser(u);
+      setAuthChecked(true);
+    });
+    return unsub;
+  }, []);
+  useEffect(() => {
+    if (!user) {
+      setAccessChecked(false);
+      setAccess(null);
+      return;
+    }
+    (async () => {
+      try {
+        const data = await ensureAccessDoc(user.email);
+        setAccess(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setAccessChecked(true);
+      }
+    })();
+  }, [user]);
+  const isAllowed = access && access.allowedEmails && access.allowedEmails.includes(user && user.email);
+  const isOwner = access && user && access.ownerEmail === user.email;
+  const myMember = access && access.members ? access.members.find((m) => m.email === (user && user.email)) : null;
+  const myRole = isOwner ? "admin" : myMember ? myMember.role : "viewer";
+  const mySupplierScope = myMember ? myMember.supplierScope || [] : [];
+  const canEditDistribution = myRole === "admin" || myRole === "distributor";
+  const canEditFullProduction = myRole === "admin";
+  useEffect(() => {
+    if (!user || !isAllowed) {
+      setDataLoaded(false);
+      return;
+    }
+    let unsub = () => {
+    };
+    (async () => {
+      try {
+        await ensureWorkspaceDoc();
+        unsub = workspaceDocRef().onSnapshot(
+          (snap) => {
+            const data = snap.data() || {};
+            setOrders(data.orders || []);
+            setProductionPieces(data.productionPieces || []);
+            setProductionSuppliers(data.productionSuppliers || DEFAULT_PRODUCTION_SUPPLIERS);
+            setSuppliers(data.suppliers || []);
+            setBranding(data.branding || DEFAULT_BRANDING);
+            setDataLoaded(true);
+            setSyncError("");
+          },
+          (err) => {
+            console.error(err);
+            setSyncError("\u0641\u064A \u0645\u0634\u0643\u0644\u0629 \u0641\u064A \u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A. \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A.");
+          }
+        );
+      } catch (e) {
+        console.error(e);
+        setSyncError("\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.");
+      }
+    })();
+    return () => unsub();
+  }, [user, isAllowed]);
+  const notifiedRef = useRef(false);
+  useEffect(() => {
+    if (!dataLoaded || notifiedRef.current) return;
+    notifiedRef.current = true;
+    const overdueCount = orders.filter(orderIsOverdue).length;
+    if (overdueCount === 0) return;
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "granted") {
+      new Notification("Al Khobar Orders", { body: `\u0639\u0646\u062F\u0643 ${overdueCount} \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639` });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") {
+          new Notification("Al Khobar Orders", { body: `\u0639\u0646\u062F\u0643 ${overdueCount} \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639` });
+        }
+      });
+    }
+  }, [dataLoaded, orders]);
+  const deadlineNotifiedRef = useRef(false);
+  useEffect(() => {
+    if (!dataLoaded || deadlineNotifiedRef.current) return;
+    deadlineNotifiedRef.current = true;
+    const soon = productionPieces.filter((p) => {
+      if (!p.agreedDeadline || p.status === "إلى الشحن") return false;
+      const d = Math.round((new Date(p.agreedDeadline) - new Date(new Date().toISOString().slice(0, 10))) / 86400000);
+      return d <= 2;
+    });
+    if (soon.length === 0) return;
+    if (typeof Notification === "undefined") return;
+    const fire = () => new Notification("Al Khobar Orders", { body: `عندك ${soon.length} قطعة قريبة من الموعد المتفق عليه أو متأخرة` });
+    if (Notification.permission === "granted") fire();
+    else if (Notification.permission !== "denied") Notification.requestPermission().then((perm) => { if (perm === "granted") fire(); });
+  }, [dataLoaded, productionPieces]);
+  const persistAccess = useCallback((next) => {
+    setAccess(next);
+    accessDocRef().update(next).catch((e) => console.error(e));
+  }, []);
+  const persistOrders = useCallback((next) => {
+    setOrders(next);
+    if (user) workspaceDocRef().update({ orders: next }).catch((e) => {
+      console.error(e);
+      setSyncError("\u0641\u0634\u0644 \u062D\u0641\u0638 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A\u060C \u0647\u064A\u062A\u0645 \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627.");
+    });
+  }, [user]);
+  const renameCustomer = (oldName, newName) => persistOrders(orders.map((o) => ((o.clientName || "بدون اسم") === oldName ? { ...o, clientName: newName } : o)));
+  const renameCategory = (oldCat, newCat) => persistOrders(orders.map((o) => (((o.category && o.category.trim()) || "أخرى") === oldCat ? { ...o, category: newCat } : o)));
+  const renameSupplier = (oldName, newName) => persistOrders(orders.map((o) => ({
+    ...o,
+    distribution: (o.distribution || []).map((d) => (d.supplierName === oldName ? { ...d, supplierName: newName } : d)),
+    productionStages: (o.productionStages || []).map((s) => (s.supplierName === oldName ? { ...s, supplierName: newName } : s))
+  })));
+  const persistBranding = useCallback((next) => {
+    setBranding(next);
+    if (user) workspaceDocRef().update({ branding: next }).catch((e) => console.error(e));
+  }, [user]);
+  const persistProductionPieces = useCallback((next) => {
+    setProductionPieces(next);
+    if (user) workspaceDocRef().update({ productionPieces: next }).catch((e) => console.error(e));
+  }, [user]);
+  const persistProductionSuppliers = useCallback((next) => {
+    setProductionSuppliers(next);
+    if (user) workspaceDocRef().update({ productionSuppliers: next }).catch((e) => console.error(e));
+  }, [user]);
+  const addProductionPiece = (piece) => persistProductionPieces([piece, ...productionPieces]);
+  const deleteProductionPiece = (id) => persistProductionPieces(productionPieces.filter((p) => p.id !== id));
+  const updateProductionPiece = (piece) => persistProductionPieces(productionPieces.map((p) => (p.id === piece.id ? piece : p)));
+  const addProductionSupplier = (entity, name) => persistProductionSuppliers({ ...productionSuppliers, [entity]: [...(productionSuppliers[entity] || []), name] });
+  const selectedOrder = orders.find((o) => o.id === selectedId) || null;
+  const updateOrder = (id, patch) => persistOrders(orders.map((o) => o.id === id ? { ...o, ...patch } : o));
+  if (!authChecked) {
+    return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644..." });
+  }
+  if (!firebaseReady) {
+    return /* @__PURE__ */ React.createElement(SetupNeededScreen, null);
+  }
+  if (!user) {
+    return /* @__PURE__ */ React.createElement(AuthScreen, { auth });
+  }
+  if (!accessChecked) {
+    return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u062D\u0633\u0627\u0628..." });
+  }
+  if (!isAllowed) {
+    return /* @__PURE__ */ React.createElement(PendingApprovalScreen, { email: user.email, ownerEmail: access && access.ownerEmail, onSignOut: () => auth.signOut() });
+  }
+  if (!dataLoaded) {
+    return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A\u0643..." });
+  }
+  return /* @__PURE__ */ React.createElement("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink } }, /* @__PURE__ */ React.createElement(GlobalStyle, null), syncError && /* @__PURE__ */ React.createElement("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 12.5, padding: "8px 14px", textAlign: "center" } }, syncError), selectedOrder ? /* @__PURE__ */ React.createElement(
+    OrderDetail,
+    {
+      order: selectedOrder,
+      onBack: () => setSelectedId(null),
+      onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
+      onDelete: () => {
+        persistOrders(orders.filter((o) => o.id !== selectedOrder.id));
+        setSelectedId(null);
+      }
+    }
+  ) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("header", { style: { padding: "20px 18px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 12 } }, branding.logo ? /* @__PURE__ */ React.createElement("img", { src: branding.logo, alt: "logo", style: { width: 44, height: 44, borderRadius: 12, objectFit: "cover", flexShrink: 0 } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 12, background: COLORS.goldSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F528}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("h1", { style: { ...display, fontSize: 24, fontWeight: 700, margin: 0, color: COLORS.ink } }, branding.name), /* @__PURE__ */ React.createElement("p", { style: { margin: "2px 0 0", fontSize: 12.5, color: COLORS.muted } }, user.email)), isOwner && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowTeam(true), style: iconBtnStyle, title: "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0641\u0631\u064A\u0642" }, /* @__PURE__ */ React.createElement(Emoji, { size: 17 }, "\u{1F464}\u2795")), (isOwner || myRole === "admin") && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowRoles(true), style: iconBtnStyle, title: "إدارة الأدوار" }, /* @__PURE__ */ React.createElement(Emoji, { size: 17 }, "🛡️")), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowBranding(true), style: iconBtnStyle, title: "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0634\u0639\u0627\u0631 \u0648\u0627\u0644\u0627\u0633\u0645" }, /* @__PURE__ */ React.createElement(Emoji, { size: 17 }, "\u270F\uFE0F")), /* @__PURE__ */ React.createElement("button", { onClick: () => auth.signOut(), style: iconBtnStyle, title: "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062E\u0631\u0648\u062C" }, /* @__PURE__ */ React.createElement(Emoji, { size: 17 }, "\u{1F6AA}"))), orders.some(orderIsOverdue) && /* @__PURE__ */ React.createElement("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 15 }, "\u23F0"), orders.filter(orderIsOverdue).length, " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u2014 \u0631\u0627\u062C\u0639\u064A \u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0628\u062A\u0627\u0639\u062A\u0647\u0645"), /* @__PURE__ */ React.createElement("nav", { style: { display: "flex", gap: 8, padding: "12px 16px 0", overflowX: "auto" } }, /* @__PURE__ */ React.createElement(TabButton, { active: tab === "orders", onClick: () => setTab("orders"), emoji: "\u{1F5C2}\uFE0F", label: "\u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A" }), /* @__PURE__ */ React.createElement(TabButton, { active: tab === "customers", onClick: () => setTab("customers"), emoji: "\u{1F465}", label: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621" }), /* @__PURE__ */ React.createElement(TabButton, { active: tab === "categories", onClick: () => setTab("categories"), emoji: "\u{1F3F7}\uFE0F", label: "\u0627\u0644\u0623\u0642\u0633\u0627\u0645" }), /* @__PURE__ */ React.createElement(TabButton, { active: tab === "suppliers", onClick: () => setTab("suppliers"), emoji: "\u{1F3E2}", label: "\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" }), /* @__PURE__ */ React.createElement(TabButton, { active: tab === "distribution", onClick: () => setTab("distribution"), emoji: "📦", label: "التوزيع" }), /* @__PURE__ */ React.createElement(TabButton, { active: tab === "production-board", onClick: () => setTab("production-board"), emoji: "🏭", label: "بند الإنتاج" }), /* @__PURE__ */ React.createElement(TabButton, { active: tab === "full-production", onClick: () => setTab("full-production"), emoji: "📋", label: "الإنتاج الكامل" })), /* @__PURE__ */ React.createElement("main", { style: { padding: 16, paddingBottom: 100 } }, tab === "orders" && /* @__PURE__ */ React.createElement(OrdersList, { orders, onOpen: setSelectedId }), tab === "customers" && /* @__PURE__ */ React.createElement(CustomersList, { orders, onOpen: setSelectedId, onRename: renameCustomer, canEdit: myRole === "admin" }), tab === "categories" && /* @__PURE__ */ React.createElement(CategoriesPage, { orders, categoryFilter, onSelectCategory: setCategoryFilter, onOpen: setSelectedId, onRename: renameCategory, canEdit: myRole === "admin" }), tab === "suppliers" && /* @__PURE__ */ React.createElement(GlobalSuppliersPage, { orders, onRename: renameSupplier, canEdit: myRole === "admin" }), tab === "distribution" && /* @__PURE__ */ React.createElement(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onDelete: deleteProductionPiece, onUpdate: updateProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution }), tab === "production-board" && /* @__PURE__ */ React.createElement(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, myRole, mySupplierScope }), tab === "full-production" && /* @__PURE__ */ React.createElement(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction })), tab === "orders" && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setShowNewOrder(true),
+      style: {
+        position: "fixed",
+        bottom: 22,
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: COLORS.gold,
+        color: "#fff",
+        border: "none",
+        borderRadius: 999,
+        padding: "13px 26px",
+        fontSize: 15.5,
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        boxShadow: "0 6px 18px rgba(184,135,61,0.4)",
+        cursor: "pointer"
+      }
+    },
+    /* @__PURE__ */ React.createElement(Emoji, { size: 17 }, "\u2795"),
+    "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F"
+  ), showNewOrder && /* @__PURE__ */ React.createElement(NewOrderModal, { orders, onClose: () => setShowNewOrder(false), onSave: (o) => {
+    persistOrders([o, ...orders]);
+    setShowNewOrder(false);
+    setSelectedId(o.id);
+  } }), showBranding && /* @__PURE__ */ React.createElement(BrandingModal, { branding, onClose: () => setShowBranding(false), onSave: (b) => {
+    persistBranding(b);
+    setShowBranding(false);
+  } }), showTeam && access && /* @__PURE__ */ React.createElement(TeamManagementModal, { access, onClose: () => setShowTeam(false), onSave: (next) => {
+    persistAccess(next);
+    setShowTeam(false);
+  } }), showRoles && access && /* @__PURE__ */ React.createElement(RolesManagementModal, { access, productionSuppliers, onClose: () => setShowRoles(false), onSave: (next) => {
+    persistAccess(next);
+    setShowRoles(false);
+  } })));
+}
+function GlobalStyle() {
+  return /* @__PURE__ */ React.createElement("style", null, `
+      * { box-sizing: border-box; }
+      @media (prefers-reduced-motion: no-preference) {
+        .pulse-dot { animation: pulse 1.8s ease-in-out infinite; }
+      }
+      @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(184,135,61,0.45); } 50% { box-shadow: 0 0 0 6px rgba(184,135,61,0); } }
+      input, select, textarea, button { font-family: inherit; }
+      input:focus, select:focus, textarea:focus, button:focus-visible {
+        outline: 2px solid ${COLORS.teal}; outline-offset: 1px;
+      }
+      ::placeholder { color: #B7A88F; }
+      body { direction: rtl; }
+    `);
+}
+function CenteredMessage({ text }) {
+  return /* @__PURE__ */ React.createElement("div", { style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.muted } }, text);
+}
+function SetupNeededScreen() {
+  return /* @__PURE__ */ React.createElement("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 34, marginBottom: 10 } }, "\u2699\uFE0F"), /* @__PURE__ */ React.createElement("p", { style: { ...display, fontSize: 22, color: COLORS.ink, margin: "0 0 8px" } }, "\u0645\u062D\u062A\u0627\u062C\u0629 \u062A\u0631\u0628\u0637\u064A \u062D\u0633\u0627\u0628 Firebase \u0627\u0644\u0623\u0648\u0644")));
+}
+function PendingApprovalScreen({ email, ownerEmail, onSignOut }) {
+  return /* @__PURE__ */ React.createElement("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 34, marginBottom: 10 } }, "\u{1F512}"), /* @__PURE__ */ React.createElement("p", { style: { ...display, fontSize: 22, color: COLORS.ink, margin: "0 0 8px" } }, "\u062D\u0633\u0627\u0628\u0643 \u0644\u0633\u0647 \u0645\u062D\u062A\u0627\u062C \u0645\u0648\u0627\u0641\u0642\u0629"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14, color: COLORS.muted, maxWidth: 320, margin: "0 auto 16px" } }, "\u0627\u0644\u0628\u0631\u064A\u062F ", /* @__PURE__ */ React.createElement("strong", null, email), ' \u0644\u0633\u0647 \u0645\u0634 \u0645\u0636\u0627\u0641 \u0645\u0646 \u0635\u0627\u062D\u0628\u0629 \u0627\u0644\u062D\u0633\u0627\u0628. \u0627\u0637\u0644\u0628\u064A \u0645\u0646\u0647\u0627 \u062A\u0636\u064A\u0641\u0643 \u0645\u0646 \u0634\u0627\u0634\u0629 "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0641\u0631\u064A\u0642".'), /* @__PURE__ */ React.createElement("button", { onClick: onSignOut, style: { ...primaryBtn(false), maxWidth: 220 } }, "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062E\u0631\u0648\u062C")));
+}
+function TeamManagementModal({ access, onClose, onSave }) {
+  const [emails, setEmails] = useState(access.allowedEmails || []);
+  const [newEmail, setNewEmail] = useState("");
+  const addEmail = () => {
+    const e = newEmail.trim().toLowerCase();
+    if (!e || emails.includes(e)) return;
+    setEmails([...emails, e]);
+    setNewEmail("");
+  };
+  const removeEmail = (e) => {
+    if (e === access.ownerEmail) return;
+    setEmails(emails.filter((x) => x !== e));
+  };
+  return /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0641\u0631\u064A\u0642", onClose }, /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: COLORS.muted, marginBottom: 12 } }, "\u0628\u0633 \u0627\u0644\u0625\u064A\u0645\u064A\u0644\u0627\u062A \u0627\u0644\u0644\u064A \u0647\u0646\u0627 \u064A\u0642\u062F\u0631\u0648\u0627 \u064A\u0634\u0648\u0641\u0648\u0627 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0634\u0631\u0643\u0629. \u0623\u0636\u064A\u0641\u064A \u0625\u064A\u0645\u064A\u0644 \u0643\u0644 \u0639\u0636\u0648 \u0641\u064A \u0627\u0644\u0641\u0631\u064A\u0642 \u0642\u0628\u0644 \u0645\u0627 \u064A\u0639\u0645\u0644 \u062D\u0633\u0627\u0628."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "email@example.com", dir: "ltr" }), /* @__PURE__ */ React.createElement("button", { onClick: addEmail, style: { ...primaryBtn(false), width: 70, padding: "10px 0" } }, "\u0625\u0636\u0627\u0641\u0629")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 } }, emails.map((e) => /* @__PURE__ */ React.createElement("div", { key: e, style: { display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "8px 12px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13.5, direction: "ltr" } }, e, e === access.ownerEmail ? " (\u0635\u0627\u062D\u0628\u0629 \u0627\u0644\u062D\u0633\u0627\u0628)" : ""), e !== access.ownerEmail && /* @__PURE__ */ React.createElement("button", { onClick: () => removeEmail(e), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 14, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { style: primaryBtn(false), onClick: () => onSave({ ...access, allowedEmails: emails }) }, "\u062D\u0641\u0638"));
+}
+function AuthScreen({ auth: auth2 }) {
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setError("");
+    if (!email.trim() || !password) {
+      setError("\u0645\u0646 \u0641\u0636\u0644\u0643 \u0623\u062F\u062E\u0644\u064A \u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (mode === "signin") {
+        await auth2.signInWithEmailAndPassword(email.trim(), password);
+      } else {
+        await auth2.createUserWithEmailAndPassword(email.trim(), password);
+      }
+    } catch (e) {
+      setError(authErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return /* @__PURE__ */ React.createElement("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 360, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 18, padding: 24 } }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginBottom: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 36, marginBottom: 6 } }, "\u{1F528}"), /* @__PURE__ */ React.createElement("h1", { style: { ...display, fontSize: 26, margin: 0, color: COLORS.ink } }, "Al Khobar Orders"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: COLORS.muted, margin: "4px 0 0" } }, mode === "signin" ? "\u0633\u062C\u0651\u0644\u064A \u0627\u0644\u062F\u062E\u0648\u0644 \u0644\u0645\u062A\u0627\u0628\u0639\u0629 \u0623\u0648\u0631\u062F\u0631\u0627\u062A\u0643" : "\u0623\u0646\u0634\u0626\u064A \u062D\u0633\u0627\u0628\u0643 \u0639\u0634\u0627\u0646 \u062A\u0634\u062A\u063A\u0644\u064A \u0645\u0646 \u0623\u064A \u062C\u0647\u0627\u0632")), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "email", value: email, onChange: (e) => setEmail(e.target.value), placeholder: "example@email.com", dir: "ltr" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "password", value: password, onChange: (e) => setPassword(e.target.value), placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022", dir: "ltr" }), error && /* @__PURE__ */ React.createElement("p", { style: { color: COLORS.danger, fontSize: 13, marginTop: -4, marginBottom: 12 } }, error), /* @__PURE__ */ React.createElement("button", { disabled: busy, style: primaryBtn(busy), onClick: submit }, busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644..." : mode === "signin" ? "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644" : "\u0625\u0646\u0634\u0627\u0621 \u062D\u0633\u0627\u0628"), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => {
+        setMode(mode === "signin" ? "signup" : "signin");
+        setError("");
+      },
+      style: { width: "100%", background: "transparent", border: "none", color: COLORS.teal, fontSize: 13.5, marginTop: 12, cursor: "pointer", fontWeight: 600 }
+    },
+    mode === "signin" ? "\u0645\u0641\u064A\u0634 \u062D\u0633\u0627\u0628\u061F \u0623\u0646\u0634\u0626\u064A \u0648\u0627\u062D\u062F" : "\u0639\u0646\u062F\u0643 \u062D\u0633\u0627\u0628\u061F \u0633\u062C\u0651\u0644\u064A \u0627\u0644\u062F\u062E\u0648\u0644"
+  )));
+}
+function authErrorMessage(e) {
+  const code = e && e.code;
+  const map = {
+    "auth/invalid-email": "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u063A\u064A\u0631 \u0635\u062D\u064A\u062D",
+    "auth/user-not-found": "\u0627\u0644\u062D\u0633\u0627\u0628 \u062F\u0647 \u0645\u0634 \u0645\u0648\u062C\u0648\u062F",
+    "auth/wrong-password": "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629",
+    "auth/email-already-in-use": "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u062F\u0647 \u0645\u0633\u062A\u062E\u062F\u0645 \u0628\u0627\u0644\u0641\u0639\u0644",
+    "auth/weak-password": "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0644\u0627\u0632\u0645 \u062A\u0643\u0648\u0646 6 \u062D\u0631\u0648\u0641 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644",
+    "auth/network-request-failed": "\u0645\u0634\u0643\u0644\u0629 \u0641\u064A \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A"
+  };
+  return map[code] || "\u062D\u0635\u0644 \u062E\u0637\u0623\u060C \u062D\u0627\u0648\u0644\u064A \u062A\u0627\u0646\u064A";
+}
+const iconBtnStyle = { background: "transparent", border: "none", cursor: "pointer", padding: 6 };
+const fieldStyle = { width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${COLORS.border}`, fontSize: 15, background: "#fff", marginBottom: 12 };
+const labelStyle = { fontSize: 13, color: COLORS.muted, marginBottom: 5, display: "block", fontWeight: 600 };
+const addLinkStyle = { marginTop: 10, fontSize: 14, color: COLORS.gold, background: "transparent", border: "none", cursor: "pointer", fontWeight: 700, padding: 0, display: "block" };
+function primaryBtn(disabled) {
+  return {
+    width: "100%",
+    padding: "12px 0",
+    borderRadius: 10,
+    border: "none",
+    background: disabled ? "#D8CBB0" : COLORS.gold,
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 15.5,
+    cursor: disabled ? "not-allowed" : "pointer"
+  };
+}
+function TabButton({ active, onClick, emoji, label }) {
+  return /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick,
+      style: {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        padding: "8px 16px",
+        borderRadius: 999,
+        border: `1px solid ${active ? COLORS.gold : COLORS.border}`,
+        background: active ? COLORS.gold : COLORS.surface,
+        color: active ? "#fff" : COLORS.muted,
+        fontWeight: 600,
+        fontSize: 13.5,
+        whiteSpace: "nowrap",
+        cursor: "pointer",
+        transition: "background 0.15s, color 0.15s"
+      }
+    },
+    /* @__PURE__ */ React.createElement(Emoji, { size: 14 }, emoji),
+    label
+  );
+}
+function StageTracker({ stage, size = "normal", onSelect }) {
+  const dotSize = size === "small" ? 9 : 15;
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center" } }, STAGES.map((s, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: s.key }, onSelect ? /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => onSelect(i),
+      title: s.label,
+      style: {
+        width: dotSize + 18,
+        height: dotSize + 18,
+        borderRadius: "50%",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        padding: 0
+      }
+    },
+    /* @__PURE__ */ React.createElement(
+      "span",
+      {
+        className: i === stage ? "pulse-dot" : "",
+        style: {
+          display: "block",
+          width: dotSize,
+          height: dotSize,
+          borderRadius: "50%",
+          background: i < stage ? COLORS.ink : i === stage ? COLORS.gold : "transparent",
+          border: `2px solid ${i <= stage ? i === stage ? COLORS.gold : COLORS.ink : COLORS.border}`
+        }
+      }
+    )
+  ) : /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      className: i === stage ? "pulse-dot" : "",
+      title: s.label,
+      style: {
+        width: dotSize,
+        height: dotSize,
+        borderRadius: "50%",
+        background: i < stage ? COLORS.ink : i === stage ? COLORS.gold : "transparent",
+        border: `2px solid ${i <= stage ? i === stage ? COLORS.gold : COLORS.ink : COLORS.border}`,
+        flexShrink: 0
+      }
+    }
+  ), i < STAGES.length - 1 && /* @__PURE__ */ React.createElement("div", { style: { flex: 1, height: 0, borderTop: `2px dashed ${i < stage ? COLORS.ink : COLORS.border}`, margin: "0 3px" } }))));
+}
+function EmptyHint({ text }) {
+  return /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: COLORS.muted, marginBottom: 10 } }, text);
+}
+function Modal({ title, onClose, children }) {
+  return /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(42,33,27,0.45)", display: "flex", alignItems: "flex-end", zIndex: 50 }, onClick: onClose }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: COLORS.bg, width: "100%", maxHeight: "88vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("h2", { style: { ...display, fontSize: 22, margin: 0 } }, title), /* @__PURE__ */ React.createElement("button", { onClick: onClose, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 19 }, "\u2715"))), children));
+}
+function SectionHeader({ emoji, title }) {
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, margin: "22px 0 10px" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 17 }, emoji), /* @__PURE__ */ React.createElement("h3", { style: { ...display, fontSize: 19, margin: 0, fontWeight: 700 } }, title));
+}
+function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
+  const [busy, setBusy] = useState(false);
+  const handleFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setBusy(true);
+    try {
+      const attachment = await fileToAttachment(f, folder || "files");
+      onChange(attachment);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, label && /* @__PURE__ */ React.createElement("label", { style: labelStyle }, label), file ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } }, file.kind === "image" ? /* @__PURE__ */ React.createElement("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F4C4}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name), /* @__PURE__ */ React.createElement("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")), /* @__PURE__ */ React.createElement("button", { onClick: onRemove, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))) : /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641", /* @__PURE__ */ React.createElement("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" } })));
+}
+function OrdersList({ orders, onOpen }) {
+  if (orders.length === 0) {
+    return /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "60px 20px", color: COLORS.muted } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 34, opacity: 0.6, marginBottom: 10 } }, "\u{1F4E6}"), /* @__PURE__ */ React.createElement("p", { style: { ...display, fontSize: 20, margin: "0 0 4px", color: COLORS.ink } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13.5, margin: 0 } }, '\u0627\u0636\u063A\u0637\u064A \u0639\u0644\u0649 "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" \u0644\u0628\u062F\u0621 \u0645\u062A\u0627\u0628\u0639\u0629 \u0623\u0648\u0644 \u0623\u0648\u0631\u062F\u0631 \u062A\u0635\u0646\u064A\u0639'));
+  }
+  return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, orders.map((o) => /* @__PURE__ */ React.createElement("div", { key: o.id, onClick: () => onOpen(o.id), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, o.title || "\u0623\u0648\u0631\u062F\u0631 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0639\u0645\u064A\u0644", o.category ? ` \xB7 ${o.category}` : "")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, whiteSpace: "nowrap" } }, orderStatusLabel(o)), orderIsOverdue(o) && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: COLORS.danger, fontWeight: 700 } }, "\u23F0 \u0645\u062A\u0623\u062E\u0631"))))));
+}
+function RenameRow({ label, count, countLabel, onRename, canEdit, big }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(label);
+  if (editing) {
+    return h("div", { style: { display: "flex", gap: 6, alignItems: "center" } },
+      h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1, fontSize: big ? 17 : 14 }, value, onChange: (e) => setValue(e.target.value), autoFocus: true }),
+      h("button", { onClick: () => { if (value.trim() && value.trim() !== label) onRename(value.trim()); setEditing(false); }, style: iconBtnStyle }, h(Emoji, { size: 16, color: COLORS.green }, "✅")),
+      h("button", { onClick: () => { setValue(label); setEditing(false); }, style: iconBtnStyle }, h(Emoji, { size: 16, color: COLORS.danger }, "✖️"))
+    );
+  }
+  return h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1 } },
+    h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+      h("span", { style: { ...display, fontSize: big ? 19 : 18, fontWeight: 700 } }, label),
+      canEdit ? h("button", { onClick: (e) => { e.stopPropagation(); setEditing(true); }, style: { ...iconBtnStyle, padding: 2 } }, h(Emoji, { size: 14, color: COLORS.teal }, "✏️")) : null
+    ),
+    h("span", { style: { fontSize: 12, color: COLORS.muted } }, count, " ", countLabel)
+  );
+}
+function CustomersList({ orders, onOpen, onRename, canEdit }) {
+  const map = {};
+  orders.forEach((o) => {
+    const key = (o.clientName || "").trim() || "بدون اسم";
+    if (!map[key]) map[key] = { name: key, engineerName: "", orders: [] };
+    if (o.engineerName) map[key].engineerName = o.engineerName;
+    map[key].orders.push(o);
+  });
+  const customers = Object.values(map).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  if (customers.length === 0) {
+    return h("div", { style: { textAlign: "center", padding: "60px 20px", color: COLORS.muted } },
+      h("div", { style: { fontSize: 34, opacity: 0.6, marginBottom: 10 } }, "👥"),
+      h("p", { style: { ...display, fontSize: 20, margin: "0 0 4px", color: COLORS.ink } }, "لا يوجد عملاء بعد"),
+      h("p", { style: { fontSize: 13.5, margin: 0 } }, "هتظهر بيانات العميل هنا تلقائيًا بمجرد إضافة أوردر باسمه")
+    );
+  }
+  return h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, customers.map((c) =>
+    h("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } },
+      h(RenameRow, { label: c.name, count: c.orders.length, countLabel: "أوردر", canEdit, onRename: (newName) => onRename(c.name, newName) }),
+      c.engineerName ? h("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 12 }, "👷"), c.engineerName) : null,
+      h("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, c.orders.map((o) =>
+        h("button", { key: o.id, onClick: () => onOpen(o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", textAlign: "right" } },
+          h("span", { style: { fontSize: 14 } }, o.title || "أوردر بدون اسم"),
+          h("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, orderStatusLabel(o))
+        )
+      ))
+    )
+  ));
+}
+function CategoriesPage({ orders, categoryFilter, onSelectCategory, onOpen, onRename, canEdit }) {
+  if (categoryFilter) {
+    const filtered = orders.filter((o) => (o.category || "أخرى") === categoryFilter);
+    return h("div", null,
+      h("button", { onClick: () => onSelectCategory(null), style: { ...addLinkStyle, marginTop: 0, marginBottom: 14, color: COLORS.muted } }, h(Emoji, { size: 13 }, "›"), " رجوع للأقسام"),
+      h(SectionHeader, { emoji: "🏷️", title: categoryFilter }),
+      h(OrdersList, { orders: filtered, onOpen })
+    );
+  }
+  const counts = {};
+  orders.forEach((o) => {
+    const cat = o.category && o.category.trim() ? o.category.trim() : "أخرى";
+    counts[cat] = (counts[cat] || 0) + 1;
+  });
+  const dynamicCategories = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  if (dynamicCategories.length === 0) {
+    return h(EmptyHint, { text: "لسه مفيش أقسام — أول ما تسجّلي نوع الأوردر عند إضافة أوردر جديد هيتسجل هنا تلقائيًا" });
+  }
+  return h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, dynamicCategories.map((cat) =>
+    h("div", { key: cat, onClick: () => onSelectCategory(cat), style: { display: "flex", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, cursor: "pointer" } },
+      h(RenameRow, { label: cat, count: counts[cat] || 0, countLabel: "أوردر", canEdit, onRename: (newName) => onRename(cat, newName) })
+    )
+  ));
+}
+
+function collectOrderSuppliers(order) {
+  const map = {};
+  (order.distribution || []).forEach((d) => {
+    if (!d.supplierName) return;
+    if (!map[d.supplierName]) map[d.supplierName] = { name: d.supplierName, pieceCount: 0, stages: [] };
+    map[d.supplierName].pieceCount += Number(d.pieceCount) || 0;
+  });
+  (order.productionStages || []).forEach((s) => {
+    if (!s.supplierName) return;
+    const def = PRODUCTION_STAGE_DEFS.find((d) => d.key === s.key);
+    if (!map[s.supplierName]) map[s.supplierName] = { name: s.supplierName, pieceCount: 0, stages: [] };
+    map[s.supplierName].stages.push(def ? def.label : s.key);
+  });
+  return Object.values(map);
+}
+function OrderSuppliersPage({ order }) {
+  const list = collectOrderSuppliers(order);
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F3E2}", title: "\u0645\u0648\u0631\u062F\u0648 \u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }), list.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0641\u064A\u0634 \u0645\u0648\u0631\u062F\u064A\u0646 \u0645\u062A\u0639\u064A\u0646\u064A\u0646 \u0639\u0644\u0649 \u0628\u0646\u0648\u062F \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0623\u0648 \u0645\u0631\u0627\u062D\u0644 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700 } }, s.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, s.pieceCount > 0 && /* @__PURE__ */ React.createElement("span", null, s.pieceCount, " \u0642\u0637\u0639\u0629 \u0645\u0648\u0632\u0639\u0629 \u0639\u0644\u064A\u0647"), s.pieceCount > 0 && s.stages.length > 0 && " \xB7 ", s.stages.length > 0 && /* @__PURE__ */ React.createElement("span", null, "\u0645\u0631\u0627\u062D\u0644: ", s.stages.join("\u060C ")))))));
+}
+function GlobalSuppliersPage({ orders, onRename, canEdit }) {
+  const map = {};
+  orders.forEach((o) => {
+    collectOrderSuppliers(o).forEach((s) => {
+      if (!map[s.name]) map[s.name] = { name: s.name, orders: [] };
+      map[s.name].orders.push({ title: o.title, clientName: o.clientName, pieceCount: s.pieceCount, stages: s.stages });
+    });
+  });
+  const suppliers = Object.values(map).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  if (suppliers.length === 0) {
+    return h("div", { style: { textAlign: "center", padding: "60px 20px", color: COLORS.muted } },
+      h("div", { style: { fontSize: 34, opacity: 0.6, marginBottom: 10 } }, "🏢"),
+      h("p", { style: { ...display, fontSize: 20, margin: "0 0 4px", color: COLORS.ink } }, "لا يوجد موردين معينين بعد"),
+      h("p", { style: { fontSize: 13.5, margin: 0 } }, "هيظهروا هنا تلقائيًا لما تحطي اسم مورد في صفحة التوزيع أو الإنتاج لأي أوردر")
+    );
+  }
+  return h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, suppliers.map((s) =>
+    h("div", { key: s.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } },
+      h(RenameRow, { label: s.name, count: s.orders.length, countLabel: "أوردر", canEdit, onRename: (newName) => onRename(s.name, newName) }),
+      h("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 6 } }, s.orders.map((o, idx) =>
+        h("div", { key: idx, style: { fontSize: 13, color: COLORS.muted, borderTop: idx > 0 ? `1px dashed ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } },
+          h("strong", { style: { color: COLORS.ink } }, o.title), " — ", o.clientName,
+          o.pieceCount > 0 ? ` · ${o.pieceCount} قطعة` : "",
+          o.stages.length > 0 ? ` · ${o.stages.join("، ")}` : ""
+        )
+      ))
+    )
+  ));
+}
+function NewOrderModal({ onClose, onSave, orders }) {
+  const [clientName, setClientName] = useState("");
+  const [category, setCategory] = useState("");
+  const [date, setDate] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+  const existingCategories = [...new Set((orders || []).map((o) => o.category).filter(Boolean))];
+  const canSave = clientName.trim();
+  return h(Modal, { title: "أوردر جديد", onClose },
+    h("label", { style: labelStyle }, "اسم العميل"),
+    h("input", { style: fieldStyle, value: clientName, onChange: (e) => setClientName(e.target.value), placeholder: "اسم العميل" }),
+    h("label", { style: labelStyle }, "نوع الأوردر / القسم"),
+    h("input", { style: fieldStyle, value: category, onChange: (e) => setCategory(e.target.value), placeholder: "مثال: كنب، ستائر، خشبيات...", list: "category-suggestions" }),
+    h("datalist", { id: "category-suggestions" }, existingCategories.map((c) => h("option", { key: c, value: c }))),
+    h("label", { style: labelStyle }, "تاريخ الاستلام"),
+    h("input", { style: fieldStyle, type: "date", value: date, onChange: (e) => setDate(e.target.value) }),
+    h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ ...emptyOrder(), title: [clientName.trim(), category.trim()].filter(Boolean).join(" - "), clientName: clientName.trim(), category: category.trim(), dateReceived: date }) }, "حفظ الأوردر")
+  );
+}
+function BrandingModal({ branding, onClose, onSave }) {
+  const [name, setName] = useState(branding.name || "");
+  const [logo, setLogo] = useState(branding.logo || null);
+  const [busy, setBusy] = useState(false);
+  const handleFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const att = await fileToAttachment(file, "branding");
+      setLogo(att.dataUrl);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return /* @__PURE__ */ React.createElement(Modal, { title: "\u0634\u0639\u0627\u0631 \u0648\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0634\u0639\u0627\u0631"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } }, logo ? /* @__PURE__ */ React.createElement("img", { src: logo, alt: "logo", style: { width: 56, height: 56, borderRadius: 14, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 56, height: 56, borderRadius: 14, background: COLORS.goldSoft, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 24 }, "\u{1F528}")), /* @__PURE__ */ React.createElement("label", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "12px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0627\u062E\u062A\u064A\u0627\u0631 \u0635\u0648\u0631\u0629", /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", onChange: handleFile, style: { display: "none" } })), logo && /* @__PURE__ */ React.createElement("button", { onClick: () => setLogo(null), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: "Al Khobar Orders", dir: "ltr" }), /* @__PURE__ */ React.createElement("button", { disabled: !name.trim(), style: primaryBtn(!name.trim()), onClick: () => onSave({ name: name.trim(), logo }) }, "\u062D\u0641\u0638"));
+}
+function OrderDetail({ order, onBack, onUpdate, onDelete }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [subTab, setSubTab] = useState("materials");
+  return /* @__PURE__ */ React.createElement("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, /* @__PURE__ */ React.createElement(GlobalStyle, null), /* @__PURE__ */ React.createElement("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("button", { onClick: onBack, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u203A")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 21, fontWeight: 700 } }, order.title), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted } }, order.clientName, " \xB7 ", order.dateReceived), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, marginTop: 2 } }, orderStatusLabel(order))), /* @__PURE__ */ React.createElement("button", { onClick: () => setConfirmDelete(true), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 17, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, padding: "14px 16px 0", overflowX: "auto" } }, /* @__PURE__ */ React.createElement(TabButton, { active: subTab === "materials", onClick: () => setSubTab("materials"), emoji: "\u{1F9F5}", label: "حصر خامات" }), /* @__PURE__ */ React.createElement(TabButton, { active: subTab === "quote", onClick: () => setSubTab("quote"), emoji: "\u{1F4B0}", label: "\u0639\u0631\u0636 \u0627\u0644\u0633\u0639\u0631" })), /* @__PURE__ */ React.createElement("div", { style: { padding: "0 16px" } }, subTab === "materials" && /* @__PURE__ */ React.createElement(MaterialsPage, { order, onUpdate }), subTab === "quote" && /* @__PURE__ */ React.createElement(ProductionQuotePage, { order, onUpdate })), confirmDelete && /* @__PURE__ */ React.createElement(Modal, { title: "\u062D\u0630\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u061F", onClose: () => setConfirmDelete(false) }, /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14.5, color: COLORS.muted, marginBottom: 16 } }, "\u0633\u064A\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0648\u0643\u0644 \u0628\u064A\u0627\u0646\u0627\u062A\u0647 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0647. \u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0644\u062A\u0631\u0627\u062C\u0639 \u0639\u0646 \u0647\u0630\u0627 \u0627\u0644\u0625\u062C\u0631\u0627\u0621."), /* @__PURE__ */ React.createElement("button", { onClick: onDelete, style: { ...primaryBtn(false), background: COLORS.danger, marginBottom: 10 } }, "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u062D\u0630\u0641"), /* @__PURE__ */ React.createElement("button", { onClick: () => setConfirmDelete(false), style: { ...primaryBtn(false), background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.border}` } }, "\u0625\u0644\u063A\u0627\u0621")));
+}
+function MaterialsPage({ order, onUpdate }) {
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [showEditMaterial, setShowEditMaterial] = useState(null);
+  const [showAddQuote, setShowAddQuote] = useState(null);
+  const [showAddPiece, setShowAddPiece] = useState(null);
+  const [view, setView] = useState("items");
+  const addMaterial = (m) => onUpdate({ materials: [...order.materials, m] });
+  const updateMaterial = (m) => onUpdate({ materials: order.materials.map((x) => (x.id === m.id ? m : x)) });
+  const removeMaterial = (id) => onUpdate({ materials: order.materials.filter((m) => m.id !== id), quotes: order.quotes.filter((q) => q.materialId !== id) });
+  const addPiece = (materialId, piece) => onUpdate({ materials: order.materials.map((m) => (m.id === materialId ? { ...m, pieces: [...(m.pieces || []), piece] } : m)) });
+  const removePiece = (materialId, pieceId) => onUpdate({ materials: order.materials.map((m) => (m.id === materialId ? { ...m, pieces: (m.pieces || []).filter((p) => p.id !== pieceId) } : m)) });
+  const addQuote = (q) => onUpdate({ quotes: [...order.quotes, q] });
+  const removeQuote = (id) => onUpdate({ quotes: order.quotes.filter((q) => q.id !== id) });
+  const chooseQuote = (materialId, quoteId) => onUpdate({ quotes: order.quotes.map((q) => (q.materialId === materialId ? { ...q, chosen: q.id === quoteId ? !q.chosen : false } : q)) });
+  const rollup = computeMaterialsRollup(order.materials);
+  const exportMaterialsCsv = () => {
+    const rows = [["النوع", "الوصف/الاسم", "الكمية/المساحة", "الوحدة"]];
+    order.materials.forEach((m) => {
+      const isMeasured = MEASURED_TYPES.includes(m.type);
+      rows.push([m.type, isMeasured ? (m.materialName || m.description) : m.description, isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit]);
+    });
+    rows.push([]);
+    rows.push(["-- التجميع --"]);
+    rows.push(["النوع", "الاسم", "الإجمالي", "الوحدة"]);
+    rollup.forEach((r) => rows.push([r.type, r.label, r.total.toFixed(2), r.unit]));
+    downloadCsv(`خامات-${order.title || "أوردر"}.csv`, rows);
+  };
+
+  return h("div", null,
+    h("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+      h(TabButton, { active: view === "items", onClick: () => setView("items"), emoji: "🧾", label: "تسجيل الخامات" }),
+      h(TabButton, { active: view === "rollup", onClick: () => setView("rollup"), emoji: "📊", label: "تجميع الكميات" })
+    ),
+    view === "rollup"
+      ? h("div", { style: { marginTop: 16 } },
+          h(SectionHeader, { emoji: "📊", title: "تجميع الخامات المتشابهة" }),
+          rollup.length === 0 ? h(EmptyHint, { text: "أضيفي خامات في تبويب البنود عشان يظهر التجميع هنا" }) : null,
+          h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, rollup.map((r, idx) =>
+            h("div", { key: idx, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+              h("div", null, h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6, marginLeft: 6 } }, r.type), h("span", { style: { fontWeight: 600 } }, r.label)),
+              h("span", { style: { fontWeight: 700, color: COLORS.gold } }, r.total.toFixed(2), " ", r.unit)
+            )
+          )),
+          order.materials.length > 0 ? h("button", { onClick: exportMaterialsCsv, style: { ...addLinkStyle, color: COLORS.teal } }, "⬇️ تحميل تقرير الخامات (CSV)") : null
+        )
+      : h(React.Fragment, null,
+          h(SectionHeader, { emoji: "🧵", title: "الخامات المطلوبة" }),
+          order.materials.length === 0 ? h(EmptyHint, { text: "أضيفي الخامات المطلوبة (قماش، رخام، زجاج...) لحصر الكميات" }) : null,
+          h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, order.materials.map((m) => {
+            const quotesForMaterial = order.quotes.filter((q) => q.materialId === m.id);
+            const isMeasured = MEASURED_TYPES.includes(m.type);
+            const isCoded = CODED_TYPES.includes(m.type);
+            const availColor = m.availability === "متوفر" ? COLORS.green : m.availability === "غير متوفر" ? COLORS.danger : COLORS.gold;
+            const primaryLabel = (isMeasured ? m.materialName : isCoded ? (m.itemCode || m.companyName) : m.description) || m.type;
+            return h("div", { key: m.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+              h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+                h("div", { style: { flex: 1 } },
+                  h("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+                    h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type),
+                    m.availability ? h("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability) : null
+                  ),
+                  h("div", { style: { fontWeight: 600, marginTop: 5 } }, primaryLabel),
+                  isCoded ? h("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } },
+                    (m.itemCode && m.companyName) ? h("span", null, "كود: ", m.itemCode) : null,
+                    m.companyName ? h("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 12 }, "🏢"), m.companyName) : null,
+                    h("span", null, m.quantity, " ", m.unit)
+                  ) : null,
+                  (isMeasured && (m.pieceCount || m.pieceName)) ? h("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, [m.pieceName, m.pieceCount ? ("عدد القطع: " + m.pieceCount) : null].filter(Boolean).join(" · ")) : null,
+                  (!isCoded && !isMeasured) ? h("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit) : null,
+                  (m.orderDate || m.leadTimeDays) ? h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } },
+                    h(Emoji, { size: 12 }, "📅"),
+                    m.orderDate ? `موعد الطلب: ${m.orderDate}` : "",
+                    (m.orderDate && m.leadTimeDays) ? " · " : "",
+                    m.leadTimeDays ? `مدة التوريد: ${m.leadTimeDays} يوم` : ""
+                  ) : null
+                ),
+                h("div", { style: { display: "flex", gap: 2 } },
+                  h("button", { onClick: () => setShowEditMaterial(m), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.teal }, "✏️")),
+                  h("button", { onClick: () => removeMaterial(m.id), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "🗑️"))
+                )
+              ),
+              isMeasured ? h("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } },
+                (m.pieces || []).length === 0 ? h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "لا يوجد قطع مسجّلة بعد") : null,
+                h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) =>
+                  h("div", { key: p.id, style: { display: "flex", alignItems: "center", gap: 10 } },
+                    p.image ? h("img", { src: p.image, alt: "قطعة", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : h("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, h(Emoji, { size: 18, color: COLORS.muted }, "🖼️")),
+                    h("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } },
+                      h("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 13, color: COLORS.muted }, "📐"), p.length, " × ", p.width, " ", p.unit),
+                      p.drawingFile ? h("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "📎"), " ", p.drawingFile.name) : null
+                    ),
+                    h("button", { onClick: () => removePiece(m.id, p.id), style: iconBtnStyle }, h(Emoji, { size: 13, color: COLORS.danger }, "🗑️"))
+                  )
+                )),
+                h("button", { onClick: () => setShowAddPiece(m.id), style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ إضافة قطعة")
+              ) : null,
+              quotesForMaterial.length > 0 ? h("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 } },
+                quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) =>
+                  h("div", { key: q.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5 } },
+                    h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                      h("button", { onClick: () => chooseQuote(m.id, q.id), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "⭐" : "☆")),
+                      h("span", { style: { fontWeight: q.chosen ? 700 : 400 } }, q.supplierName)
+                    ),
+                    h("div", { style: { color: COLORS.muted, display: "flex", gap: 8, alignItems: "center" } },
+                      h("span", null, q.price, " ج.م"),
+                      h("span", null, q.leadTimeDays, " يوم"),
+                      h("button", { onClick: () => removeQuote(q.id), style: iconBtnStyle }, h(Emoji, { size: 13, color: COLORS.danger }, "🗑️"))
+                    )
+                  )
+                )
+              ) : null,
+              h("button", { onClick: () => setShowAddQuote(m.id), style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ إضافة عرض سعر")
+            );
+          })),
+          h("button", { onClick: () => setShowAddMaterial(true), style: addLinkStyle }, "+ إضافة خامة")
+        ),
+    showAddMaterial ? h(AddMaterialModal, { onClose: () => setShowAddMaterial(false), onSave: (m) => { addMaterial(m); setShowAddMaterial(false); } }) : null,
+    showEditMaterial ? h(AddMaterialModal, { initial: showEditMaterial, onClose: () => setShowEditMaterial(null), onSave: (m) => { updateMaterial(m); setShowEditMaterial(null); } }) : null,
+    showAddQuote ? h(AddQuoteModal, { onClose: () => setShowAddQuote(null), onSave: (q) => { addQuote({ ...q, materialId: showAddQuote }); setShowAddQuote(null); } }) : null,
+    showAddPiece ? h(AddPieceModal, { onClose: () => setShowAddPiece(null), onSave: (p) => { addPiece(showAddPiece, p); setShowAddPiece(null); } }) : null
+  );
+}
+
+function AddMaterialModal({ onClose, onSave, initial }) {
+  const isEdit = !!initial;
+  const [type, setType] = useState(initial ? initial.type : MATERIAL_TYPES[0]);
+  const [quantity, setQuantity] = useState(initial ? initial.quantity || "" : "");
+  const [unit, setUnit] = useState(initial ? initial.unit || UNITS[0] : UNITS[0]);
+  const [itemCode, setItemCode] = useState(initial ? initial.itemCode || "" : "");
+  const [companyName, setCompanyName] = useState(initial ? initial.companyName || "" : "");
+  const [materialName, setMaterialName] = useState(initial ? initial.materialName || "" : "");
+  const [pieceCount, setPieceCount] = useState(initial ? initial.pieceCount || "" : "");
+  const [pieceName, setPieceName] = useState(initial ? initial.pieceName || "" : "");
+  const [orderDate, setOrderDate] = useState(initial ? initial.orderDate || "" : "");
+  const [leadTimeDays, setLeadTimeDays] = useState(initial ? initial.leadTimeDays || "" : "");
+  const [availability, setAvailability] = useState(initial ? initial.availability || AVAILABILITY_OPTIONS[0] : AVAILABILITY_OPTIONS[0]);
+  const isCoded = CODED_TYPES.includes(type);
+  const isMeasured = MEASURED_TYPES.includes(type);
+  const canSave = isCoded ? (itemCode.trim() || companyName.trim()) : isMeasured ? materialName.trim() : String(quantity).trim() !== "";
+  const save = () => onSave({
+    ...(initial || {}),
+    id: initial ? initial.id : uid(),
+    type,
+    description: "",
+    orderDate,
+    leadTimeDays,
+    availability,
+    quantity: isMeasured ? "" : quantity,
+    unit: isMeasured ? "" : unit,
+    itemCode: isCoded ? itemCode.trim() : "",
+    companyName: isCoded ? companyName.trim() : "",
+    materialName: isMeasured ? materialName.trim() : "",
+    pieceCount: isMeasured ? pieceCount : "",
+    pieceName: isMeasured ? pieceName.trim() : "",
+    pieces: initial ? (initial.pieces || []) : (isMeasured ? [] : void 0)
+  });
+  return h(Modal, { title: isEdit ? "تعديل الخامة" : "إضافة خامة", onClose },
+    h("label", { style: labelStyle }, "نوع الخامة"),
+    h("select", { style: fieldStyle, value: type, onChange: (e) => setType(e.target.value) }, MATERIAL_TYPES.map((t) => h("option", { key: t, value: t }, t))),
+    isCoded ? h(React.Fragment, null,
+      h("label", { style: labelStyle }, "الكود"),
+      h("input", { style: fieldStyle, value: itemCode, onChange: (e) => setItemCode(e.target.value), placeholder: "مثال: F-204" }),
+      h("label", { style: labelStyle }, "اسم الشركة"),
+      h("input", { style: fieldStyle, value: companyName, onChange: (e) => setCompanyName(e.target.value), placeholder: "اسم الشركة الموردة" })
+    ) : null,
+    isMeasured ? h(React.Fragment, null,
+      h("label", { style: labelStyle }, "نوع الرخام والزجاج"),
+      h("input", { style: fieldStyle, value: materialName, onChange: (e) => setMaterialName(e.target.value), placeholder: "مثال: رخام كرارا" }),
+      h("label", { style: labelStyle }, "عدد القطع"),
+      h("input", { style: fieldStyle, type: "number", min: 0, value: pieceCount, onChange: (e) => setPieceCount(e.target.value), placeholder: "0" }),
+      h("label", { style: labelStyle }, "اسم القطعة"),
+      h("input", { style: fieldStyle, value: pieceName, onChange: (e) => setPieceName(e.target.value), placeholder: "مثال: كاونتر مطبخ" }),
+      h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: -4, marginBottom: 12 } }, "بعد الحفظ تقدري تضيفي كل قطعة بالمقاس والصورة الخاصة بيها")
+    ) : null,
+    h("div", { style: { display: "flex", gap: 10 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "موعد الطلب"), h("input", { style: fieldStyle, type: "date", value: orderDate, onChange: (e) => setOrderDate(e.target.value) })),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "مدة التوريد (يوم)"), h("input", { style: fieldStyle, type: "number", value: leadTimeDays, onChange: (e) => setLeadTimeDays(e.target.value), placeholder: "0" }))
+    ),
+    h("label", { style: labelStyle }, "حالة التوافر"),
+    h("select", { style: fieldStyle, value: availability, onChange: (e) => setAvailability(e.target.value) }, AVAILABILITY_OPTIONS.map((a) => h("option", { key: a, value: a }, a))),
+    (!isMeasured) ? h("div", { style: { display: "flex", gap: 10 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الكمية"), h("input", { style: fieldStyle, type: "number", value: quantity, onChange: (e) => setQuantity(e.target.value), placeholder: "0" })),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الوحدة"), h("select", { style: fieldStyle, value: unit, onChange: (e) => setUnit(e.target.value) }, UNITS.map((u) => h("option", { key: u, value: u }, u))))
+    ) : null,
+    h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: save }, isEdit ? "حفظ التعديلات" : "حفظ الخامة")
+  );
+}
+
+function AddPieceModal({ onClose, onSave }) {
+  const [length, setLength] = useState("");
+  const [width, setWidth] = useState("");
+  const [unit, setUnit] = useState(PIECE_UNITS[0]);
+  const [image, setImage] = useState(null);
+  const [drawingFile, setDrawingFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const canSave = length && width;
+  const handleFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const att = await fileToAttachment(file, "pieces");
+      setImage(att.dataUrl);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0635\u0648\u0631\u0629 \u0627\u0644\u0642\u0637\u0639\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "16px", marginBottom: 12, cursor: "pointer", color: COLORS.muted, background: "#fff" } }, image ? /* @__PURE__ */ React.createElement("img", { src: image, alt: "\u0645\u0639\u0627\u064A\u0646\u0629", style: { width: 60, height: 60, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Emoji, { size: 18 }, "\u{1F5BC}\uFE0F"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644..." : "\u0627\u062E\u062A\u064A\u0627\u0631 \u0635\u0648\u0631\u0629 \u0623\u0648 \u0627\u0644\u062A\u0642\u0627\u0637 \u0628\u0627\u0644\u0643\u0627\u0645\u064A\u0631\u0627"), /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", capture: "environment", onChange: handleFile, style: { display: "none" } })), /* @__PURE__ */ React.createElement(
+    FileAttachField,
+    {
+      label: "\u0645\u0644\u0641 \u0631\u0633\u0645 / \u0627\u0648\u062A\u0648\u0643\u0627\u062F (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)",
+      file: drawingFile,
+      onChange: setDrawingFile,
+      onRemove: () => setDrawingFile(null),
+      folder: "drawings",
+      accept: "image/*,application/pdf,.dwg,.dxf,.ai,.eps"
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0637\u0648\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: length, onChange: (e) => setLength(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0639\u0631\u0636"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: width, onChange: (e) => setWidth(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { width: 78 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0648\u062D\u062F\u0629"), /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: unit, onChange: (e) => setUnit(e.target.value) }, PIECE_UNITS.map((u) => /* @__PURE__ */ React.createElement("option", { key: u, value: u }, u))))), /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: uid(), length, width, unit, image, drawingFile }) }, "\u062D\u0641\u0638 \u0627\u0644\u0642\u0637\u0639\u0629"));
+}
+function AddQuoteModal({ onClose, onSave }) {
+  const [supplierName, setSupplierName] = useState("");
+  const [price, setPrice] = useState("");
+  const [leadTimeDays, setLeadTimeDays] = useState("");
+  const [notes, setNotes] = useState("");
+  return /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631 (\u062C.\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F (\u064A\u0648\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: leadTimeDays, onChange: (e) => setLeadTimeDays(e.target.value), placeholder: "0" }))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement("button", { disabled: !supplierName.trim() || !price || !leadTimeDays, style: primaryBtn(!supplierName.trim() || !price || !leadTimeDays), onClick: () => onSave({ id: uid(), supplierName: supplierName.trim(), price: Number(price), leadTimeDays: Number(leadTimeDays), notes: notes.trim(), chosen: false }) }, "\u062D\u0641\u0638 \u0627\u0644\u0639\u0631\u0636"));
+}
+function DistributionPage({ order, onUpdate }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [showEdit, setShowEdit] = useState(null);
+  const items = order.distribution || [];
+  const addItem = (it) => onUpdate({ distribution: [...items, it] });
+  const updateItem = (it) => onUpdate({ distribution: items.map((x) => (x.id === it.id ? it : x)) });
+  const removeItem = (id) => onUpdate({ distribution: items.filter((i) => i.id !== id) });
+  const totalPieces = items.reduce((sum, it) => sum + (Number(it.pieceCount) || 0), 0);
+  return h("div", null,
+    h(SectionHeader, { emoji: "📦", title: "توزيع الأوردر على الموردين" }),
+    items.length === 0 ? h(EmptyHint, { text: "قسّمي الأوردر لبنود، كل بند بعدد قطعه واسم المورد المسؤول عنه" }) : null,
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, items.map((it) =>
+      h("div", { key: it.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+        h("div", null,
+          h("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+            it.itemType ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, it.itemType) : null,
+            h("span", { style: { fontWeight: 600 } }, it.description)
+          ),
+          h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4 } }, it.pieceCount, " قطعة · ", it.supplierName || "بدون مورد")
+        ),
+        h("div", { style: { display: "flex", gap: 2 } },
+          h("button", { onClick: () => setShowEdit(it), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.teal }, "✏️")),
+          h("button", { onClick: () => removeItem(it.id), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "🗑️"))
+        )
+      )
+    )),
+    items.length > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } },
+      h("span", { style: { fontWeight: 700 } }, "إجمالي القطع"),
+      h("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalPieces)
+    ) : null,
+    h("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ إضافة بند توزيع"),
+    showAdd ? h(AddDistributionItemModal, { onClose: () => setShowAdd(false), onSave: (it) => { addItem(it); setShowAdd(false); } }) : null,
+    showEdit ? h(AddDistributionItemModal, { initial: showEdit, onClose: () => setShowEdit(null), onSave: (it) => { updateItem(it); setShowEdit(null); } }) : null
+  );
+}
+function AddDistributionItemModal({ onClose, onSave, initial }) {
+  const isEdit = !!initial;
+  const [description, setDescription] = useState(initial ? initial.description || "" : "");
+  const [itemType, setItemType] = useState(initial ? initial.itemType || "" : "");
+  const [pieceCount, setPieceCount] = useState(initial ? initial.pieceCount || "" : "");
+  const [supplierName, setSupplierName] = useState(initial ? initial.supplierName || "" : "");
+  const canSave = description.trim() && pieceCount;
+  const save = () => onSave({
+    ...(initial || {}),
+    id: initial ? initial.id : uid(),
+    description: description.trim(),
+    itemType: itemType.trim(),
+    pieceCount: Number(pieceCount),
+    supplierName: supplierName.trim()
+  });
+  return h(Modal, { title: isEdit ? "تعديل بند التوزيع" : "إضافة بند توزيع", onClose },
+    h("label", { style: labelStyle }, "وصف البند"),
+    h("input", { style: fieldStyle, value: description, onChange: (e) => setDescription(e.target.value), placeholder: "مثال: كنبة 3 مقاعد" }),
+    h("label", { style: labelStyle }, "النوع"),
+    h("input", { style: fieldStyle, value: itemType, onChange: (e) => setItemType(e.target.value), placeholder: "مثال: كنب / خشبيات" }),
+    h("label", { style: labelStyle }, "عدد القطع"),
+    h("input", { style: fieldStyle, type: "number", value: pieceCount, onChange: (e) => setPieceCount(e.target.value), placeholder: "0" }),
+    h("label", { style: labelStyle }, "اسم المورد"),
+    h("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "اسم المورد المسؤول عن البند" }),
+    h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: save }, isEdit ? "حفظ التعديلات" : "حفظ البند")
+  );
+}
+
+function ProductionQuotePage({ order, onUpdate }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const items = order.productionQuoteItems || [];
+  const addItem = (it) => onUpdate({ productionQuoteItems: [...items, it] });
+  const removeItem = (id) => onUpdate({ productionQuoteItems: items.filter((i) => i.id !== id) });
+  const total = items.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("ar-EG"), " \u062C.\u0645"), /* @__PURE__ */ React.createElement("button", { onClick: () => removeItem(it.id), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, total.toLocaleString("ar-EG"), " \u062C.\u0645")), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0628\u0646\u062F"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
+    addItem(it);
+    setShowAdd(false);
+  } }));
+}
+function AddQuoteItemModal({ onClose, onSave }) {
+  const [pieceName, setPieceName] = useState("");
+  const [supplierName, setSupplierName] = useState("");
+  const [price, setPrice] = useState("");
+  const [notes, setNotes] = useState("");
+  const [priceFile, setPriceFile] = useState(null);
+  const canSave = pieceName.trim() && price;
+  return /* @__PURE__ */ React.createElement(Modal, { title: "\u0625\u0636\u0627\u0641\u0629 \u0628\u0646\u062F \u062A\u0633\u0639\u064A\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0642\u0637\u0639\u0629"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: pieceName, onChange: (e) => setPieceName(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u0629 3 \u0645\u0642\u0627\u0639\u062F" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F \u0623\u0648 \u0627\u0644\u0648\u0631\u0634\u0629" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631 (\u062C.\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: priceFile, onChange: setPriceFile, onRemove: () => setPriceFile(null), folder: "quotes" }), /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: uid(), pieceName: pieceName.trim(), supplierName: supplierName.trim(), price: Number(price), notes: notes.trim(), priceFile }) }, "\u062D\u0641\u0638 \u0627\u0644\u0628\u0646\u062F"));
+}
+function ProductionPage({ order, onUpdate }) {
+  const [showAddLog, setShowAddLog] = useState(false);
+  const stages = order.productionStages && order.productionStages.length ? order.productionStages : PRODUCTION_STAGE_DEFS.map((s) => ({ key: s.key, supplierName: "", price: "", durationDays: "", status: "not_started", startDate: "", endDate: "" }));
+  const updateStage = (key, patch) => onUpdate({ productionStages: stages.map((s) => s.key === key ? { ...s, ...patch } : s) });
+  const addLog = (entry) => onUpdate({ productionLog: [entry, ...order.productionLog || []] });
+  const removeLog = (id) => onUpdate({ productionLog: (order.productionLog || []).filter((l) => l.id !== id) });
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F464}", title: "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 4 } }, /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0637\u0644\u0628 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", file: order.manufacturingOrderFile, onChange: (file) => onUpdate({ manufacturingOrderFile: file }), onRemove: () => onUpdate({ manufacturingOrderFile: null }), folder: "manufacturing-orders" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: order.clientName, onChange: (e) => onUpdate({ clientName: e.target.value }), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: order.engineerName || "", onChange: (e) => onUpdate({ engineerName: e.target.value }), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0645\u0633\u0624\u0648\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u062A\u0639\u0645\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: order.approvalDate, onChange: (e) => onUpdate({ approvalDate: e.target.value }) })), (order.distribution || []).length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4E6}", title: "\u0645\u0644\u062E\u0635 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 } }, order.distribution.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement("span", null, d.description), /* @__PURE__ */ React.createElement("span", { style: { color: COLORS.muted } }, d.pieceCount, " \u0642\u0637\u0639\u0629 \xB7 ", d.supplierName || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0631\u062F"))))), /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F528}", title: "\u0645\u0631\u0627\u062D\u0644 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, PRODUCTION_STAGE_DEFS.map((def) => {
+    const s = stages.find((x) => x.key === def.key) || { supplierName: "", price: "", durationDays: "", status: "not_started", startDate: "", endDate: "" };
+    const isCarpentry = def.key === "carpentry";
+    return /* @__PURE__ */ React.createElement("div", { key: def.key, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 8 } }, def.label), /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        style: { ...fieldStyle, marginBottom: 10 },
+        value: s.supplierName || "",
+        onChange: (e) => updateStage(def.key, { supplierName: e.target.value }),
+        placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F/\u0627\u0644\u0648\u0631\u0634\u0629 \u0627\u0644\u0645\u0633\u0624\u0648\u0644\u0629 \u0639\u0646 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"
+      }
+    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 10 } }, isCarpentry && /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0639\u0631\u0636 \u0633\u0639\u0631 \u0627\u0644\u0645\u0648\u0631\u062F (\u062C.\u0645)"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: s.price || "", onChange: (e) => updateStage(def.key, { price: e.target.value }), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0645\u062F\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u064A\u0648\u0645)"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: s.durationDays || "", onChange: (e) => updateStage(def.key, { durationDays: e.target.value }), placeholder: "0" }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" } }, STATUS_OPTIONS.map((opt) => /* @__PURE__ */ React.createElement("button", { key: opt.key, onClick: () => updateStage(def.key, { status: opt.key }), style: {
+      fontSize: 12,
+      padding: "5px 10px",
+      borderRadius: 999,
+      cursor: "pointer",
+      border: `1px solid ${s.status === opt.key ? opt.color : COLORS.border}`,
+      background: s.status === opt.key ? opt.color : "#fff",
+      color: s.status === opt.key ? "#fff" : COLORS.muted,
+      fontWeight: 600
+    } }, opt.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0628\u062F\u0627\u064A\u0629"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, padding: "7px 10px", fontSize: 13.5 }, type: "date", value: s.startDate, onChange: (e) => updateStage(def.key, { startDate: e.target.value }) })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0646\u0647\u0627\u064A\u0629"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, padding: "7px 10px", fontSize: 13.5 }, type: "date", value: s.endDate, onChange: (e) => updateStage(def.key, { endDate: e.target.value }) }))));
+  })), /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4CB}", title: "\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u0625\u0636\u0627\u0641\u064A\u0629" }), (order.productionLog || []).length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0633\u062C\u0651\u0644\u064A \u0623\u064A \u0645\u0644\u0627\u062D\u0638\u0629 \u062D\u0631\u0629 \u062E\u0627\u0631\u062C \u0645\u0631\u0627\u062D\u0644 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0623\u0633\u0627\u0633\u064A\u0629" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (order.productionLog || []).map((l) => /* @__PURE__ */ React.createElement("div", { key: l.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: COLORS.muted, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), l.date), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, marginTop: 3 } }, l.note)), /* @__PURE__ */ React.createElement("button", { onClick: () => removeLog(l.id), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 14, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddLog(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062A\u062D\u062F\u064A\u062B"), showAddLog && /* @__PURE__ */ React.createElement(AddLogModal, { onClose: () => setShowAddLog(false), onSave: (l) => {
+    addLog(l);
+    setShowAddLog(false);
+  } }));
+}
+function AddLogModal({ onClose, onSave }) {
+  const [date, setDate] = useState((/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
+  return /* @__PURE__ */ React.createElement(Modal, { title: "\u062A\u062D\u062F\u064A\u062B \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u062A\u0627\u0631\u064A\u062E"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: date, onChange: (e) => setDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u062A\u062D\u062F\u064A\u062B"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 70 }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u062A\u0645 \u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0642\u0645\u0627\u0634 \u0648\u0628\u062F\u0621 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" }), /* @__PURE__ */ React.createElement("button", { disabled: !note.trim(), style: primaryBtn(!note.trim()), onClick: () => onSave({ id: uid(), date, note: note.trim() }) }, "\u062D\u0641\u0638 \u0627\u0644\u062A\u062D\u062F\u064A\u062B"));
+}
+const h = React.createElement;
+const ENTITIES = ["مصر", "الدمام"];
+const DEFAULT_PRODUCTION_SUPPLIERS = {
+  "مصر": ["نجارة عبدالرحمن", "نجارة صابر", "الدهان", "التنجيد", "مصنع 36", "مصنع زمزم", "مصنع عسل", "مصنع نوح", "الاستيل", "التغليف", "الشحن"],
+  "الدمام": ["ابو محمود", "الكينعي", "بستان", "عادى نسيب", "الدهان", "التنجيد", "التغليف", "الشحن"]
+};
+const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن"];
+const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
+const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تنفيذ عند مورد", viewer: "مشاهدة فقط" };
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function daysUntil(d) { if (!d) return null; return Math.round((new Date(d) - new Date(todayStr())) / 86400000); }
+function isSofaType(t) { return (t || "").includes("كنب"); }
+function isWoodType(t) { return (t || "").includes("خشب"); }
+
+function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onDelete, onUpdate, onAddSupplier, canEdit }) {
+  const [entity, setEntity] = useState(ENTITIES[0]);
+  const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
+  const [customerName, setCustomerName] = useState("");
+  const [customerDeliveryDate, setCustomerDeliveryDate] = useState("");
+  const [pieceType, setPieceType] = useState("");
+  const [pieceCount, setPieceCount] = useState(1);
+  const [description, setDescription] = useState("");
+  const [peopleCount, setPeopleCount] = useState("");
+  const [metersCount, setMetersCount] = useState("");
+  const [image, setImage] = useState(null);
+  const [newSupplierName, setNewSupplierName] = useState("");
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
+  const [showEdit, setShowEdit] = useState(null);
+  useEffect(() => { setSupplierName((productionSuppliers[entity] || [])[0] || ""); }, [entity, productionSuppliers]);
+  if (!canEdit) {
+    return h("div", null, h(SectionHeader, { emoji: "📦", title: "التوزيع" }), h(EmptyHint, { text: "مالكيش صلاحية إضافة توزيع جديد. تقدري تشوفي بند الإنتاج والإنتاج الكامل بس." }));
+  }
+  const submit = () => {
+    if (!customerName.trim() || !supplierName) return;
+    onAdd({
+      id: uid(), customerName: customerName.trim(), customerDeliveryDate, pieceType, pieceCount: Number(pieceCount) || 1,
+      description, manufacturingEntity: entity, supplierName, currentLocation: supplierName, baseStage: "نجارة",
+      image, peopleCount: isSofaType(pieceType) ? (Number(peopleCount) || 0) : "", metersCount: isWoodType(pieceType) ? (Number(metersCount) || 0) : "",
+      status: "لم يتم البدء", agreedDeadline: "", stages: {}, shippingDate: "", arrivalDate: "", createdAt: todayStr()
+    });
+    setCustomerName(""); setCustomerDeliveryDate(""); setPieceType(""); setPieceCount(1); setDescription(""); setPeopleCount(""); setMetersCount(""); setImage(null);
+  };
+  const recent = [...pieces].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 15);
+  return h("div", null,
+    h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
+    h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
+      h("label", { style: labelStyle }, "اسم العميل"),
+      h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
+      h("label", { style: labelStyle }, "تاريخ تسليم العميل"),
+      h("input", { style: fieldStyle, type: "date", value: customerDeliveryDate, onChange: (e) => setCustomerDeliveryDate(e.target.value) }),
+      h("label", { style: labelStyle }, "نوع القطعة"),
+      h("input", { style: fieldStyle, value: pieceType, onChange: (e) => setPieceType(e.target.value), placeholder: "مثال: كنب / خشبيات" }),
+      h("label", { style: labelStyle }, "عدد القطع"),
+      h("input", { style: fieldStyle, type: "number", min: 1, value: pieceCount, onChange: (e) => setPieceCount(e.target.value) }),
+      isSofaType(pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "عدد الأشخاص"), h("input", { style: fieldStyle, type: "number", value: peopleCount, onChange: (e) => setPeopleCount(e.target.value) })) : null,
+      isWoodType(pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "عدد الأمتار"), h("input", { style: fieldStyle, type: "number", value: metersCount, onChange: (e) => setMetersCount(e.target.value) })) : null,
+      h("label", { style: labelStyle }, "البيان"),
+      h("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: description, onChange: (e) => setDescription(e.target.value) }),
+      h("label", { style: labelStyle }, "جهة التصنيع"),
+      h("select", { style: fieldStyle, value: entity, onChange: (e) => setEntity(e.target.value) }, ENTITIES.map((en) => h("option", { key: en, value: en }, en))),
+      h("label", { style: labelStyle }, "المورد"),
+      h("select", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value) }, (productionSuppliers[entity] || []).map((s) => h("option", { key: s, value: s }, s))),
+      !showAddSupplier
+        ? h("button", { onClick: () => setShowAddSupplier(true), style: { ...addLinkStyle, marginBottom: 10 } }, "+ إضافة مورد جديد لـ " + entity)
+        : h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+            h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newSupplierName, onChange: (e) => setNewSupplierName(e.target.value), placeholder: "اسم المورد الجديد" }),
+            h("button", { style: { ...primaryBtn(false), width: 80 }, onClick: () => { if (newSupplierName.trim()) { onAddSupplier(entity, newSupplierName.trim()); setSupplierName(newSupplierName.trim()); setNewSupplierName(""); setShowAddSupplier(false); } } }, "إضافة")
+          ),
+      h(FileAttachField, { label: "صورة القطعة", file: image, onChange: setImage, onRemove: () => setImage(null), folder: "production-pieces" }),
+      h("button", { style: primaryBtn(false), onClick: submit }, "توزيع القطعة")
+    ),
+    h(SectionHeader, { emoji: "🗂️", title: "آخر القطع الموزعة" }),
+    recent.length === 0 ? h(EmptyHint, { text: "لا توجد قطع موزعة بعد" }) : null,
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, recent.map((p) =>
+      h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("div", null,
+          h("div", { style: { fontWeight: 700 } }, p.customerName + " — " + p.pieceType),
+          h("div", { style: { fontSize: 12, color: COLORS.muted } }, p.manufacturingEntity + " · " + p.supplierName + " · " + p.pieceCount + " قطعة")
+        ),
+        h("div", { style: { display: "flex", gap: 2 } },
+          h("button", { onClick: () => setShowEdit(p), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.teal }, "✏️")),
+          h("button", { onClick: () => onDelete(p.id), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "🗑️"))
+        )
+      )
+    )),
+    showEdit ? h(EditPieceCoreModal, { piece: showEdit, onClose: () => setShowEdit(null), onSave: (p) => { onUpdate(p); setShowEdit(null); } }) : null
+  );
+}
+
+function EditPieceCoreModal({ piece, onSave, onClose }) {
+  const [customerName, setCustomerName] = useState(piece.customerName || "");
+  const [customerDeliveryDate, setCustomerDeliveryDate] = useState(piece.customerDeliveryDate || "");
+  const [pieceType, setPieceType] = useState(piece.pieceType || "");
+  const [pieceCount, setPieceCount] = useState(piece.pieceCount || 1);
+  const [description, setDescription] = useState(piece.description || "");
+  const [peopleCount, setPeopleCount] = useState(piece.peopleCount || "");
+  const [metersCount, setMetersCount] = useState(piece.metersCount || "");
+  const save = () => onSave({
+    ...piece,
+    customerName: customerName.trim(),
+    customerDeliveryDate,
+    pieceType,
+    pieceCount: Number(pieceCount) || 1,
+    description,
+    peopleCount: isSofaType(pieceType) ? (Number(peopleCount) || 0) : "",
+    metersCount: isWoodType(pieceType) ? (Number(metersCount) || 0) : ""
+  });
+  return h(Modal, { title: "تعديل بيانات القطعة", onClose },
+    h("label", { style: labelStyle }, "اسم العميل"),
+    h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
+    h("label", { style: labelStyle }, "تاريخ تسليم العميل"),
+    h("input", { style: fieldStyle, type: "date", value: customerDeliveryDate, onChange: (e) => setCustomerDeliveryDate(e.target.value) }),
+    h("label", { style: labelStyle }, "نوع القطعة"),
+    h("input", { style: fieldStyle, value: pieceType, onChange: (e) => setPieceType(e.target.value) }),
+    h("label", { style: labelStyle }, "عدد القطع"),
+    h("input", { style: fieldStyle, type: "number", min: 1, value: pieceCount, onChange: (e) => setPieceCount(e.target.value) }),
+    isSofaType(pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "عدد الأشخاص"), h("input", { style: fieldStyle, type: "number", value: peopleCount, onChange: (e) => setPeopleCount(e.target.value) })) : null,
+    isWoodType(pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "عدد الأمتار"), h("input", { style: fieldStyle, type: "number", value: metersCount, onChange: (e) => setMetersCount(e.target.value) })) : null,
+    h("label", { style: labelStyle }, "البيان"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: description, onChange: (e) => setDescription(e.target.value) }),
+    h("button", { style: primaryBtn(false), onClick: save }, "حفظ التعديلات")
+  );
+}
+function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
+  const [editingDates, setEditingDates] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const handleStatusChange = (newStatus) => {
+    if (!canEdit) return;
+    const p = { ...piece, stages: { ...(piece.stages || {}) } };
+    const prevStatus = piece.status;
+    p.status = newStatus;
+    if (newStatus === "جارى" && prevStatus === "لم يتم البدء") {
+      const key = p.baseStage || "نجارة";
+      p.stages[key] = { ...(p.stages[key] || {}), start: (p.stages[key] && p.stages[key].start) || todayStr() };
+    }
+    if (newStatus === "تم الإنتاج") {
+      const key = p.baseStage || "نجارة";
+      p.stages[key] = { ...(p.stages[key] || {}), end: (p.stages[key] && p.stages[key].end) || todayStr() };
+    }
+    if (STATUS_TARGET[newStatus]) {
+      const target = STATUS_TARGET[newStatus];
+      const stageKey = STATUS_STAGE_KEY[target];
+      if (p.baseStage && p.stages[p.baseStage] && !p.stages[p.baseStage].end) p.stages[p.baseStage].end = todayStr();
+      p.currentLocation = target;
+      p.stages[stageKey] = { ...(p.stages[stageKey] || {}), start: (p.stages[stageKey] && p.stages[stageKey].start) || todayStr() };
+      if (target === "الشحن") p.shippingDate = p.shippingDate || todayStr();
+    }
+    onUpdate(p);
+  };
+  const updateField = (field, value) => { if (canEdit) onUpdate({ ...piece, [field]: value }); };
+  const updateStageDate = (stage, which, value) => { if (!canEdit) return; onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stage]: { ...((piece.stages || {})[stage] || {}), [which]: value } } }); };
+  const dl = daysUntil(piece.agreedDeadline);
+  const overdue = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl < 0;
+  const nearDeadline = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl >= 0 && dl <= 2;
+  return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 } },
+    h("div", { style: { display: "flex", gap: 10 } },
+      piece.image ? h("img", { src: piece.image.dataUrl, style: { width: 52, height: 52, borderRadius: 8, objectFit: "cover", flexShrink: 0 } }) : h("div", { style: { width: 52, height: 52, borderRadius: 8, background: COLORS.bg, flexShrink: 0 } }),
+      h("div", { style: { flex: 1, minWidth: 0 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between" } }, h("div", { style: { fontWeight: 700 } }, piece.customerName), canEdit ? h("div", { style: { display: "flex", gap: 2 } }, h("button", { onClick: () => setShowEdit(true), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.teal }, "✏️")), h("button", { onClick: () => onDelete(piece.id), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️"))) : null),
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, piece.pieceType + " · " + piece.pieceCount + " قطعة")
+      )
+    ),
+    piece.description ? h("div", { style: { fontSize: 12.5, color: COLORS.muted, background: COLORS.bg, borderRadius: 8, padding: 8 } }, piece.description) : null,
+    h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: COLORS.muted } },
+      h("span", null, "تسليم العميل: " + (piece.customerDeliveryDate || "—")),
+      isSofaType(piece.pieceType) ? h("span", null, "عدد الأشخاص: " + (piece.peopleCount || 0)) : null,
+      isWoodType(piece.pieceType) ? h("span", null, "عدد الأمتار: " + (piece.metersCount || 0)) : null
+    ),
+    h("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+      h("span", { style: { fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: COLORS.goldSoft, color: COLORS.gold } }, piece.status),
+      overdue ? h("span", { style: { fontSize: 11, fontWeight: 700, color: "#fff", background: COLORS.danger, borderRadius: 999, padding: "3px 9px" } }, "متأخر") : null,
+      nearDeadline ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: "#fff3d6", borderRadius: 999, padding: "3px 9px" } }, "قرّب الموعد") : null
+    ),
+    h("div", { style: { display: "flex", gap: 8 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الحالة"), h("select", { style: fieldStyle, disabled: !canEdit, value: piece.status, onChange: (e) => handleStatusChange(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s)))),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الموعد المتفق عليه"), h("input", { style: fieldStyle, type: "date", disabled: !canEdit, value: piece.agreedDeadline || "", onChange: (e) => updateField("agreedDeadline", e.target.value) }))
+    ),
+    canEdit ? h("button", { onClick: () => setEditingDates((v) => !v), style: { fontSize: 12, color: COLORS.teal, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, editingDates ? "إخفاء تواريخ المراحل" : "تعديل تواريخ المراحل يدويًا") : null,
+    editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6, background: COLORS.bg, borderRadius: 8, padding: 8 } },
+      Object.keys(piece.stages || {}).map((stage) => h("div", { key: stage, style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, alignItems: "center" } },
+        h("span", { style: { fontSize: 12, fontWeight: 700 } }, stage),
+        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].start) || "", onChange: (e) => updateStageDate(stage, "start", e.target.value) }),
+        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].end) || "", onChange: (e) => updateStageDate(stage, "end", e.target.value) })
+      )),
+      h("div", { style: { display: "flex", gap: 8 } },
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الشحن"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: piece.shippingDate || "", onChange: (e) => updateField("shippingDate", e.target.value) })),
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الوصول"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: piece.arrivalDate || "", onChange: (e) => updateField("arrivalDate", e.target.value) }))
+      )
+    ) : null,
+    showEdit ? h(EditPieceCoreModal, { piece, onClose: () => setShowEdit(false), onSave: (p) => { onUpdate(p); setShowEdit(false); } }) : null
+  );
+}
+
+function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope }) {
+  const [entity, setEntity] = useState(ENTITIES[0]);
+  const [activeSupplier, setActiveSupplier] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
+  const [showAdd, setShowAdd] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState("");
+  useEffect(() => { setActiveSupplier((productionSuppliers[entity] || [])[0] || ""); }, [entity]);
+  const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
+  const tabPieces = entityPieces.filter((p) => p.currentLocation === activeSupplier);
+  const delayed = entityPieces.filter((p) => {
+    if (!p.agreedDeadline || p.status === "إلى الشحن") return false;
+    const d = daysUntil(p.agreedDeadline);
+    return d !== null && d <= 2;
+  });
+  const counts = (productionSuppliers[entity] || []).reduce((acc, s) => { acc[s] = entityPieces.filter((p) => p.currentLocation === s).length; return acc; }, {});
+  const canEditPiece = (p) => myRole === "admin" || (myRole === "production" && mySupplierScope.includes(p.currentLocation));
+  return h("div", null,
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, ENTITIES.map((en) =>
+      h("button", { key: en, onClick: () => setEntity(en), style: { flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${entity === en ? COLORS.gold : COLORS.border}`, background: entity === en ? COLORS.goldSoft : COLORS.surface, color: entity === en ? COLORS.gold : COLORS.muted, fontWeight: 700, cursor: "pointer" } }, "بند إنتاج — تصنيع " + en)
+    )),
+    delayed.length > 0 ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 10, padding: 10, marginBottom: 12 } },
+      h("div", { style: { color: COLORS.danger, fontWeight: 700, fontSize: 13, marginBottom: 6 } }, "⏰ مراجعة المتأخرات (" + delayed.length + ")"),
+      h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, delayed.map((p) => h("span", { key: p.id, style: { fontSize: 11.5, background: "#fff", border: `1px solid ${COLORS.danger}`, borderRadius: 999, padding: "3px 8px", color: COLORS.danger } }, p.customerName + " · " + p.currentLocation)))
+    ) : null,
+    h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 } },
+      (productionSuppliers[entity] || []).map((s) => h("button", { key: s, onClick: () => setActiveSupplier(s), style: { padding: "6px 12px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: `1px solid ${activeSupplier === s ? COLORS.ink : COLORS.border}`, background: activeSupplier === s ? COLORS.ink : "#fff", color: activeSupplier === s ? "#fff" : COLORS.muted, cursor: "pointer" } }, s + " (" + (counts[s] || 0) + ")")),
+      myRole === "admin" ? (!showAdd
+        ? h("button", { onClick: () => setShowAdd(true), style: { padding: "6px 12px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: `1px dashed ${COLORS.gold}`, background: "#fff", color: COLORS.gold, cursor: "pointer" } }, "+ مورد آخر")
+        : h("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, h("input", { style: { ...fieldStyle, marginBottom: 0, padding: "6px 8px", fontSize: 13, width: 120 }, value: newSupplierName, onChange: (e) => setNewSupplierName(e.target.value) }), h("button", { onClick: () => { if (newSupplierName.trim()) { onAddSupplier(entity, newSupplierName.trim()); setNewSupplierName(""); setShowAdd(false); } }, style: { ...primaryBtn(false), width: 60, padding: "6px 0" } }, "✓"))) : null
+    ),
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+      tabPieces.length === 0 ? h(EmptyHint, { text: "لا توجد قطع حاليًا عند " + activeSupplier }) : null,
+      tabPieces.map((p) => h(PieceBoardCard, { key: p.id, piece: p, onUpdate, onDelete, canEdit: canEditPiece(p) }))
+    )
+  );
+}
+
+function FullProductionPage({ pieces, onUpdate, canEdit }) {
+  const [query, setQuery] = useState("");
+  const [showEdit, setShowEdit] = useState(null);
+  const filtered = query.trim() ? pieces.filter((p) => p.customerName.includes(query)) : pieces;
+  const groups = {};
+  filtered.forEach((p) => { (groups[p.customerName] = groups[p.customerName] || []).push(p); });
+  const names = Object.keys(groups).sort((a, b) => a.localeCompare(b, "ar"));
+  const updateStageDate = (piece, stage, which, value) => { if (!canEdit) return; onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stage]: { ...((piece.stages || {})[stage] || {}), [which]: value } } }); };
+  return h("div", null,
+    h(SectionHeader, { emoji: "📋", title: "الإنتاج الكامل" }),
+    h("input", { style: fieldStyle, placeholder: "ابحث باسم العميل...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    names.length === 0 ? h(EmptyHint, { text: "لا توجد بيانات" }) : null,
+    names.map((name) => h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 } },
+      h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } }, h("span", null, name), h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")),
+      h("div", null, groups[name].map((p) => h("div", { key: p.id, style: { padding: 12, borderTop: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", gap: 8 } },
+        h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+          p.image ? h("img", { src: p.image.dataUrl, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : h("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg } }),
+          h("div", { style: { flex: 1, fontSize: 12, color: COLORS.muted } }, "النوع: " + p.pieceType + " · عدد: " + p.pieceCount + " · جهة التصنيع: " + p.manufacturingEntity + " · المورد: " + p.supplierName),
+          h("span", { style: { fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: COLORS.goldSoft, color: COLORS.gold } }, p.status),
+          canEdit ? h("button", { onClick: () => setShowEdit(p), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.teal }, "✏️")) : null
+        ),
+        p.description ? h("div", { style: { fontSize: 12, color: COLORS.muted, background: COLORS.bg, borderRadius: 8, padding: 8 } }, p.description) : null,
+        h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 } }, ["نجارة", "دهان", "تنجيد"].map((stage) =>
+          h("div", { key: stage, style: { border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 } },
+            h("div", { style: { fontSize: 11.5, fontWeight: 700, marginBottom: 4 } }, stage),
+            h("div", { style: { display: "flex", gap: 4 } },
+              h("input", { type: "date", disabled: !canEdit, style: { ...fieldStyle, marginBottom: 0, padding: "4px 6px", fontSize: 11 }, value: (p.stages && p.stages[stage] && p.stages[stage].start) || "", onChange: (e) => updateStageDate(p, stage, "start", e.target.value) }),
+              h("input", { type: "date", disabled: !canEdit, style: { ...fieldStyle, marginBottom: 0, padding: "4px 6px", fontSize: 11 }, value: (p.stages && p.stages[stage] && p.stages[stage].end) || "", onChange: (e) => updateStageDate(p, stage, "end", e.target.value) })
+            )
+          )
+        )),
+        h("div", { style: { display: "flex", gap: 8 } },
+          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الشحن"), h("input", { type: "date", disabled: !canEdit, style: { ...fieldStyle, marginBottom: 0 }, value: p.shippingDate || "", onChange: (e) => { if (canEdit) onUpdate({ ...p, shippingDate: e.target.value }); } })),
+          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الوصول"), h("input", { type: "date", disabled: !canEdit, style: { ...fieldStyle, marginBottom: 0 }, value: p.arrivalDate || "", onChange: (e) => { if (canEdit) onUpdate({ ...p, arrivalDate: e.target.value }); } }))
+        )
+      )))
+    )),
+    showEdit ? h(EditPieceCoreModal, { piece: showEdit, onClose: () => setShowEdit(null), onSave: (p) => { onUpdate(p); setShowEdit(null); } }) : null
+  );
+}
+
+function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) {
+  const [members, setMembers] = useState(access.members && access.members.length ? access.members : (access.allowedEmails || []).map((e) => ({ email: e, role: e === access.ownerEmail ? "admin" : "viewer", supplierScope: [] })));
+  const [newEmail, setNewEmail] = useState("");
+  const allSuppliers = Object.values(productionSuppliers || {}).flat();
+  const updateMember = (email, patch) => setMembers(members.map((m) => (m.email === email ? { ...m, ...patch } : m)));
+  const addMember = () => {
+    const e = newEmail.trim().toLowerCase();
+    if (!e || members.some((m) => m.email === e)) return;
+    setMembers([...members, { email: e, role: "viewer", supplierScope: [] }]);
+    setNewEmail("");
+  };
+  const removeMember = (email) => { if (email === access.ownerEmail) return; setMembers(members.filter((m) => m.email !== email)); };
+  const toggleScope = (email, supplier) => {
+    setMembers(members.map((m) => {
+      if (m.email !== email) return m;
+      const has = (m.supplierScope || []).includes(supplier);
+      return { ...m, supplierScope: has ? m.supplierScope.filter((s) => s !== supplier) : [...(m.supplierScope || []), supplier] };
+    }));
+  };
+  const save = () => onSave({ ...access, allowedEmails: members.map((m) => m.email), members });
+  return h(Modal, { title: "إدارة الأدوار والصلاحيات", onClose },
+    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'حددي دور كل مستخدم. دور "تنفيذ عند مورد" يقدر يعدل بس القطع اللي عند الموردين المحددين له.'),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "email@example.com", dir: "ltr" }),
+      h("button", { onClick: addMember, style: { ...primaryBtn(false), width: 70, padding: "10px 0" } }, "إضافة")
+    ),
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 } }, members.map((m) =>
+      h("div", { key: m.email, style: { border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
+          h("span", { style: { fontSize: 13, direction: "ltr" } }, m.email, m.email === access.ownerEmail ? " (صاحبة الحساب)" : ""),
+          m.email !== access.ownerEmail ? h("button", { onClick: () => removeMember(m.email), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️")) : null
+        ),
+        h("select", { style: { ...fieldStyle, marginBottom: m.role === "production" ? 8 : 0 }, disabled: m.email === access.ownerEmail, value: m.role, onChange: (e) => updateMember(m.email, { role: e.target.value }) },
+          Object.keys(ROLE_LABELS).map((r) => h("option", { key: r, value: r }, ROLE_LABELS[r]))
+        ),
+        m.role === "production" ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, allSuppliers.map((s) =>
+          h("label", { key: s, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(s) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(s) ? COLORS.goldSoft : "#fff" } },
+            h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(s), onChange: () => toggleScope(m.email, s), style: { display: "none" } }), s)
+        )) : null
+      )
+    )),
+    h("button", { style: primaryBtn(false), onClick: save }, "حفظ")
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(/* @__PURE__ */ React.createElement(App, null));
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.error("Service worker registration failed", err);
+    });
+  });
+}
+</script>
+</body>
+</html>
