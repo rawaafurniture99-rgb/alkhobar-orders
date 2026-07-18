@@ -1413,7 +1413,7 @@ function AddMaterialModal({ onClose, onSave }) {
     materialName: isMeasured ? materialName.trim() : "",
     marbleType: type === "رخام" ? marbleType.trim() : "",
     glassType: type === "زجاج" ? glassType.trim() : "",
-    pieces: isMeasured ? [{ id: uid(), pieceCount, length: pieceLength, width: pieceWidth, unit: pieceUnit, image: pieceImage, drawingFile }] : void 0
+    pieces: isMeasured ? [{ id: uid(), pieceCount, length: pieceLength, width: pieceWidth, unit: pieceUnit, image: pieceImage, drawingFile }] : null
   }) }, "\u062D\u0641\u0638 \u0627\u0644\u062E\u0627\u0645\u0629"));
 }
 function AddPieceModal({ onClose, onSave }) {
