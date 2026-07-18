@@ -538,13 +538,30 @@ function App() {
         tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: setSelectedId })
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
-      h("header", { style: { padding: "20px 18px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 12 } },
-        branding.logo ? h("img", { src: branding.logo, alt: "logo", style: { width: 44, height: 44, borderRadius: 12, objectFit: "cover", flexShrink: 0 } }) : h("img", { src: DEFAULT_LOGO_IMG, alt: "logo", style: { width: 44, height: 44, borderRadius: 12, objectFit: "cover", flexShrink: 0, background: COLORS.goldSoft } }),
-        h("div", { style: { flex: 1 } },
-          h("h1", { style: { ...display, fontSize: 24, fontWeight: 700, margin: 0, color: COLORS.ink } }, branding.name),
-          h("p", { style: { margin: "2px 0 0", fontSize: 12.5, color: COLORS.muted } }, user.email)
-        ),
-        h("button", { onClick: () => setShowSettingsMenu(true), style: iconBtnStyle, title: "\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A" }, h(Emoji, { size: 20 }, "\u2699\uFE0F"))
+      h("div", {
+        style: {
+          position: "relative",
+          overflow: "hidden",
+          padding: "24px 20px 34px",
+          backgroundImage: `linear-gradient(180deg, rgba(62,36,23,0.55) 0%, rgba(62,36,23,0.72) 55%, rgba(62,36,23,0.88) 100%), url(${AUTH_HERO_IMG})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center"
+        }
+      },
+        h("div", { style: { position: "absolute", width: 200, height: 200, borderRadius: "50%", background: "rgba(255,255,255,0.06)", top: -70, left: -50 } }),
+        h("div", { style: { position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+          h("div", null,
+            branding.logo ? h("img", { src: branding.logo, alt: "logo", style: { width: 40, height: 40, borderRadius: 10, objectFit: "cover", marginBottom: 10 } }) : null,
+            h("h1", { style: { ...display, fontSize: 27, fontWeight: 700, margin: 0, color: "#FBEFDD" } }, branding.name),
+            h("p", { style: { margin: "4px 0 0", fontSize: 12, color: "rgba(251,239,221,0.8)" } }, user.email)
+          ),
+          h("button", { onClick: () => setShowSettingsMenu(true), style: iconBtnStyle, title: "\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A" }, h(Emoji, { size: 20 }, "\u2699\uFE0F"))
+        )
+      ),
+      h("div", { style: { lineHeight: 0, marginTop: -2 } },
+        h("svg", { viewBox: "0 0 1440 60", style: { width: "100%", height: 34, display: "block" }, preserveAspectRatio: "none" },
+          h("path", { d: "M0,24 C240,54 480,3 720,20 C960,36 1200,63 1440,22 L1440,60 L0,60 Z", fill: COLORS.bg })
+        )
       ),
       orders.some(orderIsOverdue) && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F0"), orders.filter(orderIsOverdue).length, " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u2014 \u0631\u0627\u062C\u0639\u064A \u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0628\u062A\u0627\u0639\u062A\u0647\u0645"),
       h("div", { style: { flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "56px 16px" } },
