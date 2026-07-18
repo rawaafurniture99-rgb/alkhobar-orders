@@ -1,6 +1,6 @@
 {
-  "name": "Rawaa Furniture",
-  "short_name": "Rawaa Furniture",
+  "name": "Al_khobar orders",
+  "short_name": "Al_khobar orders",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
