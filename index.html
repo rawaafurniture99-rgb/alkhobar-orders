@@ -34,6 +34,11 @@
       messagingSenderId: "462225821034",
       appId: "1:462225821034:web:00cbef6b71ec3f5b7da913",
     };
+    // \u0639\u062F\u0651\u0644\u064A \u0627\u0644\u0642\u064A\u0645\u062A\u064A\u0646 \u062F\u0648\u0644 \u0628\u0639\u062F \u0645\u0627 \u062A\u0639\u0645\u0644\u064A \u062D\u0633\u0627\u0628 Cloudinary \u0648\u062A\u062C\u064A\u0628\u064A cloud name \u0648upload preset
+    window.CLOUDINARY_CONFIG = {
+      cloudName: "c21jyesu",
+      uploadPreset: "ml_default"
+    };
   </script>
 
   <script>
@@ -151,10 +156,33 @@ function compressImage(file, maxDim = 700, quality = 0.55) {
     reader.readAsDataURL(file);
   });
 }
+async function uploadToStorage(file, folder) {
+  const cfg = window.CLOUDINARY_CONFIG;
+  if (!cfg || !cfg.cloudName || cfg.cloudName === "YOUR_CLOUD_NAME" || !cfg.uploadPreset || cfg.uploadPreset === "YOUR_UPLOAD_PRESET") {
+    throw new Error("Cloudinary \u0645\u0634 \u0645\u0636\u0628\u0648\u0637: \u0644\u0627\u0632\u0645 \u062A\u062D\u0637\u064A cloud name \u0648 upload preset \u0641\u064A window.CLOUDINARY_CONFIG");
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", cfg.uploadPreset);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {
+    method: "POST",
+    body: formData
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error("Cloudinary upload failed (" + res.status + "): " + errText);
+  }
+  const data = await res.json();
+  return { url: data.secure_url, path: data.public_id };
+}
 async function fileToAttachment(file, folder) {
   const isImage = file.type && file.type.startsWith("image/");
-  const dataUrl = isImage ? await compressImage(file) : await readFileAsDataUrl(file);
-  return { name: file.name, dataUrl, kind: isImage ? "image" : "file" };
+  if (isImage) {
+    const dataUrl = await compressImage(file);
+    return { name: file.name, dataUrl, kind: "image" };
+  }
+  const { url, path } = await uploadToStorage(file, folder);
+  return { name: file.name, dataUrl: url, kind: "file", storagePath: path };
 }
 function emptyOrder() {
   return {
@@ -512,7 +540,12 @@ function App() {
   const persistRecordWrite = useCallback((promise) => {
     promise.then(() => setSyncError("")).catch((e) => {
       console.error(e);
-      setSyncError("\u0641\u0634\u0644 \u062D\u0641\u0638 \u0622\u062E\u0631 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u2014 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0648\u062D\u0627\u0648\u0644\u064A \u062A\u0627\u0646\u064A.");
+      const msg = (e && e.message) || "";
+      if (/longer than|exceeds|too large|maximum size/i.test(msg)) {
+        setSyncError("\u0641\u0634\u0644 \u0627\u0644\u062D\u0641\u0638: \u0627\u0644\u0645\u0631\u0641\u0642\u0627\u062A (\u0635\u0648\u0631/\u0645\u0644\u0641) \u0643\u0628\u064A\u0631\u0629 \u062C\u062F\u064A\u064B\u0627 \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631. \u0627\u062D\u0630\u0641\u064A \u0623\u062D\u062F \u0627\u0644\u0645\u0631\u0641\u0642\u0627\u062A \u0623\u0648 \u0627\u0631\u0641\u0639\u064A \u0646\u0633\u062E\u0629 \u0623\u0635\u063A\u0631 \u0645\u0646 \u0627\u0644\u0635\u0648\u0631\u0629/\u0627\u0644\u0645\u0644\u0641.");
+      } else {
+        setSyncError("\u0641\u0634\u0644 \u062D\u0641\u0638 \u0622\u062E\u0631 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0627\u0644\u0633\u064A\u0631\u0641\u0631 \u2014 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0648\u062D\u0627\u0648\u0644\u064A \u062A\u0627\u0646\u064A.");
+      }
     });
   }, []);
   const persistBranding = useCallback((next) => {
@@ -891,10 +924,12 @@ function NavTile({ active, onClick, emoji, label, accent }) {
       style: {
         position: "relative",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        aspectRatio: "1",
-        padding: 10,
+        gap: 8,
+        minHeight: 108,
+        padding: "16px 8px 12px",
         borderRadius: 14,
         border: `1px solid ${accent ? COLORS.gold : active ? COLORS.gold : COLORS.border}`,
         background: accent ? COLORS.gold : COLORS.surface,
@@ -903,8 +938,8 @@ function NavTile({ active, onClick, emoji, label, accent }) {
         overflow: "hidden"
       }
     },
-    h("span", { style: { fontSize: "clamp(38px, 10vw, 54px)", lineHeight: 1 } }, emoji),
-    h("span", { style: { position: "absolute", bottom: 9, insetInlineStart: 11, insetInlineEnd: 11, fontSize: 12.5, fontWeight: 700, color: accent ? "#fff" : active ? COLORS.gold : COLORS.ink, textAlign: "start" } }, label)
+    h("span", { style: { fontSize: "clamp(44px, 12vw, 62px)", lineHeight: 1 } }, emoji),
+    h("span", { style: { fontSize: 12.5, fontWeight: 700, color: accent ? "#fff" : active ? COLORS.gold : COLORS.ink, textAlign: "center" } }, label)
   );
 }
 function TabButton({ active, onClick, emoji, label }) {
@@ -994,20 +1029,29 @@ function SectionHeader({ emoji, title }) {
 }
 function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
   const [busy, setBusy] = useState(false);
+  const [warning, setWarning] = useState("");
+  const MAX_BYTES = 25 * 1024 * 1024;
   const handleFile = async (e) => {
     const f = e.target.files && e.target.files[0];
+    e.target.value = "";
     if (!f) return;
+    setWarning("");
+    if (f.size > MAX_BYTES) {
+      setWarning("\u0627\u0644\u0645\u0644\u0641 \u062F\u0647 \u0623\u0643\u0628\u0631 \u0645\u0646 25 \u0645\u064A\u062C\u0627\u0628\u0627\u064A\u062A \u0648\u0645\u0634 \u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0641\u0639\u0647. \u0627\u062E\u062A\u0627\u0631\u064A \u0645\u0644\u0641 \u0623\u0635\u063A\u0631.");
+      return;
+    }
     setBusy(true);
     try {
       const attachment = await fileToAttachment(f, folder || "files");
       onChange(attachment);
     } catch (err) {
       console.error(err);
+      setWarning("\u062A\u0639\u0630\u0631 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641\u060C \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0648\u062C\u0631\u0651\u0628\u064A \u062A\u0627\u0646\u064A.");
     } finally {
       setBusy(false);
     }
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, label && /* @__PURE__ */ React.createElement("label", { style: labelStyle }, label), file ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } }, file.kind === "image" ? /* @__PURE__ */ React.createElement("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F4C4}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name), /* @__PURE__ */ React.createElement("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")), /* @__PURE__ */ React.createElement("button", { onClick: onRemove, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))) : /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641", /* @__PURE__ */ React.createElement("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" } })));
+  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, label && /* @__PURE__ */ React.createElement("label", { style: labelStyle }, label), warning && /* @__PURE__ */ React.createElement("p", { style: { color: COLORS.danger, fontSize: 12.5, margin: "0 0 6px" } }, warning), file ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } }, file.kind === "image" ? /* @__PURE__ */ React.createElement("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F4C4}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name), /* @__PURE__ */ React.createElement("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")), /* @__PURE__ */ React.createElement("button", { onClick: onRemove, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))) : /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641", /* @__PURE__ */ React.createElement("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" } })));
 }
 function CustomersList({ orders, onOpen }) {
   const map = {};
