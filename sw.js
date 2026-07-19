@@ -1,5 +1,5 @@
 // Bump CACHE_NAME every time you deploy new content — this forces old caches to be cleared.
-const CACHE_NAME = "rawaa-furniture-v13";
+const CACHE_NAME = "rawaa-furniture-v18";
 const CORE_ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", (event) => {

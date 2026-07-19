@@ -51,7 +51,7 @@ try {
 } catch (e) {
   console.error("Firebase init failed", e);
 }
-const COLORS = {
+const LIGHT_COLORS = {
   bg: "#F6F1E7",
   surface: "#FFFFFF",
   ink: "#2A211B",
@@ -64,6 +64,21 @@ const COLORS = {
   green: "#5C7A54",
   danger: "#B54B3F"
 };
+const DARK_COLORS = {
+  bg: "#1C1712",
+  surface: "#26201A",
+  ink: "#F1E7D8",
+  muted: "#A6987F",
+  border: "#3B322A",
+  gold: "#D9A857",
+  goldSoft: "#3A2E1D",
+  teal: "#6FA3AA",
+  rose: "#D08A7C",
+  green: "#7FA277",
+  danger: "#E07766"
+};
+let currentThemeMode = "light";
+const COLORS = new Proxy({}, { get(_t, prop) { return (currentThemeMode === "dark" ? DARK_COLORS : LIGHT_COLORS)[prop]; } });
 const display = { fontFamily: "'Markazi Text', serif" };
 const body = { fontFamily: "'IBM Plex Sans Arabic', sans-serif" };
 const ORDER_CATEGORIES = ["\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0645\u0637\u0627\u0628\u062E", "\u063A\u0631\u0641 \u0646\u0648\u0645", "\u0633\u0641\u0631\u0629", "\u0623\u062E\u0631\u0649"];
@@ -264,6 +279,9 @@ function ordersColRef() {
 function piecesColRef() {
   return workspaceDocRef().collection("productionPieces");
 }
+function activityLogColRef() {
+  return workspaceDocRef().collection("activityLog");
+}
 async function migrateLegacyArraysToSubcollections(existingData) {
   const legacyOrders = Array.isArray(existingData.orders) ? existingData.orders : [];
   const legacyPieces = Array.isArray(existingData.productionPieces) ? existingData.productionPieces : [];
@@ -315,6 +333,14 @@ function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [tab, setTab] = useState(() => { try { return localStorage.getItem("rawaa_last_tab") || null; } catch (e) { return null; } });
+  const [darkMode, setDarkMode] = useState(() => { try { return localStorage.getItem("rawaa_dark_mode") === "1"; } catch (e) { return false; } });
+  useEffect(() => {
+    currentThemeMode = darkMode ? "dark" : "light";
+    try {
+      localStorage.setItem("rawaa_dark_mode", darkMode ? "1" : "0");
+      document.body.style.background = darkMode ? DARK_COLORS.bg : LIGHT_COLORS.bg;
+    } catch (e) {}
+  }, [darkMode]);
   const [selectedId, setSelectedId] = useState(() => { try { return localStorage.getItem("rawaa_last_order") || null; } catch (e) { return null; } });
   useEffect(() => {
     try {
@@ -332,6 +358,7 @@ function App() {
   const [showBranding, setShowBranding] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [productionPieces, setProductionPieces] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
   const [productionSuppliers, setProductionSuppliers] = useState(DEFAULT_PRODUCTION_SUPPLIERS);
   useEffect(() => {
     if (!firebaseReady) {
@@ -376,6 +403,7 @@ function App() {
     let unsubDoc = () => {};
     let unsubOrders = () => {};
     let unsubPieces = () => {};
+    let unsubActivity = () => {};
     let docLoaded = false, ordersLoaded = false, piecesLoaded = false;
     const checkAllLoaded = () => {
       if (docLoaded && ordersLoaded && piecesLoaded) {
@@ -422,12 +450,16 @@ function App() {
             setSyncError("\u0641\u064A \u0645\u0634\u0643\u0644\u0629 \u0641\u064A \u0645\u0632\u0627\u0645\u0646\u0629 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0625\u0646\u062A\u0627\u062C. \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A.");
           }
         );
+        unsubActivity = activityLogColRef().orderBy("timestamp", "desc").limit(100).onSnapshot(
+          (snap) => { setActivityLog(snap.docs.map((d) => d.data())); },
+          (err) => { console.error("activity log listener failed", err); }
+        );
       } catch (e) {
         console.error(e);
         setSyncError("\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.");
       }
     })();
-    return () => { unsubDoc(); unsubOrders(); unsubPieces(); };
+    return () => { unsubDoc(); unsubOrders(); unsubPieces(); unsubActivity(); };
   }, [user, isAllowed]);
   const notifiedRef = useRef(false);
   useEffect(() => {
@@ -491,16 +523,42 @@ function App() {
     setProductionSuppliers(next);
     persistField("productionSuppliers", next);
   }, [persistField]);
-  const addProductionPiece = (piece) => persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
-  const deleteProductionPiece = (id) => persistRecordWrite(piecesColRef().doc(id).delete());
-  const updateProductionPiece = (piece) => persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
+  const logActivity = (text) => {
+    if (!user) return;
+    const entry = { id: uid(), userEmail: user.email, text, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+    activityLogColRef().doc(entry.id).set(entry).catch((e) => console.error("activity log failed", e));
+  };
+  const addProductionPiece = (piece) => {
+    persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
+    logActivity("\u0623\u0636\u0627\u0641 \u0642\u0637\u0639\u0629 \u062C\u062F\u064A\u062F\u0629 \u0644ـ" + piece.customerName);
+  };
+  const deleteProductionPiece = (id) => {
+    const piece = productionPieces.find((p) => p.id === id);
+    persistRecordWrite(piecesColRef().doc(id).delete());
+    if (piece) logActivity("\u062D\u0630\u0641 \u0642\u0637\u0639\u0629 \u0644\u0640" + piece.customerName);
+  };
+  const updateProductionPiece = (piece) => {
+    persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
+    logActivity("\u0639\u062F\u0651\u0644 \u0642\u0637\u0639\u0629 \u0644\u0640" + piece.customerName + " (\u0627\u0644\u062D\u0627\u0644\u0629: " + piece.status + ")");
+  };
   const addProductionSupplier = (entity, name) => persistRecordWrite(
     workspaceDocRef().update({ [`productionSuppliers.${entity}`]: firebase.firestore.FieldValue.arrayUnion(name) })
   );
   const selectedOrder = orders.find((o) => o.id === selectedId) || null;
-  const updateOrder = (id, patch) => persistRecordWrite(ordersColRef().doc(id).update(patch));
-  const addOrder = (o) => persistRecordWrite(ordersColRef().doc(o.id).set(o));
-  const deleteOrder = (id) => persistRecordWrite(ordersColRef().doc(id).delete());
+  const updateOrder = (id, patch) => {
+    const ord = orders.find((o) => o.id === id);
+    persistRecordWrite(ordersColRef().doc(id).update(patch));
+    logActivity("\u0639\u062F\u0651\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0623\u0648\u0631\u062F\u0631: " + (ord ? ord.title : id));
+  };
+  const addOrder = (o) => {
+    persistRecordWrite(ordersColRef().doc(o.id).set(o));
+    logActivity("\u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F: " + o.title);
+  };
+  const deleteOrder = (id) => {
+    const ord = orders.find((o) => o.id === id);
+    persistRecordWrite(ordersColRef().doc(id).delete());
+    if (ord) logActivity("\u062D\u0630\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + ord.title);
+  };
   if (!authChecked) {
     return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644..." });
   }
@@ -523,6 +581,9 @@ function App() {
     : tab === "distribution" ? "\u0627\u0644\u062A\u0648\u0632\u064A\u0639"
     : tab === "production-board" ? "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"
     : tab === "full-production" ? "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644"
+    : tab === "dashboard" ? "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A"
+    : tab === "activity-log" ? "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637"
+    : tab === "supplier-performance" ? "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646"
     : tab === "materials-hub" ? "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"
     : branding.name;
   return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink } },
@@ -545,6 +606,9 @@ function App() {
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, myRole, mySupplierScope }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
+        tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces }),
+        tab === "activity-log" && h(ActivityLogPage, { log: activityLog }),
+        tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: setSelectedId })
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -574,6 +638,14 @@ function App() {
         )
       ),
       orders.some(orderIsOverdue) && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F0"), orders.filter(orderIsOverdue).length, " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u2014 \u0631\u0627\u062C\u0639\u064A \u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0628\u062A\u0627\u0639\u062A\u0647\u0645"),
+      (() => {
+        const upcoming = productionPieces.filter((p) => {
+          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
+          const d = daysUntil(p.agreedDeadline);
+          return d !== null && d >= 0 && d <= 3;
+        });
+        return upcoming.length > 0 ? h("div", { style: { background: "#FBF2E2", color: COLORS.gold, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F3"), upcoming.length, " \u0642\u0637\u0639\u0629 \u0645\u0648\u0639\u062F\u0647\u0627 \u0642\u0631\u064A\u0628 (\u062E\u0644\u0627\u0644 3 \u0623\u064A\u0627\u0645) \u2014 \u062A\u0633\u062A\u0627\u0647\u0644 \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627") : null;
+      })(),
       h("div", { style: { flex: 1, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "56px 16px" } },
         h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, width: "100%", maxWidth: 520 } },
         h(NavTile, { active: false, accent: true, onClick: () => setShowNewOrder(true), emoji: "\u2795", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" }),
@@ -581,7 +653,10 @@ function App() {
         h(NavTile, { active: false, onClick: () => setTab("customers"), emoji: "\u{1F465}", label: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
         h(NavTile, { active: false, onClick: () => setTab("distribution"), emoji: "\u{1F4E6}", label: "\u0627\u0644\u062A\u0648\u0632\u064A\u0639" }),
         h(NavTile, { active: false, onClick: () => setTab("production-board"), emoji: "\u{1F3ED}", label: "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }),
-        h(NavTile, { active: false, onClick: () => setTab("full-production"), emoji: "\u{1F4CB}", label: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644" })
+        h(NavTile, { active: false, onClick: () => setTab("full-production"), emoji: "\u{1F4CB}", label: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644" }),
+        h(NavTile, { active: false, onClick: () => setTab("dashboard"), emoji: "\u{1F4CA}", label: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A" }),
+        h(NavTile, { active: false, onClick: () => setTab("activity-log"), emoji: "\u{1F4DC}", label: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
+        h(NavTile, { active: false, onClick: () => setTab("supplier-performance"), emoji: "\u2B50", label: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" })
         )
       )
     ),
@@ -609,17 +684,20 @@ function App() {
       onTeam: () => { setShowSettingsMenu(false); setShowTeam(true); },
       onRoles: () => { setShowSettingsMenu(false); setShowRoles(true); },
       onBranding: () => { setShowSettingsMenu(false); setShowBranding(true); },
+      darkMode,
+      onToggleDarkMode: () => setDarkMode((v) => !v),
       onSignOut: () => { setShowSettingsMenu(false); try { localStorage.removeItem("rawaa_last_tab"); localStorage.removeItem("rawaa_last_order"); } catch (e) {} auth.signOut(); }
     })
   );
 }
-function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onSignOut }) {
+function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onSignOut, darkMode, onToggleDarkMode }) {
   const rowStyle = { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "14px 4px", background: "transparent", border: "none", borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer", fontSize: 15, fontWeight: 600, color: COLORS.ink, textAlign: "right" };
   return h(Modal, { title: "\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A", onClose },
     h("div", { style: { display: "flex", flexDirection: "column" } },
       isOwner && h("button", { style: rowStyle, onClick: onTeam }, h(Emoji, { size: 19 }, "\u{1F464}\u2795"), "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0641\u0631\u064A\u0642"),
       canManageRoles && h("button", { style: rowStyle, onClick: onRoles }, h(Emoji, { size: 19 }, "\u{1F6E1}\uFE0F"), "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0623\u062F\u0648\u0627\u0631"),
       h("button", { style: rowStyle, onClick: onBranding }, h(Emoji, { size: 19 }, "\u270F\uFE0F"), "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0634\u0639\u0627\u0631 \u0648\u0627\u0644\u0627\u0633\u0645"),
+      h("button", { style: rowStyle, onClick: onToggleDarkMode }, h(Emoji, { size: 19 }, darkMode ? "\u2600\uFE0F" : "\u{1F319}"), darkMode ? "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0641\u0627\u062A\u062D" : "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0644\u064A\u0644\u064A"),
       h("button", { style: { ...rowStyle, color: COLORS.danger, borderBottom: "none" }, onClick: onSignOut }, h(Emoji, { size: 19 }, "\u{1F6AA}"), "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062E\u0631\u0648\u062C")
     )
   );
@@ -998,6 +1076,113 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
     )
   );
 }
+function DashboardPage({ orders, pieces }) {
+  const now = /* @__PURE__ */ new Date();
+  const thisMonthKey = now.toISOString().slice(0, 7);
+  const ordersThisMonth = orders.filter((o) => (o.dateReceived || "").slice(0, 7) === thisMonthKey).length;
+  const statusCounts = {};
+  pieces.forEach((p) => { statusCounts[p.status] = (statusCounts[p.status] || 0) + 1; });
+  let bottleneckStatus = null, bottleneckCount = 0;
+  Object.keys(statusCounts).forEach((s) => { if (statusCounts[s] > bottleneckCount) { bottleneckCount = statusCounts[s]; bottleneckStatus = s; } });
+  const locCounts = {};
+  pieces.forEach((p) => { if (p.currentLocation) locCounts[p.currentLocation] = (locCounts[p.currentLocation] || 0) + 1; });
+  let heaviestSupplier = null, heaviestCount = 0;
+  Object.keys(locCounts).forEach((s) => { if (locCounts[s] > heaviestCount) { heaviestCount = locCounts[s]; heaviestSupplier = s; } });
+  const overdueCount = pieces.filter((p) => {
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
+    const d = daysUntil(p.agreedDeadline);
+    return d !== null && d < 0;
+  }).length;
+  const categoryCounts = {};
+  orders.forEach((o) => { const c = o.category || "\u0623\u062E\u0631\u0649"; categoryCounts[c] = (categoryCounts[c] || 0) + 1; });
+  const maxCategoryCount = Math.max(1, ...Object.values(categoryCounts));
+  const statCard = (emoji, label, value, color) => h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, textAlign: "center" } },
+    h("div", { style: { fontSize: 26 } }, emoji),
+    h("div", { style: { fontSize: 24, fontWeight: 700, color: color || COLORS.ink, marginTop: 6 } }, value),
+    h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4 } }, label)
+  );
+  const exportFullBackup = () => {
+    const orderRows = [["\u0627\u0644\u0642\u0633\u0645", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"]];
+    orders.forEach((o) => orderRows.push([o.category || "", o.clientName || "", o.dateReceived || "", o.deliveryDate || "", orderStatusLabel(o), o.fabricShippingStatus || ""]));
+    const pieceRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F/\u0627\u0644\u0645\u0648\u0642\u0639", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"]];
+    pieces.forEach((p) => pieceRows.push([p.customerName || "", p.status || "", p.pieceType || "", p.size || "", p.pieceCount || "", p.description || "", p.manufacturingEntity || "", p.currentLocation || "", p.customerDeliveryDate || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : ""]));
+    const materialRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0648\u0635\u0641/\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631"]];
+    orders.forEach((o) => (o.materials || []).forEach((m) => {
+      const isMeasured = MEASURED_TYPES.includes(m.type);
+      materialRows.push([o.clientName || "", o.title || "", m.type || "", isMeasured ? (m.materialName || m.description) : m.description, isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit, m.availability || ""]);
+    }));
+    exportToExcel("\u0646\u0633\u062E\u0629-\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629-\u0643\u0627\u0645\u0644\u0629-" + todayStr(), [
+      { name: "\u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A", rows: orderRows },
+      { name: "\u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", rows: pieceRows },
+      { name: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A", rows: materialRows }
+    ]);
+  };
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4CA}", title: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A" }),
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 16 } },
+      statCard("\u{1F5C2}\uFE0F", "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631", ordersThisMonth),
+      statCard("\u23F0", "\u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F", overdueCount, overdueCount > 0 ? COLORS.danger : COLORS.green),
+      bottleneckStatus ? statCard("\u{1F6A7}", "\u0627\u0644\u0627\u062E\u062A\u0646\u0627\u0642: " + bottleneckStatus, bottleneckCount) : null,
+      heaviestSupplier ? statCard("\u{1F3E2}", "\u0623\u0643\u062A\u0631 \u062D\u0645\u0644: " + heaviestSupplier, heaviestCount) : null
+    ),
+    Object.keys(categoryCounts).length > 0 ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, marginBottom: 16 } },
+      h("div", { style: { ...display, fontSize: 16, fontWeight: 700, marginBottom: 12 } }, "\u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062D\u0633\u0628 \u0627\u0644\u0642\u0633\u0645"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, ORDER_CATEGORIES.concat(Object.keys(categoryCounts).filter((c) => !ORDER_CATEGORIES.includes(c))).filter((c) => categoryCounts[c]).map((c) => h("div", { key: c },
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 } }, h("span", null, c), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, categoryCounts[c])),
+        h("div", { style: { height: 8, background: COLORS.bg, borderRadius: 999, overflow: "hidden" } },
+          h("div", { style: { height: "100%", width: (categoryCounts[c] / maxCategoryCount * 100) + "%", background: COLORS.gold, borderRadius: 999 } })
+        )
+      )))
+    ) : null,
+    h("button", { onClick: exportFullBackup, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: COLORS.ink, color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14.5, fontWeight: 700, cursor: "pointer" } }, h(Emoji, { size: 17 }, "\u{1F4BE}"), "\u062A\u062D\u0645\u064A\u0644 \u0646\u0633\u062E\u0629 \u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629 \u0634\u0627\u0645\u0644\u0629 (Excel)")
+  );
+}
+function SupplierPerformancePage({ pieces }) {
+  const bySupplier = {};
+  pieces.forEach((p) => {
+    if (!p.supplierName) return;
+    if (!bySupplier[p.supplierName]) bySupplier[p.supplierName] = { total: 0, onTime: 0, late: 0, unknown: 0, inProgress: 0 };
+    const rec = bySupplier[p.supplierName];
+    rec.total += 1;
+    if (p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") { rec.inProgress += 1; return; }
+    if (!p.agreedDeadline) { rec.unknown += 1; return; }
+    const shipStart = p.stages && p.stages["\u0634\u062D\u0646"] && p.stages["\u0634\u062D\u0646"].start;
+    if (!shipStart) { rec.unknown += 1; return; }
+    if (shipStart <= p.agreedDeadline) rec.onTime += 1; else rec.late += 1;
+  });
+  const names = Object.keys(bySupplier).sort((a, b) => a.localeCompare(b, "ar"));
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u2B50", title: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" }),
+    names.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, names.map((name) => {
+        const r = bySupplier[name];
+        const evaluated = r.onTime + r.late;
+        const pct = evaluated > 0 ? Math.round((r.onTime / evaluated) * 100) : null;
+        return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } },
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+            h("span", { style: { fontWeight: 700, fontSize: 15 } }, name),
+            pct !== null ? h("span", { style: { fontSize: 13, fontWeight: 700, color: pct >= 80 ? COLORS.green : pct >= 50 ? COLORS.gold : COLORS.danger } }, "\u0627\u0644\u062A\u0632\u0627\u0645: " + pct + "%") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0645\u0641\u064A\u0634 \u0628\u064A\u0627\u0646\u0627\u062A \u0643\u0641\u0627\u064A\u0629")
+          ),
+          h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: COLORS.muted } },
+            h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0642\u0637\u0639: " + r.total),
+            h("span", null, "\u{1F7E2} \u0641\u064A \u0627\u0644\u0645\u064A\u0639\u0627\u062F: " + r.onTime),
+            h("span", null, "\u{1F534} \u0645\u062A\u0623\u062E\u0631: " + r.late),
+            r.inProgress ? h("span", null, "\u23F3 \u0644\u0633\u0629 \u062A\u062D\u062A \u0627\u0644\u062A\u0635\u0646\u064A\u0639: " + r.inProgress) : null
+          )
+        );
+      }))
+  );
+}
+function ActivityLogPage({ log }) {
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4DC}", title: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
+    log.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0641\u064A\u0634 \u0623\u064A \u0646\u0634\u0627\u0637 \u0645\u0633\u062C\u0644" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, log.map((entry) => h("div", { key: entry.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" } },
+        h("div", { style: { fontSize: 13.5 } }, entry.text),
+        h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 4 } }, entry.userEmail + " \u00B7 " + new Date(entry.timestamp).toLocaleString("ar-EG"))
+      )))
+  );
+}
 function CustomersHubPage({ orders, onOpen }) {
   const [filterKey, setFilterKey] = useState(null);
   const [query, setQuery] = useState("");
@@ -1259,13 +1444,18 @@ function OrderDetail({ order, onBack, onUpdate, onDelete }) {
     h("button", { onClick: () => setConfirmDelete(false), style: { ...primaryBtn(false), background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.border}` } }, "\u0625\u0644\u063A\u0627\u0621")
   );
 
+  const sendWhatsAppUpdate = () => {
+    const msg = "\u0645\u0631\u062D\u0628\u064B\u0627 " + (order.clientName || "") + "\u060C \u062A\u062D\u062F\u064A\u062B \u0628\u062E\u0635\u0648\u0635 \u0623\u0648\u0631\u062F\u0631\u0643 (" + order.title + "):\n\u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629: " + orderStatusLabel(order) + (order.deliveryDate ? "\n\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0648\u0642\u0639: " + order.deliveryDate : "") + "\n\u0634\u0643\u0631\u064B\u0627 \u0644\u062A\u0639\u0627\u0645\u0644\u0643 \u0645\u0639\u0646\u0627 \u{1F49B}";
+    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+  };
   if (!section) {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       h("div", { style: { padding: 16 } },
-        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
+        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 14 } },
           h(NavTile, { active: false, onClick: () => setSection("materials-hub"), emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }),
           h(NavTile, { active: false, onClick: () => setSection("quote"), emoji: "\u{1F4B0}", label: "\u0639\u0631\u0636 \u0627\u0644\u0633\u0639\u0631" })
-        )
+        ),
+        h("button", { onClick: sendWhatsAppUpdate, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#25D366", color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14.5, fontWeight: 700, cursor: "pointer" } }, h(Emoji, { size: 18 }, "\u{1F4F1}"), "\u0625\u0631\u0633\u0627\u0644 \u062A\u062D\u062F\u064A\u062B \u0644\u0644\u0639\u0645\u064A\u0644")
       ),
       deleteModal,
       editOrderModal
@@ -1347,7 +1537,7 @@ function MaterialsPage({ order, onUpdate, forcedView }) {
     const isMeasured = MEASURED_TYPES.includes(m.type);
     const isCoded = CODED_TYPES.includes(m.type);
     const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold;
-    return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.materialName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.materialName), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 } }, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("div", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13.5, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606")), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: q.chosen ? 700 : 400 } }, q.supplierName)), /* @__PURE__ */ React.createElement("div", { style: { color: COLORS.muted, display: "flex", gap: 8, alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", null, q.price, " \u062C.\u0645"), /* @__PURE__ */ React.createElement("span", null, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
+    return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.materialName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.materialName), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 320 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, ["\u0627\u062E\u062A\u064A\u0627\u0631", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0645\u062F\u0629"].map((c) => /* @__PURE__ */ React.createElement("th", { key: c, style: { padding: "4px 6px", textAlign: "start", color: COLORS.muted, fontWeight: 600, fontSize: 11 } }, c)))), /* @__PURE__ */ React.createElement("tbody", null, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("tr", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { cursor: "pointer", borderTop: `1px solid ${COLORS.border}`, background: q.chosen ? COLORS.goldSoft : "transparent" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: q.chosen ? 700 : 400 } }, q.supplierName), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: 700, color: COLORS.ink } }, q.price, " \u062C.\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", color: COLORS.muted } }, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
   })), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddMaterial(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062E\u0627\u0645\u0629")), showAddMaterial && /* @__PURE__ */ React.createElement(AddMaterialModal, { onClose: () => setShowAddMaterial(false), onSave: (m) => {
     addMaterial(m);
     setShowAddMaterial(false);
@@ -1831,7 +2021,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
+  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
   return h("div", null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B/\u0627\u0644\u0641\u0644\u062A\u0631" }) : null,
     dateKeys.map((dateKey) => {
@@ -1852,6 +2042,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
                 h("td", { style: { padding: "8px 10px", maxWidth: 180, whiteSpace: "normal" } }, p.description || "\u2014"),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
@@ -1886,15 +2077,15 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
   });
   const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : scope.key;
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"]];
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"]];
     filtered.forEach((p) => {
-      rows.push([p.customerName || "", p.status || "", p.pieceType || "", p.pieceCount || "", p.description || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""]);
+      rows.push([p.customerName || "", p.status || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""]);
     });
     exportToExcel(activeLoc + "-" + title, [{ name: activeLoc.slice(0, 28), rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
-    const dataRows = filtered.map((p) => [p.customerName || "", p.status || "", p.pieceType || "", p.pieceCount || "", p.description || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""]);
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
+    const dataRows = filtered.map((p) => [p.customerName || "", p.status || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""]);
     printAsPdf(activeLoc + " \u2014 " + title, headers, dataRows);
   };
   return h("div", null,
