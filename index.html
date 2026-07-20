@@ -2132,23 +2132,13 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
   const handleStatusChange = (newStatus) => {
     if (!canEdit) return;
     const p = { ...piece, stages: { ...(piece.stages || {}) } };
-    const prevStatus = piece.status;
+    const prevLocation = piece.currentLocation;
     p.status = newStatus;
-    if (newStatus === "جارى" && prevStatus === "لم يتم البدء") {
-      const key = p.baseStage || "نجارة";
-      p.stages[key] = { ...(p.stages[key] || {}), start: (p.stages[key] && p.stages[key].start) || todayStr() };
-    }
-    if (newStatus === "تم الإنتاج") {
-      const key = p.baseStage || "نجارة";
-      p.stages[key] = { ...(p.stages[key] || {}), end: (p.stages[key] && p.stages[key].end) || todayStr() };
-    }
     if (STATUS_TARGET[newStatus]) {
       const target = STATUS_TARGET[newStatus];
       const stageKey = STATUS_STAGE_KEY[target];
-      if (p.baseStage && p.stages[p.baseStage] && !p.stages[p.baseStage].end) p.stages[p.baseStage].end = todayStr();
       p.currentLocation = target;
-      p.stages[stageKey] = { ...(p.stages[stageKey] || {}), start: (p.stages[stageKey] && p.stages[stageKey].start) || todayStr() };
-      if (target === "الشحن") p.shippingDate = p.shippingDate || todayStr();
+      p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "" };
     }
     onUpdate(p);
   };
@@ -2212,11 +2202,15 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الموعد المتفق عليه"), h("input", { style: fieldStyle, type: "date", disabled: !canEdit, value: piece.agreedDeadline || "", onChange: (e) => updateField("agreedDeadline", e.target.value) }))
     ),
     canEdit ? h("button", { onClick: () => setEditingDates((v) => !v), style: { fontSize: 12, color: COLORS.teal, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, editingDates ? "إخفاء تواريخ المراحل" : "تعديل تواريخ المراحل يدويًا") : null,
-    editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6, background: COLORS.bg, borderRadius: 8, padding: 8 } },
-      Object.keys(piece.stages || {}).map((stage) => h("div", { key: stage, style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, alignItems: "center" } },
-        h("span", { style: { fontSize: 12, fontWeight: 700 } }, stage),
-        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].start) || "", onChange: (e) => updateStageDate(stage, "start", e.target.value) }),
-        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].end) || "", onChange: (e) => updateStageDate(stage, "end", e.target.value) })
+    editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10, background: COLORS.bg, borderRadius: 8, padding: 8 } },
+      Array.from(new Set(Object.keys(piece.stages || {}).concat([LOCATION_TO_STAGE_KEY[piece.currentLocation] || piece.baseStage || "\u0646\u062C\u0627\u0631\u0629"]))).map((stage) => h("div", { key: stage, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 } },
+        h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 6 } }, stage),
+        h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 \u0645\u0646 " + ((piece.stages[stage] && piece.stages[stage].receivedFrom) || "\u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u0633\u0627\u0628\u0642\u0629")),
+        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 6, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].receivedDate) || "", onChange: (e) => updateStageDate(stage, "receivedDate", e.target.value) }),
+        h("div", { style: { display: "flex", gap: 6 } },
+          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].start) || "", onChange: (e) => updateStageDate(stage, "start", e.target.value) })),
+          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].end) || "", onChange: (e) => updateStageDate(stage, "end", e.target.value) }))
+        )
       )),
       h("div", { style: { display: "flex", gap: 8 } },
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الشحن"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: piece.shippingDate || "", onChange: (e) => updateField("shippingDate", e.target.value) })),
@@ -2468,17 +2462,21 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
 
 
 function renderFullProductionTable(piecesList, showCustomerCol) {
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]);
+  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F"]);
   return h("div", { style: { overflowX: "auto" } },
-    h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 1300 : 1200 } },
+    h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 1900 : 1800 } },
       h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
       h("tbody", null, piecesList.map((p) => {
         const ready = p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646";
+        const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "\u2014";
         return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, whiteSpace: "nowrap", background: ready ? "#E8F0E4" : COLORS.goldSoft, color: ready ? COLORS.green : COLORS.gold } }, ready ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632")),
           showCustomerCol ? h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName) : null,
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
           h("td", { style: { padding: "8px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
@@ -2488,8 +2486,12 @@ function renderFullProductionTable(piecesList, showCustomerCol) {
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.supplierName || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.currentLocation || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014")
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u0646\u062C\u0627\u0631\u0629", "start")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u0646\u062C\u0627\u0631\u0629", "end")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "start")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "end")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "start")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "end"))
         );
       }))
     )
@@ -2537,15 +2539,19 @@ function FullProductionPage({ pieces }) {
     ));
   }
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
+    const rows = [["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F"]];
     filtered.slice().sort(byDate).forEach((p) => {
-      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", p.shippingDate || "", p.arrivalDate || ""]);
+      const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
+      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", p.shippingDate || "", p.arrivalDate || "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end")]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
-    const dataRows = filtered.slice().sort(byDate).map((p) => [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", p.shippingDate || "", p.arrivalDate || ""]);
+    const headers = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F"];
+    const dataRows = filtered.slice().sort(byDate).map((p) => {
+      const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
+      return [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", p.shippingDate || "", p.arrivalDate || "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end")];
+    });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
   return h("div", null,
