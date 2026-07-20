@@ -637,6 +637,7 @@ function App() {
     : tab === "activity-log" ? "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637"
     : tab === "supplier-performance" ? "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646"
     : tab === "today-queue" ? "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629"
+    : tab === "deliveries" ? "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A"
     : tab === "materials-hub" ? "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"
     : branding.name;
   return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink } },
@@ -657,12 +658,13 @@ function App() {
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: setSelectedId, pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, myRole, mySupplierScope }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, myRole, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
         tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces }),
+        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: setSelectedId })
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -729,7 +731,8 @@ function App() {
         h(NavTile, { active: false, onClick: () => setTab("dashboard"), emoji: "\u{1F4CA}", label: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A" }),
         h(NavTile, { active: false, onClick: () => setTab("activity-log"), emoji: "\u{1F4DC}", label: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
         h(NavTile, { active: false, onClick: () => setTab("supplier-performance"), emoji: "\u2B50", label: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" }),
-        h(NavTile, { active: false, onClick: () => setTab("today-queue"), emoji: "\u{1F4CB}", label: "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629" })
+        h(NavTile, { active: false, onClick: () => setTab("today-queue"), emoji: "\u{1F4CB}", label: "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629" }),
+        h(NavTile, { active: false, onClick: () => setTab("deliveries"), emoji: "\u{1F69A}", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A" })
         )
       )
     )),
@@ -1187,6 +1190,36 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
     )
   );
 }
+function DeliveriesPage({ pieces, onUpdate }) {
+  const [query, setQuery] = useState("");
+  const searched = query.trim() ? pieces.filter((p) => (p.customerName || "").includes(query.trim())) : pieces;
+  const readyToShip = searched.filter((p) => p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && !p.shippingDate)
+    .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
+  const inTransit = searched.filter((p) => p.shippingDate && !p.arrivalDate)
+    .sort((a, b) => (a.shippingDate || "").localeCompare(b.shippingDate || ""));
+  const delivered = searched.filter((p) => p.arrivalDate)
+    .sort((a, b) => (b.arrivalDate || "").localeCompare(a.arrivalDate || ""));
+  const markToday = (p, field) => onUpdate({ ...p, [field]: todayStr() });
+  const section = (emoji, title, color, list, actionLabel, actionField, dateField, dateLabel) => h("div", { style: { marginBottom: 20 } },
+    h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 700, color, marginBottom: 10 } }, h(Emoji, { size: 14 }, emoji), title, h("span", { style: { fontSize: 12, color: COLORS.muted, fontWeight: 400 } }, "(" + list.length + ")")),
+    list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("div", null,
+          h("div", { style: { fontWeight: 700, fontSize: 14 } }, p.customerName),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, p.pieceType + (p.customerDeliveryDate ? " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0641\u0642: " + p.customerDeliveryDate : "")),
+          dateField ? h("div", { style: { fontSize: 11.5, color: COLORS.teal, marginTop: 2 } }, dateLabel + ": " + p[dateField]) : null
+        ),
+        actionField ? h("button", { onClick: () => markToday(p, actionField), style: { fontSize: 12, fontWeight: 700, color: "#fff", background: COLORS.teal, border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", whiteSpace: "nowrap" } }, actionLabel) : h(Emoji, { size: 18 }, "\u2705")
+      )))
+  );
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A" }),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    section("\u{1F7E1}", "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u0634\u062D\u0646", COLORS.gold, readyToShip, "\u0633\u062C\u0651\u0644\u064A \u0634\u062D\u0646 \u0627\u0644\u064A\u0648\u0645", "shippingDate", null, null),
+    section("\u{1F69A}", "\u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642", COLORS.teal, inTransit, "\u0633\u062C\u0651\u0644\u064A \u0648\u0635\u0648\u0644 \u0627\u0644\u064A\u0648\u0645", "arrivalDate", "shippingDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"),
+    section("\u2705", "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", COLORS.green, delivered, null, null, "arrivalDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644")
+  );
+}
 function TodayQueuePage({ pieces }) {
   const todayPieces = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
@@ -1322,10 +1355,27 @@ function SupplierPerformancePage({ pieces }) {
   );
 }
 function ActivityLogPage({ log }) {
+  const [showFilters, setShowFilters] = useState(false);
+  const [query, setQuery] = useState("");
+  const [fUser, setFUser] = useState("");
+  const userOptions = Array.from(new Set(log.map((e) => e.userEmail).filter(Boolean)));
+  const filtered = log.filter((e) => {
+    if (query.trim() && !(e.text || "").includes(query.trim())) return false;
+    if (fUser && e.userEmail !== fUser) return false;
+    return true;
+  });
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4DC}", title: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
-    log.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0641\u064A\u0634 \u0623\u064A \u0646\u0634\u0627\u0637 \u0645\u0633\u062C\u0644" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, log.map((entry) => h("div", { key: entry.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" } },
+    log.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0641\u064A \u0627\u0644\u0646\u0634\u0627\u0637...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+    log.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null,
+    showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+      h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fUser, onChange: (e) => setFUser(e.target.value) },
+        h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), userOptions.map((u) => h("option", { key: u, value: u }, u))
+      )
+    ) : null,
+    filtered.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0641\u064A\u0634 \u0623\u064A \u0646\u0634\u0627\u0637 \u0645\u0633\u062C\u0644" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, filtered.map((entry) => h("div", { key: entry.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" } },
         h("div", { style: { fontSize: 13.5 } }, entry.text),
         h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 4 } }, entry.userEmail + " \u00B7 " + new Date(entry.timestamp).toLocaleString("ar-EG"))
       )))
@@ -1480,10 +1530,20 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   );
 }
 function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
+  const [showFilters, setShowFilters] = useState(false);
+  const [fStatus, setFStatus] = useState("");
+  const [fType, setFType] = useState("");
   const customerOrders = orders.filter((o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") === name)
     .slice().sort((a, b) => (a.dateReceived || "").localeCompare(b.dateReceived || ""));
-  const customerPieces = (pieces || []).filter((p) => p.customerName === name)
+  const allCustomerPieces = (pieces || []).filter((p) => p.customerName === name)
     .slice().sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
+  const pieceStatusOptions = Array.from(new Set(allCustomerPieces.map((p) => p.status).filter(Boolean)));
+  const pieceTypeOptions = Array.from(new Set(allCustomerPieces.map((p) => p.pieceType).filter(Boolean)));
+  const customerPieces = allCustomerPieces.filter((p) => {
+    if (fStatus && p.status !== fStatus) return false;
+    if (fType && p.pieceType !== fType) return false;
+    return true;
+  });
   const joinDate = customerOrders.length > 0 ? customerOrders[0].dateReceived : "";
   const fabricBadge = (status) => {
     if (status === "\u0645\u062A\u0648\u0641\u0631") return h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "#E8F0E4", color: COLORS.green } }, "\u{1F7E2} \u0645\u062A\u0648\u0641\u0631");
@@ -1517,7 +1577,24 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
         h("div", { style: { fontSize: 12, color: COLORS.muted } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A")
       )
     ),
-    h("div", { style: { ...display, fontSize: 15, fontWeight: 700, margin: "0 0 10px" } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"),
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px" } },
+      h("div", { style: { ...display, fontSize: 15, fontWeight: 700 } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"),
+      allCustomerPieces.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: addLinkStyle }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null
+    ),
+    showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 } },
+      h("div", null,
+        h("label", { style: labelStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), pieceStatusOptions.map((s) => h("option", { key: s, value: s }, s))
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), pieceTypeOptions.map((t) => h("option", { key: t, value: t }, t))
+        )
+      )
+    ) : null,
     (() => {
       const dateGroups = {};
       customerPieces.forEach((p) => {
@@ -1541,7 +1618,7 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
               detailRow("\u{1F69A}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerDeliveryDate),
               detailRow("\u{1FA91}", "\u0627\u0644\u0635\u0646\u0641", p.pieceType),
               detailRow("\u{1F4C4}", "\u0627\u0644\u0628\u064A\u0627\u0646", (p.description || "") + (p.description ? " \u00B7 " : "") + "\u0627\u0644\u0639\u062F\u062F: " + p.pieceCount),
-              detailRow("\u{1F4CD}", "\u0627\u0644\u062D\u0627\u0644\u0629", p.currentLocation),
+              detailRow("\u{1F4CD}", "\u0627\u0644\u062D\u0627\u0644\u0629", (p.currentLocation || "\u2014") + (p.status ? " \u00B7 " + p.status : "")),
               detailRow("\u{1F3ED}", "\u0627\u0644\u0645\u0648\u0631\u062F", p.supplierName),
               isSofaType(p.pieceType) ? h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0" } },
                 h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: COLORS.muted } }, h(Emoji, { size: 13 }, "\u{1F9F5}"), "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
@@ -1737,18 +1814,32 @@ function MaterialsPage({ order, onUpdate, forcedView }) {
     printAsPdf("\u062E\u0627\u0645\u0627\u062A " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), ["\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "\u0627\u0644\u0648\u062D\u062F\u0629"], rollup.map((r) => [r.type, r.label, r.total.toFixed(2), r.unit]));
   };
   const exportItemsExcel = () => {
-    const rows = [["\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0648\u0635\u0641/\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0643\u0645\u064A\u0629/\u0627\u0644\u0645\u0633\u0627\u062D\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631"]];
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"]];
     (order.materials || []).forEach((m) => {
       const isMeasured = MEASURED_TYPES.includes(m.type);
-      rows.push([m.type, isMeasured ? m.materialName || m.description : m.description, isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit, m.availability || ""]);
+      if (isMeasured && (m.pieces || []).length > 0) {
+        m.pieces.forEach((p) => {
+          rows.push([order.clientName || "", order.deliveryDate || "", m.type, m.materialName || "", m.description || "", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", "", "", m.availability || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "", p.drawingFile ? "\u0645\u0631\u0641\u0642" : ""]);
+        });
+      } else {
+        rows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "", m.description || "", "", "", isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit, m.availability || "", "", ""]);
+      }
     });
     exportToExcel(`\u062E\u0627\u0645\u0627\u062A-${order.title || "\u0623\u0648\u0631\u062F\u0631"}`, [{ name: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A", rows }]);
   };
   const exportItemsPdf = () => {
-    const headers = ["\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0648\u0635\u0641/\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0643\u0645\u064A\u0629/\u0627\u0644\u0645\u0633\u0627\u062D\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631"];
-    const dataRows = (order.materials || []).map((m) => {
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+    const dataRows = [];
+    (order.materials || []).forEach((m) => {
       const isMeasured = MEASURED_TYPES.includes(m.type);
-      return [m.type, isMeasured ? m.materialName || m.description : m.description, isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit, m.availability || ""];
+      const imgCell = (url) => url ? '<img src="' + url + '" style="width:60px;height:60px;object-fit:cover;border-radius:6px">' : "\u2014";
+      if (isMeasured && (m.pieces || []).length > 0) {
+        m.pieces.forEach((p) => {
+          dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", "\u2014", "\u2014", m.availability || "", imgCell(p.image)]);
+        });
+      } else {
+        dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "\u2014", m.description || "\u2014", "\u2014", "\u2014", isMeasured ? "\u2014" : m.quantity, isMeasured ? "\u2014" : m.unit, m.availability || "", "\u2014"]);
+      }
     });
     printAsPdf("\u062E\u0627\u0645\u0627\u062A " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
   };
@@ -2079,6 +2170,8 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
     setCustomerName(""); setCustomerDeliveryDate(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setImage(null);
   };
   const recent = [...pieces].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 15);
+  const [recentQuery, setRecentQuery] = useState("");
+  const filteredRecent = recentQuery.trim() ? recent.filter((p) => (p.customerName || "").includes(recentQuery.trim())) : recent;
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
@@ -2110,8 +2203,9 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
       h("button", { style: primaryBtn(false), onClick: submit }, "توزيع القطعة")
     ),
     h(SectionHeader, { emoji: "🗂️", title: "آخر القطع الموزعة" }),
+    recent.length > 0 ? h("input", { style: fieldStyle, placeholder: "ابحثي باسم العميل...", value: recentQuery, onChange: (e) => setRecentQuery(e.target.value) }) : null,
     recent.length === 0 ? h(EmptyHint, { text: "لا توجد قطع موزعة بعد" }) : null,
-    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, recent.map((p) =>
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, filteredRecent.map((p) =>
       h("div", { key: p.id, onClick: () => setEditingPiece(p), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
         h("div", null,
           h("div", { style: { fontWeight: 700 } }, p.customerName + " — " + p.pieceType),
@@ -2185,7 +2279,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.shippingDate || "", onChange: (e) => updateField("shippingDate", e.target.value) })),
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.arrivalDate || "", onChange: (e) => updateField("arrivalDate", e.target.value) }))
       ),
-      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s)))) : null,
+      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))), h("div", { style: { display: "flex", gap: 8 } }, h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingDate || "", onChange: (e) => updateField("fabricShippingDate", e.target.value) })), h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalDate || "", onChange: (e) => updateField("fabricArrivalDate", e.target.value) })))) : null,
       isWoodType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.metersCount || "", onChange: (e) => updateField("metersCount", e.target.value) })) : null,
       h("label", { style: labelStyle }, "\u0635\u0648\u0631\u0629 \u0627\u0644\u0642\u0637\u0639\u0629"),
       h("input", { type: "file", accept: "image/*", onChange: async (e) => {
@@ -2228,7 +2322,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope }) {
+function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onGoToDeliveries }) {
   const [entity, setEntity] = useState(null);
   if (!entity) {
     return h("div", null,
@@ -2238,7 +2332,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, 
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack: () => setEntity(null) });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries });
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
 function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece) {
@@ -2286,6 +2380,8 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState("");
   const [fType, setFType] = useState("");
+  const [fFabric, setFFabric] = useState("");
+  const [fSupplier, setFSupplier] = useState("");
   const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
   const scoped = pieces.filter((p) => {
     if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
@@ -2294,10 +2390,16 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
   });
   const statusOptions = Array.from(new Set(scoped.map((p) => p.status).filter(Boolean)));
   const typeOptions = Array.from(new Set(scoped.map((p) => p.pieceType).filter(Boolean)));
+  const supplierOptions = Array.from(new Set(scoped.map((p) => p.supplierName).filter(Boolean)));
   const filtered = scoped.filter((p) => {
     if (query.trim() && !(p.customerName || "").includes(query.trim())) return false;
     if (fStatus && p.status !== fStatus) return false;
     if (fType && p.pieceType !== fType) return false;
+    if (fFabric) {
+      if (fFabric === "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642") { if (!isSofaType(p.pieceType) || p.fabricShippingStatus) return false; }
+      else if (p.fabricShippingStatus !== fFabric) return false;
+    }
+    if (fSupplier && p.supplierName !== fSupplier) return false;
     return true;
   });
   const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : monthLabelAr(scope.key);
@@ -2309,8 +2411,8 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     exportToExcel(activeLoc + "-" + title, [{ name: activeLoc.slice(0, 28), rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
-    const dataRows = filtered.map((p) => [p.customerName || "", p.status || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""]);
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+    const dataRows = filtered.map((p) => [p.customerName || "", p.status || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "", (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "", p.image && p.image.dataUrl ? '<img src="' + p.image.dataUrl + '" style="width:55px;height:55px;object-fit:cover;border-radius:6px">' : "\u2014"]);
     printAsPdf(activeLoc + " \u2014 " + title, headers, dataRows);
   };
   return h("div", null,
@@ -2334,6 +2436,18 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
         h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
         h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
           h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fFabric, onChange: (e) => setFFabric(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s)), h("option", { value: "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642" }, "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642")
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0648\u0631\u062F"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fSupplier, onChange: (e) => setFSupplier(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), supplierOptions.map((sp) => h("option", { key: sp, value: sp }, sp))
         )
       )
     ) : null,
@@ -2389,17 +2503,19 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack, onGoToDeliveries }) {
   const [stageKey, setStageKey] = useState(null);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
   const allLocations = productionSuppliers[entity] || [];
   const carpentryLocs = allLocations.filter((l) => !FIXED_STAGE_LOCATIONS.includes(l));
+  const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const STAGE_GROUPS = [
     { key: "carpentry", label: "\u0646\u062C\u0627\u0631\u0629 / \u0645\u0635\u0627\u0646\u0639", emoji: "\u{1FA9A}", locations: carpentryLocs, allowAdd: true },
     { key: "painting", label: "\u062F\u0647\u0627\u0646", emoji: "\u{1F3A8}", locations: ["\u0627\u0644\u062F\u0647\u0627\u0646"], allowAdd: false },
-    { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F", emoji: "\u{1F9F5}", locations: ["\u0627\u0644\u062A\u0646\u062C\u064A\u062F"], allowAdd: false },
-    { key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false }
-  ];
+    { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F", emoji: "\u{1F9F5}", locations: ["\u0627\u0644\u062A\u0646\u062C\u064A\u062F"], allowAdd: false }
+  ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false }])
+    .concat(isDammam ? [{ key: "order_readiness", label: "\u062C\u0627\u0647\u0632\u064A\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", emoji: "\u2705", locations: [], allowAdd: false, special: true }] : [])
+    .concat([{ key: "deliveries", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A", emoji: "\u{1F69A}", locations: [], allowAdd: false, special: true }]);
   const delayed = entityPieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
     const d = daysUntil(p.agreedDeadline);
@@ -2417,10 +2533,30 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
       ) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
         STAGE_GROUPS.map((g) => {
-          const stagePieceCount = entityPieces.filter((p) => g.locations.includes(p.currentLocation)).length;
-          return h(NavTile, { key: g.key, active: false, onClick: () => setStageKey(g.key), emoji: g.emoji, label: g.label + (stagePieceCount ? " (" + stagePieceCount + ")" : "") });
+          const stagePieceCount = g.special ? 0 : entityPieces.filter((p) => g.locations.includes(p.currentLocation)).length;
+          return h(NavTile, { key: g.key, active: false, onClick: () => g.key === "deliveries" ? onGoToDeliveries() : setStageKey(g.key), emoji: g.emoji, label: g.label + (stagePieceCount ? " (" + stagePieceCount + ")" : "") });
         })
       )
+    );
+  }
+  if (stageKey === "order_readiness") {
+    const ready = entityPieces.filter((p) => p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646");
+    const notReady = entityPieces.filter((p) => p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646");
+    const listSection = (title, color, list) => h("div", { style: { marginBottom: 20 } },
+      h("div", { style: { fontSize: 14, fontWeight: 700, color, marginBottom: 10 } }, title + " (" + list.length + ")"),
+      list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621" }) :
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+          h("div", { style: { fontWeight: 700, fontSize: 14 } }, p.customerName),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, p.pieceType + " \u00B7 " + p.currentLocation + (p.customerDeliveryDate ? " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + p.customerDeliveryDate : ""))
+        )))
+    );
+    return h("div", null,
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+        h("button", { onClick: () => setStageKey(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+        h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, "\u062C\u0627\u0647\u0632\u064A\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
+      ),
+      listSection("\u2705 \u062C\u0627\u0647\u0632\u0629", COLORS.green, ready),
+      listSection("\u23F3 \u063A\u064A\u0631 \u062C\u0627\u0647\u0632\u0629", COLORS.gold, notReady)
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
@@ -2462,9 +2598,9 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
 
 
 function renderFullProductionTable(piecesList, showCustomerCol) {
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F"]);
+  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]);
   return h("div", { style: { overflowX: "auto" } },
-    h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 1900 : 1800 } },
+    h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 2100 : 2000 } },
       h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
       h("tbody", null, piecesList.map((p) => {
         const ready = p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646";
@@ -2475,8 +2611,8 @@ function renderFullProductionTable(piecesList, showCustomerCol) {
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingDate || "\u2014") : "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricArrivalDate || "\u2014") : "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
           h("td", { style: { padding: "8px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
@@ -2491,7 +2627,9 @@ function renderFullProductionTable(piecesList, showCustomerCol) {
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "start")),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "end")),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "end"))
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "end")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014")
         );
       }))
     )
@@ -2503,9 +2641,14 @@ function FullProductionPage({ pieces }) {
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState("");
   const [fType, setFType] = useState("");
+  const [fFabric, setFFabric] = useState("");
+  const [fEntity, setFEntity] = useState("");
+  const [fSupplier, setFSupplier] = useState("");
   const searched = query.trim() ? pieces.filter((p) => p.customerName.includes(query)) : pieces;
   const statusOptions = ["\u062C\u0627\u0647\u0632", "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632"];
   const typeOptions = Array.from(new Set(pieces.map((p) => p.pieceType).filter(Boolean)));
+  const entityOptions = Array.from(new Set(pieces.map((p) => p.manufacturingEntity).filter(Boolean)));
+  const supplierOptions = Array.from(new Set(pieces.map((p) => p.supplierName).filter(Boolean)));
   const filtered = searched.filter((p) => {
     if (fStatus) {
       const ready = p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646";
@@ -2513,6 +2656,12 @@ function FullProductionPage({ pieces }) {
       if (fStatus === "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632" && ready) return false;
     }
     if (fType && p.pieceType !== fType) return false;
+    if (fFabric) {
+      if (fFabric === "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642") { if (!isSofaType(p.pieceType) || p.fabricShippingStatus) return false; }
+      else if (p.fabricShippingStatus !== fFabric) return false;
+    }
+    if (fEntity && p.manufacturingEntity !== fEntity) return false;
+    if (fSupplier && p.supplierName !== fSupplier) return false;
     return true;
   });
   const byDate = (a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99");
@@ -2539,18 +2688,18 @@ function FullProductionPage({ pieces }) {
     ));
   }
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F"]];
+    const rows = [["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", p.shippingDate || "", p.arrivalDate || "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end")]);
+      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F"];
+    const headers = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", p.shippingDate || "", p.arrivalDate || "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end")];
+      return [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
@@ -2576,6 +2725,24 @@ function FullProductionPage({ pieces }) {
         h("label", { style: labelStyle }, "الصنف"),
         h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
           h("option", { value: "" }, "الكل"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "حالة القماش"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fFabric, onChange: (e) => setFFabric(e.target.value) },
+          h("option", { value: "" }, "الكل"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s)), h("option", { value: "لا ينطبق" }, "لا ينطبق")
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "جهة التصنيع"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fEntity, onChange: (e) => setFEntity(e.target.value) },
+          h("option", { value: "" }, "الكل"), entityOptions.map((en) => h("option", { key: en, value: en }, en))
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "المورد"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fSupplier, onChange: (e) => setFSupplier(e.target.value) },
+          h("option", { value: "" }, "الكل"), supplierOptions.map((sp) => h("option", { key: sp, value: sp }, sp))
         )
       )
     ) : null,
