@@ -1061,6 +1061,19 @@ function StageTracker({ stage, size = "normal", onSelect }) {
 function EmptyHint({ text }) {
   return /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: COLORS.muted, marginBottom: 10 } }, text);
 }
+function ProgressRing({ percent, size }) {
+  const s = size || 62;
+  const stroke = 6;
+  const radius = (s - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const pct = Math.max(0, Math.min(100, percent || 0));
+  const offset = circumference - (pct / 100) * circumference;
+  return h("svg", { width: s, height: s, viewBox: `0 0 ${s} ${s}`, style: { flexShrink: 0 } },
+    h("circle", { cx: s / 2, cy: s / 2, r: radius, fill: "none", stroke: COLORS.border, strokeWidth: stroke }),
+    h("circle", { cx: s / 2, cy: s / 2, r: radius, fill: "none", stroke: pct >= 100 ? COLORS.green : COLORS.teal, strokeWidth: stroke, strokeDasharray: circumference, strokeDashoffset: offset, strokeLinecap: "round", transform: `rotate(-90 ${s / 2} ${s / 2})` }),
+    h("text", { x: "50%", y: "50%", textAnchor: "middle", dy: "0.35em", fontSize: s * 0.24, fontWeight: 700, fill: COLORS.ink }, Math.round(pct) + "%")
+  );
+}
 function Modal({ title, onClose, children }) {
   return /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(42,33,27,0.45)", display: "flex", alignItems: "flex-end", zIndex: 50 }, onClick: onClose }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: COLORS.bg, width: "100%", maxHeight: "88vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 } }, /* @__PURE__ */ React.createElement("h2", { style: { ...display, fontSize: 22, margin: 0 } }, title), /* @__PURE__ */ React.createElement("button", { onClick: onClose, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 19 }, "\u2715"))), children));
 }
@@ -1353,7 +1366,7 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
     return h(CustomerProfilePage, { orders, pieces, name: filterKey.name, onBack: () => setFilterKey(null), onOpenOrder: onOpen });
   }
   if (filterKey) {
-    return h(CustomerFilteredListPage, { orders, filterKey, onBack: () => setFilterKey(null), onOpenCustomer: (name) => setFilterKey({ type: "customer", name }) });
+    return h(CustomerFilteredListPage, { orders, pieces, filterKey, onBack: () => setFilterKey(null), onOpenCustomer: (name) => setFilterKey({ type: "customer", name }) });
   }
 
   if (query.trim()) {
@@ -1376,7 +1389,7 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
     )
   );
 }
-function CustomerFilteredListPage({ orders, filterKey, onBack, onOpenCustomer }) {
+function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCustomer }) {
   const [showFilters, setShowFilters] = useState(false);
   const [fCategory, setFCategory] = useState("");
   const [fStatus, setFStatus] = useState("");
@@ -1401,17 +1414,18 @@ function CustomerFilteredListPage({ orders, filterKey, onBack, onOpenCustomer })
   const byName = {};
   scoped.forEach((o) => {
     const key = o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
-    byName[key] = (byName[key] || 0) + 1;
+    if (!byName[key]) byName[key] = [];
+    byName[key].push(o);
   });
   const names = Object.keys(byName).sort((a, b) => a.localeCompare(b, "ar"));
   const title = filterKey.type === "all" ? "\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" : filterKey.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645" : monthLabelAr(filterKey.key);
   const exportExcel = () => {
     const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A"]];
-    names.forEach((n) => rows.push([n, byName[n]]));
+    names.forEach((n) => rows.push([n, byName[n].length]));
     exportToExcel("\u0627\u0644\u0639\u0645\u0644\u0627\u0621-" + title, [{ name: title.slice(0, 28), rows }]);
   };
   const exportPdf = () => {
-    printAsPdf(title, ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A"], names.map((n) => [n, byName[n]]));
+    printAsPdf(title, ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A"], names.map((n) => [n, byName[n].length]));
   };
 
   return h("div", null,
@@ -1444,10 +1458,25 @@ function CustomerFilteredListPage({ orders, filterKey, onBack, onOpenCustomer })
       )
     ) : null,
     names.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621 \u0645\u0637\u0627\u0628\u0642\u064A\u0646" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, names.map((name) => h("div", { key: name, onClick: () => onOpenCustomer(name), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "13px 16px", cursor: "pointer" } },
-        h("span", { style: { fontWeight: 700, fontSize: 14.5 } }, name),
-        h("span", { style: { display: "flex", alignItems: "center", gap: 6, color: COLORS.muted, fontSize: 13 } }, byName[name] + " \u0623\u0648\u0631\u062F\u0631", h(Emoji, { size: 13 }, "\u2039"))
-      )))
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, names.map((name) => {
+        const custOrders = byName[name];
+        const category = custOrders[0] && custOrders[0].category || "\u2014";
+        const nearestDelivery = custOrders.map((o) => o.deliveryDate).filter(Boolean).sort()[0];
+        const custPieces = (pieces || []).filter((p) => p.customerName === name);
+        const readyCount = custPieces.filter((p) => p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646").length;
+        const pct = custPieces.length > 0 ? (readyCount / custPieces.length) * 100 : 0;
+        return h("div", { key: name, onClick: () => onOpenCustomer(name), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 16, cursor: "pointer", position: "relative" } },
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 } },
+            h("div", { style: { flex: 1, minWidth: 0 } },
+              h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 15.5 } }, h(Emoji, { size: 15 }, "\u{1F464}"), name),
+              h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 3 } }, category),
+              h("div", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.muted, marginTop: 8 } }, h(Emoji, { size: 12 }, "\u{1F4C5}"), nearestDelivery || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"),
+              h("div", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.teal, marginTop: 4, fontWeight: 600 } }, h(Emoji, { size: 12 }, "\u{1F4E6}"), custOrders.length + " \u0623\u0648\u0631\u062F\u0631")
+            ),
+            custPieces.length > 0 ? h(ProgressRing, { percent: pct }) : null
+          )
+        );
+      }))
   );
 }
 function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
@@ -1489,22 +1518,39 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
       )
     ),
     h("div", { style: { ...display, fontSize: 15, fontWeight: 700, margin: "0 0 10px" } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"),
-    customerPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629 \u0644\u0644\u0639\u0645\u064A\u0644 \u062F\u0647" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 } }, customerPieces.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } },
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 } },
-          h("div", null,
-            h("div", { style: { fontWeight: 700, fontSize: 15 } }, p.pieceType || "\u2014"),
-            h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, (p.description ? p.description + " \u00B7 " : "") + "\u0627\u0644\u0639\u062F\u062F: " + p.pieceCount)
-          ),
-          h("span", { style: { fontSize: 11.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap", background: p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "#E8F0E4" : COLORS.goldSoft, color: p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? COLORS.green : COLORS.gold } }, p.status || "\u2014")
-        ),
-        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: COLORS.muted, marginTop: 6 } },
-          h("span", null, "\u062A\u0633\u0644\u064A\u0645: " + (p.customerDeliveryDate || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-          h("span", null, "\u0627\u0644\u0645\u0648\u0631\u062F: " + (p.supplierName || "\u2014")),
-          h("span", null, "\u0627\u0644\u0645\u0643\u0627\u0646 \u0627\u0644\u062D\u0627\u0644\u064A: " + (p.currentLocation || "\u2014")),
-          isSofaType(p.pieceType) ? fabricBadge(p.fabricShippingStatus) : null
-        )
-      )))
+    (() => {
+      const dateGroups = {};
+      customerPieces.forEach((p) => {
+        const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E";
+        (dateGroups[k] = dateGroups[k] || []).push(p);
+      });
+      const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
+      const detailRow = (emoji, label, value) => h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${COLORS.bg}` } },
+        h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: COLORS.muted } }, h(Emoji, { size: 13 }, emoji), label),
+        h("span", { style: { fontSize: 13, fontWeight: 600, color: COLORS.ink } }, value || "\u2014")
+      );
+      return customerPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629 \u0644\u0644\u0639\u0645\u064A\u0644 \u062F\u0647" }) :
+        h("div", { style: { marginBottom: 20 } }, dateKeys.map((dateKey) => {
+          const matchingOrder = customerOrders.find((o) => o.deliveryDate === dateKey) || null;
+          const receivedDate = matchingOrder ? matchingOrder.dateReceived : "";
+          return h("div", { key: dateKey, style: { marginBottom: 16 } },
+            h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, margin: "0 0 8px" } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
+            h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, dateGroups[dateKey].map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "6px 14px" } },
+              detailRow("\u{1F464}", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", name),
+              detailRow("\u{1F4C5}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)", receivedDate),
+              detailRow("\u{1F69A}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerDeliveryDate),
+              detailRow("\u{1FA91}", "\u0627\u0644\u0635\u0646\u0641", p.pieceType),
+              detailRow("\u{1F4C4}", "\u0627\u0644\u0628\u064A\u0627\u0646", (p.description || "") + (p.description ? " \u00B7 " : "") + "\u0627\u0644\u0639\u062F\u062F: " + p.pieceCount),
+              detailRow("\u{1F4CD}", "\u0627\u0644\u062D\u0627\u0644\u0629", p.currentLocation),
+              detailRow("\u{1F3ED}", "\u0627\u0644\u0645\u0648\u0631\u062F", p.supplierName),
+              isSofaType(p.pieceType) ? h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0" } },
+                h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: COLORS.muted } }, h(Emoji, { size: 13 }, "\u{1F9F5}"), "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
+                fabricBadge(p.fabricShippingStatus)
+              ) : null
+            )))
+          );
+        }));
+    })()
     ,
     h("div", { style: { ...display, fontSize: 15, fontWeight: 700, margin: "0 0 10px" } }, "\u0643\u0644 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644\u0629"),
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, customerOrders.map((o) => h("div", { key: o.id, onClick: () => onOpenOrder(o.id), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, cursor: "pointer" } },
@@ -2205,7 +2251,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
+  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
   return h("div", null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B/\u0627\u0644\u0641\u0644\u062A\u0631" }) : null,
     dateKeys.map((dateKey) => {
@@ -2222,6 +2268,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
               h("tbody", null, customerGroups[name].map((p) => h("tr", { key: p.id, onClick: () => setOpenPiece(p), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" } },
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: COLORS.goldSoft, color: COLORS.gold, whiteSpace: "nowrap" } }, p.status)),
+                h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
                 h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
@@ -2247,7 +2294,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
   const [fType, setFType] = useState("");
   const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
   const scoped = pieces.filter((p) => {
-    if (scope.type === "date") return p.customerDeliveryDate === scope.key;
+    if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
     if (scope.type === "none") return !p.customerDeliveryDate;
     return true;
   });
@@ -2259,7 +2306,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     if (fType && p.pieceType !== fType) return false;
     return true;
   });
-  const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : scope.key;
+  const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : monthLabelAr(scope.key);
   const exportExcel = () => {
     const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"]];
     filtered.forEach((p) => {
@@ -2308,13 +2355,13 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
   const [openPiece, setOpenPiece] = useState(null);
   const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
 
-  const dateCounts = {};
+  const monthCounts = {};
   let noDateCount = 0;
   pieces.forEach((p) => {
-    if (p.customerDeliveryDate) dateCounts[p.customerDeliveryDate] = (dateCounts[p.customerDeliveryDate] || 0) + 1;
+    if (p.customerDeliveryDate) { const k = p.customerDeliveryDate.slice(0, 7); monthCounts[k] = (monthCounts[k] || 0) + 1; }
     else noDateCount += 1;
   });
-  const dateKeys = Object.keys(dateCounts).sort();
+  const monthKeys = Object.keys(monthCounts).sort();
 
   const rowBtn = (onClick, label, count) => h("div", {
     onClick,
@@ -2343,7 +2390,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { marginTop: 8 } },
       rowBtn(() => setScope({ type: "all" }), "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639", pieces.length),
-      dateKeys.map((k) => rowBtn(() => setScope({ type: "date", key: k }), k, dateCounts[k])),
+      monthKeys.map((k) => rowBtn(() => setScope({ type: "month", key: k }), monthLabelAr(k), monthCounts[k])),
       noDateCount > 0 ? rowBtn(() => setScope({ type: "none" }), "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E", noDateCount) : null
     )
   );
