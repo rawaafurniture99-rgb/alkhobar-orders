@@ -645,7 +645,7 @@ function App() {
     : tab === "activity-log" ? "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637"
     : tab === "supplier-performance" ? "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646"
     : tab === "today-queue" ? "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629"
-    : tab === "deliveries" ? "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A"
+    : tab === "deliveries" ? "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645"
     : tab === "materials-hub" ? "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"
     : branding.name;
   return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink } },
@@ -735,14 +735,14 @@ function App() {
         h(NavTile, { active: false, onClick: () => setTab("materials-hub"), emoji: "\u{1F9F5}", label: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
         h(NavTile, { active: false, onClick: () => setTab("customers"), emoji: "\u{1F465}", label: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
         h(NavTile, { active: false, onClick: () => setTab("distribution"), emoji: "\u{1F4E6}", label: "\u0627\u0644\u062A\u0648\u0632\u064A\u0639" }),
-        h(NavTile, { active: false, onClick: () => setTab("egypt-upholstery"), emoji: "\u{1F9F5}", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
+        h(NavTile, { active: false, onClick: () => setTab("egypt-upholstery"), emoji: "\u{1F6CB}\uFE0F", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
         h(NavTile, { active: false, onClick: () => setTab("production-board"), emoji: "\u{1F3ED}", label: "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }),
         h(NavTile, { active: false, onClick: () => setTab("full-production"), emoji: "\u{1F4CB}", label: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644" }),
         h(NavTile, { active: false, onClick: () => setTab("dashboard"), emoji: "\u{1F4CA}", label: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A" }),
         h(NavTile, { active: false, onClick: () => setTab("activity-log"), emoji: "\u{1F4DC}", label: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
         h(NavTile, { active: false, onClick: () => setTab("supplier-performance"), emoji: "\u2B50", label: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" }),
         h(NavTile, { active: false, onClick: () => setTab("today-queue"), emoji: "\u{1F4CB}", label: "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629" }),
-        h(NavTile, { active: false, onClick: () => setTab("deliveries"), emoji: "\u{1F69A}", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A" })
+        h(NavTile, { active: false, onClick: () => setTab("deliveries"), emoji: "\u{1F69A}", label: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" })
         )
       )
     )),
@@ -1255,7 +1255,7 @@ function EgyptUpholsteryPage({ pieces }) {
   const warningCount = relevant.filter((p) => { const u = urgencyInfo(p); return u && !u.urgent; }).length;
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A"];
   return h("div", null,
-    h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
+    h(SectionHeader, { emoji: "\u{1F6CB}\uFE0F", title: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
     (urgentCount > 0 || warningCount > 0) ? h("div", { style: { background: urgentCount > 0 ? "#FBEAE6" : COLORS.goldSoft, border: `1px solid ${urgentCount > 0 ? COLORS.danger : COLORS.gold}`, borderRadius: 10, padding: 10, marginBottom: 14, fontSize: 13, fontWeight: 700, color: urgentCount > 0 ? COLORS.danger : COLORS.gold } },
       "\u23F0 ", urgentCount > 0 ? urgentCount + " \u0642\u0637\u0639\u0629 \u0645\u062A\u0623\u062E\u0631\u0629 \u062C\u062F\u064B\u0627 \u0641\u064A \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634 (\u0623\u0642\u0644 \u0645\u0646 30 \u064A\u0648\u0645)" + (warningCount > 0 ? " \u0648" + warningCount + " \u0642\u0637\u0639\u0629 \u0642\u0631\u0651\u0628\u062A" : "") : warningCount + " \u0642\u0637\u0639\u0629 \u0642\u0631\u0651\u0628\u062A \u0645\u0646 \u062D\u062F \u0627\u0644_35 \u064A\u0648\u0645 \u0648\u0644\u0633\u0629 \u0645\u0633\u062C\u0644\u0629 \u0644\u0647\u0627 \u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0642\u0645\u0627\u0634"
     ) : null,
@@ -1288,35 +1288,34 @@ function EgyptUpholsteryPage({ pieces }) {
 }
 function DeliveriesPage({ pieces, onUpdate }) {
   const [query, setQuery] = useState("");
-  const searched = query.trim() ? pieces.filter((p) => (p.customerName || "").includes(query.trim())) : pieces;
-  const readyToShip = searched.filter((p) => (p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && !p.shippingDate) || (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" && !p.arrivalDate))
+  const ready = pieces.filter((p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate)
+    .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
-  const inTransit = searched.filter((p) => p.shippingDate && !p.arrivalDate)
-    .sort((a, b) => (a.shippingDate || "").localeCompare(b.shippingDate || ""));
-  const delivered = searched.filter((p) => p.arrivalDate)
-    .sort((a, b) => (b.arrivalDate || "").localeCompare(a.arrivalDate || ""));
-  const markToday = (p, field) => onUpdate({ ...p, [field]: todayStr() });
-  const section = (emoji, title, color, list, getAction, dateField, dateLabel) => h("div", { style: { marginBottom: 20 } },
-    h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 700, color, marginBottom: 10 } }, h(Emoji, { size: 14 }, emoji), title, h("span", { style: { fontSize: 12, color: COLORS.muted, fontWeight: 400 } }, "(" + list.length + ")")),
-    list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((p) => {
-        const action = getAction ? getAction(p) : null;
-        return h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
-          h("div", null,
-            h("div", { style: { fontWeight: 700, fontSize: 14 } }, p.customerName),
-            h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, p.pieceType + (p.customerDeliveryDate ? " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0641\u0642: " + p.customerDeliveryDate : "")),
-            dateField ? h("div", { style: { fontSize: 11.5, color: COLORS.teal, marginTop: 2 } }, dateLabel + ": " + p[dateField]) : null
-          ),
-          action ? h("button", { onClick: () => markToday(p, action.field), style: { fontSize: 12, fontWeight: 700, color: "#fff", background: COLORS.teal, border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", whiteSpace: "nowrap" } }, action.label) : h(Emoji, { size: 18 }, "\u2705")
-        );
-      }))
-  );
+  const cols = ["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0627\u0633\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A"];
   return h("div", null,
-    h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A" }),
+    h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" }),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    section("\u{1F7E1}", "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645/\u0627\u0644\u0634\u062D\u0646", COLORS.gold, readyToShip, (p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" ? { field: "arrivalDate", label: "\u0633\u062C\u0651\u0644\u064A \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u064A\u0648\u0645" } : { field: "shippingDate", label: "\u0633\u062C\u0651\u0644\u064A \u0634\u062D\u0646 \u0627\u0644\u064A\u0648\u0645" }, null, null),
-    section("\u{1F69A}", "\u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642", COLORS.teal, inTransit, () => ({ field: "arrivalDate", label: "\u0633\u062C\u0651\u0644\u064A \u0648\u0635\u0648\u0644 \u0627\u0644\u064A\u0648\u0645" }), "shippingDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"),
-    section("\u2705", "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", COLORS.green, delivered, null, null, "arrivalDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644")
+    ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+      h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 920 } },
+          h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+          h("tbody", null, ready.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            h("td", { style: { padding: "8px 10px" } }, p.image && p.image.dataUrl ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
+            h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
+            h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
+            h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+            h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
+            h("td", { style: { padding: "8px 10px", maxWidth: 150, whiteSpace: "normal" } }, p.description || "\u2014"),
+            h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
+            h("td", { style: { padding: "8px 10px" } }, h("select", { value: p.deliveryConfirmed || "", onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 11.5, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } },
+              h("option", { value: "" }, "\u0641\u0627\u0631\u063A"),
+              h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
+              h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
+            )),
+            h("td", { style: { padding: "8px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 11.5, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } }))
+          )))
+        )
+      )
   );
 }
 function TodayQueuePage({ pieces }) {
@@ -2654,9 +2653,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     { key: "carpentry", label: "\u0646\u062C\u0627\u0631\u0629 / \u0645\u0635\u0627\u0646\u0639", emoji: "\u{1FA9A}", locations: carpentryLocs, allowAdd: true },
     { key: "painting", label: "\u062F\u0647\u0627\u0646", emoji: "\u{1F3A8}", locations: ["\u0627\u0644\u062F\u0647\u0627\u0646"], allowAdd: false },
     { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F", emoji: "\u{1F9F5}", locations: ["\u0627\u0644\u062A\u0646\u062C\u064A\u062F"], allowAdd: false }
-  ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false }])
-    .concat(isDammam ? [{ key: "order_readiness", label: "\u062C\u0627\u0647\u0632\u064A\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", emoji: "\u2705", locations: [], allowAdd: false, special: true }] : [])
-    .concat([{ key: "deliveries", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A", emoji: "\u{1F69A}", locations: [], allowAdd: false, special: true }]);
+  ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false }]);
   const delayed = entityPieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
     const d = daysUntil(p.agreedDeadline);
@@ -2674,30 +2671,10 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
       ) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
         STAGE_GROUPS.map((g) => {
-          const stagePieceCount = g.special ? 0 : entityPieces.filter((p) => g.locations.includes(p.currentLocation)).length;
-          return h(NavTile, { key: g.key, active: false, onClick: () => g.key === "deliveries" ? onGoToDeliveries() : setStageKey(g.key), emoji: g.emoji, label: g.label + (stagePieceCount ? " (" + stagePieceCount + ")" : "") });
+          const stagePieceCount = entityPieces.filter((p) => g.locations.includes(p.currentLocation)).length;
+          return h(NavTile, { key: g.key, active: false, onClick: () => setStageKey(g.key), emoji: g.emoji, label: g.label + (stagePieceCount ? " (" + stagePieceCount + ")" : "") });
         })
       )
-    );
-  }
-  if (stageKey === "order_readiness") {
-    const ready = entityPieces.filter((p) => p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646");
-    const notReady = entityPieces.filter((p) => p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646");
-    const listSection = (title, color, list) => h("div", { style: { marginBottom: 20 } },
-      h("div", { style: { fontSize: 14, fontWeight: 700, color, marginBottom: 10 } }, title + " (" + list.length + ")"),
-      list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621" }) :
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
-          h("div", { style: { fontWeight: 700, fontSize: 14 } }, p.customerName),
-          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, p.pieceType + " \u00B7 " + p.currentLocation + (p.customerDeliveryDate ? " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + p.customerDeliveryDate : ""))
-        )))
-    );
-    return h("div", null,
-      h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
-        h("button", { onClick: () => setStageKey(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
-        h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, "\u062C\u0627\u0647\u0632\u064A\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
-      ),
-      listSection("\u2705 \u062C\u0627\u0647\u0632\u0629", COLORS.green, ready),
-      listSection("\u23F3 \u063A\u064A\u0631 \u062C\u0627\u0647\u0632\u0629", COLORS.gold, notReady)
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
