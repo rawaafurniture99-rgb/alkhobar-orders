@@ -87,10 +87,10 @@ const COLORS = new Proxy({}, { get(_t, prop) { return (currentThemeMode === "dar
 const display = { fontFamily: "'Markazi Text', serif" };
 const body = { fontFamily: "'IBM Plex Sans Arabic', sans-serif" };
 const ORDER_CATEGORIES = ["\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0645\u0637\u0627\u0628\u062E", "\u063A\u0631\u0641 \u0646\u0648\u0645", "\u0633\u0641\u0631\u0629", "\u0623\u062E\u0631\u0649"];
-const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0623\u062E\u0631\u0649"];
+const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0623\u062E\u0631\u0649"];
 const UNITS = ["\u0645\u062A\u0631", "\u0645\xB2", "\u0642\u0637\u0639\u0629", "\u0644\u0641\u0629", "\u0644\u0648\u062D", "\u0643\u062C\u0645"];
 const PIECE_UNITS = ["\u0633\u0645", "\u0645"];
-const MEASURED_TYPES = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637"];
+const MEASURED_TYPES = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637"];
 const FABRIC_SHIP_STATUS = ["\u0645\u062A\u0648\u0641\u0631", "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628", "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646", "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0634\u062D\u0646"];
 const AR_MONTHS = ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"];
 function monthLabelAr(key) {
@@ -241,11 +241,14 @@ function orderIsOverdue(order) {
 }
 function computeOrderCost(order) {
   const materialsCost = (order.quotes || []).filter((q) => q.chosen).reduce((sum, q) => sum + (Number(q.price) || 0), 0);
-  const productionCost = (order.productionQuoteItems || []).reduce((sum, it) => sum + (Number(it.price) || 0), 0);
-  const totalCost = materialsCost + productionCost;
+  const productionCostSAR = (order.productionQuoteItems || []).filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const productionCostEGP = (order.productionQuoteItems || []).filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const exchangeRate = Number(order.exchangeRate) || 0;
+  const productionCostEGPInSAR = exchangeRate > 0 ? productionCostEGP / exchangeRate : 0;
+  const totalCost = materialsCost + productionCostSAR + productionCostEGPInSAR;
   const sellingPrice = Number(order.sellingPrice) || 0;
   const margin = sellingPrice - totalCost;
-  return { materialsCost, productionCost, totalCost, sellingPrice, margin };
+  return { materialsCost, productionCostSAR, productionCostEGP, exchangeRate, productionCostEGPInSAR, totalCost, sellingPrice, margin };
 }
 function computeMaterialsRollup(materials) {
   const groups = {};
@@ -596,6 +599,10 @@ function App() {
   const addProductionSupplier = (entity, name) => persistRecordWrite(
     workspaceDocRef().update({ [`productionSuppliers.${entity}`]: firebase.firestore.FieldValue.arrayUnion(name) })
   );
+  const removeProductionSupplier = (entity, name) => {
+    persistRecordWrite(workspaceDocRef().update({ [`productionSuppliers.${entity}`]: firebase.firestore.FieldValue.arrayRemove(name) }));
+    logActivity("\u062D\u0630\u0641 \u0645\u0648\u0631\u062F: " + name + " (" + entity + ")");
+  };
   const selectedOrder = orders.find((o) => o.id === selectedId) || null;
   const updateOrder = (id, patch) => {
     const ord = orders.find((o) => o.id === id);
@@ -631,6 +638,7 @@ function App() {
   }
   const SECTION_TITLE = tab === "customers" ? "\u0627\u0644\u0639\u0645\u0644\u0627\u0621"
     : tab === "distribution" ? "\u0627\u0644\u062A\u0648\u0632\u064A\u0639"
+    : tab === "egypt-upholstery" ? "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631"
     : tab === "production-board" ? "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"
     : tab === "full-production" ? "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644"
     : tab === "dashboard" ? "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A"
@@ -658,7 +666,8 @@ function App() {
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: setSelectedId, pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, myRole, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
+        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, myRole, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
         tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog }),
@@ -726,6 +735,7 @@ function App() {
         h(NavTile, { active: false, onClick: () => setTab("materials-hub"), emoji: "\u{1F9F5}", label: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
         h(NavTile, { active: false, onClick: () => setTab("customers"), emoji: "\u{1F465}", label: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
         h(NavTile, { active: false, onClick: () => setTab("distribution"), emoji: "\u{1F4E6}", label: "\u0627\u0644\u062A\u0648\u0632\u064A\u0639" }),
+        h(NavTile, { active: false, onClick: () => setTab("egypt-upholstery"), emoji: "\u{1F9F5}", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
         h(NavTile, { active: false, onClick: () => setTab("production-board"), emoji: "\u{1F3ED}", label: "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }),
         h(NavTile, { active: false, onClick: () => setTab("full-production"), emoji: "\u{1F4CB}", label: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644" }),
         h(NavTile, { active: false, onClick: () => setTab("dashboard"), emoji: "\u{1F4CA}", label: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A" }),
@@ -794,7 +804,21 @@ function GlobalStyle() {
     `);
 }
 function CenteredMessage({ text }) {
-  return /* @__PURE__ */ React.createElement("div", { style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.muted } }, text);
+  return /* @__PURE__ */ React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundImage: `linear-gradient(180deg, rgba(62,36,23,0.55) 0%, rgba(62,36,23,0.75) 55%, rgba(62,36,23,0.92) 100%), url(${AUTH_HERO_IMG})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center"
+    }
+  },
+    /* @__PURE__ */ React.createElement("img", { src: DEFAULT_LOGO_IMG, alt: "logo", style: { width: 84, height: 84, borderRadius: 18, objectFit: "cover", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", marginBottom: 20 } }),
+    /* @__PURE__ */ React.createElement("p", { style: { color: "#FBEFDD", fontSize: 14, fontWeight: 600 } }, text)
+  );
 }
 function SetupNeededScreen() {
   return /* @__PURE__ */ React.createElement("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 34, marginBottom: 10 } }, "\u2699\uFE0F"), /* @__PURE__ */ React.createElement("p", { style: { ...display, fontSize: 22, color: COLORS.ink, margin: "0 0 8px" } }, "\u0645\u062D\u062A\u0627\u062C\u0629 \u062A\u0631\u0628\u0637\u064A \u062D\u0633\u0627\u0628 Firebase \u0627\u0644\u0623\u0648\u0644")));
@@ -1137,8 +1161,26 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
     .filter((c) => c.rollup.length > 0);
   const missingMaterials = [];
   orders.forEach((o) => (o.materials || []).forEach((m) => {
-    if (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631") missingMaterials.push({ customerName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", orderTitle: o.title, material: m });
+    if (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" || m.availability === "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628") missingMaterials.push({ customerName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", orderTitle: o.title, deliveryDate: o.deliveryDate, material: m });
   }));
+  const materialDetailStr = (m) => {
+    if (MEASURED_TYPES.includes(m.type)) {
+      const pieces = m.pieces || [];
+      const totalCount = pieces.reduce((s, p) => s + (Number(p.pieceCount) || 0), 0);
+      return totalCount + " \u0642\u0637\u0639\u0629 (" + pieces.length + " \u0645\u0642\u0627\u0633)";
+    }
+    return (m.quantity || "\u2014") + " " + (m.unit || "");
+  };
+  const exportMissingExcel = () => {
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0646\u0648\u0639 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629"]];
+    missingMaterials.forEach((item) => rows.push([item.customerName, item.orderTitle || "", item.deliveryDate || "", item.material.type || "", item.material.description || item.material.materialName || "", materialDetailStr(item.material), item.material.availability || ""]));
+    exportToExcel("\u0627\u0644\u062E\u0627\u0645\u0627\u062A-\u0627\u0644\u0646\u0627\u0642\u0635\u0629", [{ name: "\u0627\u0644\u0646\u0627\u0642\u0635\u0629", rows }]);
+  };
+  const exportMissingPdf = () => {
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0646\u0648\u0639 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629"];
+    const dataRows = missingMaterials.map((item) => [item.customerName, item.orderTitle || "", item.deliveryDate || "", item.material.type || "", item.material.description || item.material.materialName || "", materialDetailStr(item.material), item.material.availability || ""]);
+    printAsPdf("\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0646\u0627\u0642\u0635\u0629", headers, dataRows);
+  };
   const toggleBtn = (key, label, emoji) => h("button", {
     onClick: () => setView(key),
     style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === key ? COLORS.gold : COLORS.border}`, background: view === key ? COLORS.goldSoft : COLORS.surface, color: view === key ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 13, cursor: "pointer" }
@@ -1166,13 +1208,18 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
       h(CustomersList, { orders, onOpen: onOpenOrder })
     ) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u0646\u0627\u0642\u0635\u0629 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, missingMaterials.map((item, idx) => h("div", { key: idx, style: { background: COLORS.surface, border: `1px solid ${COLORS.danger}`, borderRadius: 12, padding: 12 } },
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-          h("span", { style: { fontWeight: 700 } }, item.material.description || item.material.materialName || item.material.type),
-          h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.danger, background: "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631")
-        ),
-        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4 } }, item.customerName, " \u00B7 ", item.orderTitle)
-      )))
+      h(React.Fragment, null,
+      h(ExportButtons, { onExcel: exportMissingExcel, onPdf: exportMissingPdf }),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, missingMaterials.map((item, idx) => {
+        const isOrder = item.material.availability === "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628";
+        return h("div", { key: idx, style: { background: COLORS.surface, border: `1px solid ${isOrder ? COLORS.gold : COLORS.danger}`, borderRadius: 12, padding: 12 } },
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            h("span", { style: { fontWeight: 700 } }, item.material.description || item.material.materialName || item.material.type),
+            h("span", { style: { fontSize: 11, fontWeight: 700, color: isOrder ? COLORS.gold : COLORS.danger, background: isOrder ? COLORS.goldSoft : "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, item.material.availability)
+          ),
+          h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4 } }, item.customerName, " \u00B7 ", item.orderTitle, item.deliveryDate ? " \u00B7 \u062A\u0633\u0644\u064A\u0645: " + item.deliveryDate : "")
+        );
+      })))
     ) : (
       customerRollups.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u0645\u062A\u0633\u062C\u0644\u0629 \u0641\u064A \u0623\u064A \u0623\u0648\u0631\u062F\u0631" }) :
       h(React.Fragment, null,
@@ -1190,33 +1237,85 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
     )
   );
 }
+function EgyptUpholsteryPage({ pieces }) {
+  const relevant = pieces.filter((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && isSofaType(p.pieceType));
+  const groups = {};
+  relevant.forEach((p) => { (groups[p.customerName] = groups[p.customerName] || []).push(p); });
+  const names = Object.keys(groups).sort((a, b) => {
+    const dateA = groups[a].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+    const dateB = groups[b].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+    return dateA.localeCompare(dateB);
+  });
+  const urgencyInfo = (p) => {
+    const d = daysUntil(p.customerDeliveryDate);
+    if (d === null || p.fabricShippingDate || d > 35) return null;
+    return { daysLeft: d, urgent: d <= 30 };
+  };
+  const urgentCount = relevant.filter((p) => { const u = urgencyInfo(p); return u && u.urgent; }).length;
+  const warningCount = relevant.filter((p) => { const u = urgencyInfo(p); return u && !u.urgent; }).length;
+  const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A"];
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
+    (urgentCount > 0 || warningCount > 0) ? h("div", { style: { background: urgentCount > 0 ? "#FBEAE6" : COLORS.goldSoft, border: `1px solid ${urgentCount > 0 ? COLORS.danger : COLORS.gold}`, borderRadius: 10, padding: 10, marginBottom: 14, fontSize: 13, fontWeight: 700, color: urgentCount > 0 ? COLORS.danger : COLORS.gold } },
+      "\u23F0 ", urgentCount > 0 ? urgentCount + " \u0642\u0637\u0639\u0629 \u0645\u062A\u0623\u062E\u0631\u0629 \u062C\u062F\u064B\u0627 \u0641\u064A \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634 (\u0623\u0642\u0644 \u0645\u0646 30 \u064A\u0648\u0645)" + (warningCount > 0 ? " \u0648" + warningCount + " \u0642\u0637\u0639\u0629 \u0642\u0631\u0651\u0628\u062A" : "") : warningCount + " \u0642\u0637\u0639\u0629 \u0642\u0631\u0651\u0628\u062A \u0645\u0646 \u062D\u062F \u0627\u0644_35 \u064A\u0648\u0645 \u0648\u0644\u0633\u0629 \u0645\u0633\u062C\u0644\u0629 \u0644\u0647\u0627 \u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0642\u0645\u0627\u0634"
+    ) : null,
+    names.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u0643\u0646\u0628 \u0645\u0646 \u062A\u0635\u0646\u064A\u0639 \u0645\u0635\u0631 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, names.map((name) => {
+        const rows = groups[name];
+        const anyUrgent = rows.some((p) => { const u = urgencyInfo(p); return u && u.urgent; });
+        return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${anyUrgent ? COLORS.danger : COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
+          h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700 } }, name),
+          h("div", { style: { overflowX: "auto" } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 700 } },
+              h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+              h("tbody", null, rows.map((p) => {
+                const u = urgencyInfo(p);
+                return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+                  h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
+                  h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
+                  h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.fabricShippingStatus || "\u2014"),
+                  h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.fabricShippingDate || "\u2014"),
+                  h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.fabricArrivalStatus || "\u2014"),
+                  h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.fabricArrivalDate || "\u2014"),
+                  h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, u ? h("span", { style: { fontWeight: 700, color: u.urgent ? COLORS.danger : COLORS.gold } }, u.daysLeft + " \u064A\u0648\u0645") : "\u2014")
+                );
+              }))
+            )
+          )
+        );
+      }))
+  );
+}
 function DeliveriesPage({ pieces, onUpdate }) {
   const [query, setQuery] = useState("");
   const searched = query.trim() ? pieces.filter((p) => (p.customerName || "").includes(query.trim())) : pieces;
-  const readyToShip = searched.filter((p) => p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && !p.shippingDate)
+  const readyToShip = searched.filter((p) => (p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && !p.shippingDate) || (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" && !p.arrivalDate))
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
   const inTransit = searched.filter((p) => p.shippingDate && !p.arrivalDate)
     .sort((a, b) => (a.shippingDate || "").localeCompare(b.shippingDate || ""));
   const delivered = searched.filter((p) => p.arrivalDate)
     .sort((a, b) => (b.arrivalDate || "").localeCompare(a.arrivalDate || ""));
   const markToday = (p, field) => onUpdate({ ...p, [field]: todayStr() });
-  const section = (emoji, title, color, list, actionLabel, actionField, dateField, dateLabel) => h("div", { style: { marginBottom: 20 } },
+  const section = (emoji, title, color, list, getAction, dateField, dateLabel) => h("div", { style: { marginBottom: 20 } },
     h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 700, color, marginBottom: 10 } }, h(Emoji, { size: 14 }, emoji), title, h("span", { style: { fontSize: 12, color: COLORS.muted, fontWeight: 400 } }, "(" + list.length + ")")),
     list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
-        h("div", null,
-          h("div", { style: { fontWeight: 700, fontSize: 14 } }, p.customerName),
-          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, p.pieceType + (p.customerDeliveryDate ? " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0641\u0642: " + p.customerDeliveryDate : "")),
-          dateField ? h("div", { style: { fontSize: 11.5, color: COLORS.teal, marginTop: 2 } }, dateLabel + ": " + p[dateField]) : null
-        ),
-        actionField ? h("button", { onClick: () => markToday(p, actionField), style: { fontSize: 12, fontWeight: 700, color: "#fff", background: COLORS.teal, border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", whiteSpace: "nowrap" } }, actionLabel) : h(Emoji, { size: 18 }, "\u2705")
-      )))
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((p) => {
+        const action = getAction ? getAction(p) : null;
+        return h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          h("div", null,
+            h("div", { style: { fontWeight: 700, fontSize: 14 } }, p.customerName),
+            h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, p.pieceType + (p.customerDeliveryDate ? " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0641\u0642: " + p.customerDeliveryDate : "")),
+            dateField ? h("div", { style: { fontSize: 11.5, color: COLORS.teal, marginTop: 2 } }, dateLabel + ": " + p[dateField]) : null
+          ),
+          action ? h("button", { onClick: () => markToday(p, action.field), style: { fontSize: 12, fontWeight: 700, color: "#fff", background: COLORS.teal, border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer", whiteSpace: "nowrap" } }, action.label) : h(Emoji, { size: 18 }, "\u2705")
+        );
+      }))
   );
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A" }),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    section("\u{1F7E1}", "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u0634\u062D\u0646", COLORS.gold, readyToShip, "\u0633\u062C\u0651\u0644\u064A \u0634\u062D\u0646 \u0627\u0644\u064A\u0648\u0645", "shippingDate", null, null),
-    section("\u{1F69A}", "\u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642", COLORS.teal, inTransit, "\u0633\u062C\u0651\u0644\u064A \u0648\u0635\u0648\u0644 \u0627\u0644\u064A\u0648\u0645", "arrivalDate", "shippingDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"),
+    section("\u{1F7E1}", "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645/\u0627\u0644\u0634\u062D\u0646", COLORS.gold, readyToShip, (p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" ? { field: "arrivalDate", label: "\u0633\u062C\u0651\u0644\u064A \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u064A\u0648\u0645" } : { field: "shippingDate", label: "\u0633\u062C\u0651\u0644\u064A \u0634\u062D\u0646 \u0627\u0644\u064A\u0648\u0645" }, null, null),
+    section("\u{1F69A}", "\u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642", COLORS.teal, inTransit, () => ({ field: "arrivalDate", label: "\u0633\u062C\u0651\u0644\u064A \u0648\u0635\u0648\u0644 \u0627\u0644\u064A\u0648\u0645" }), "shippingDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"),
     section("\u2705", "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", COLORS.green, delivered, null, null, "arrivalDate", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644")
   );
 }
@@ -1377,7 +1476,7 @@ function ActivityLogPage({ log }) {
     filtered.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0641\u064A\u0634 \u0623\u064A \u0646\u0634\u0627\u0637 \u0645\u0633\u062C\u0644" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, filtered.map((entry) => h("div", { key: entry.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" } },
         h("div", { style: { fontSize: 13.5 } }, entry.text),
-        h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 4 } }, entry.userEmail + " \u00B7 " + new Date(entry.timestamp).toLocaleString("ar-EG"))
+        h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 4 } }, entry.userEmail + " \u00B7 " + new Date(entry.timestamp).toLocaleString("en-US"))
       )))
   );
 }
@@ -1420,7 +1519,10 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
   }
 
   if (query.trim()) {
-    const names = Array.from(new Set(orders.filter((o) => (o.clientName || "").includes(query.trim())).map((o) => o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"))).sort((a, b) => a.localeCompare(b, "ar"));
+    const matchingOrders = orders.filter((o) => (o.clientName || "").includes(query.trim()));
+    const nameToDate = {};
+    matchingOrders.forEach((o) => { const key = o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"; if (o.deliveryDate && (!nameToDate[key] || o.deliveryDate < nameToDate[key])) nameToDate[key] = o.deliveryDate; });
+    const names = Array.from(new Set(matchingOrders.map((o) => o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"))).sort((a, b) => (nameToDate[a] || "9999-99-99").localeCompare(nameToDate[b] || "9999-99-99"));
     return h("div", null,
       h(SectionHeader, { emoji: "\u{1F465}", title: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
@@ -1467,7 +1569,11 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
     if (!byName[key]) byName[key] = [];
     byName[key].push(o);
   });
-  const names = Object.keys(byName).sort((a, b) => a.localeCompare(b, "ar"));
+  const names = Object.keys(byName).sort((a, b) => {
+    const dateA = byName[a].map((o) => o.deliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+    const dateB = byName[b].map((o) => o.deliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+    return dateA.localeCompare(dateB);
+  });
   const title = filterKey.type === "all" ? "\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" : filterKey.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645" : monthLabelAr(filterKey.key);
   const exportExcel = () => {
     const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A"]];
@@ -1553,13 +1659,19 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
     return h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: COLORS.bg, color: COLORS.muted } }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F");
   };
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u0642\u0633\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"]];
-    customerOrders.forEach((o) => rows.push([o.category || o.title || "", o.dateReceived || "", o.deliveryDate || "", orderStatusLabel(o), o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"]));
+    const rows = [["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
+    customerPieces.forEach((p) => {
+      const matchingOrder = customerOrders.find((o) => o.deliveryDate === p.customerDeliveryDate) || null;
+      rows.push([name, (matchingOrder && matchingOrder.dateReceived) || "", p.customerDeliveryDate || "", p.pieceType || "", p.description || "", p.pieceCount || "", (p.currentLocation || "") + (p.status ? " \u00B7 " + p.status : ""), p.supplierName || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""]);
+    });
     exportToExcel("\u0627\u0644\u0639\u0645\u064A\u0644-" + name, [{ name: name.slice(0, 28), rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u0642\u0633\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
-    const dataRows = customerOrders.map((o) => [o.category || o.title || "", o.dateReceived || "", o.deliveryDate || "", orderStatusLabel(o), o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"]);
+    const headers = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"];
+    const dataRows = customerPieces.map((p) => {
+      const matchingOrder = customerOrders.find((o) => o.deliveryDate === p.customerDeliveryDate) || null;
+      return [name, (matchingOrder && matchingOrder.dateReceived) || "", p.customerDeliveryDate || "", p.pieceType || "", p.description || "", p.pieceCount || "", (p.currentLocation || "") + (p.status ? " \u00B7 " + p.status : ""), p.supplierName || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : ""];
+    });
     printAsPdf(name, headers, dataRows);
   };
   return h("div", null,
@@ -1577,6 +1689,16 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
         h("div", { style: { fontSize: 12, color: COLORS.muted } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A")
       )
     ),
+    customerOrders.some((o) => o.manufacturingOrderFile) ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+      h("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 8 } }, "\u{1F4CE} \u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, customerOrders.filter((o) => o.manufacturingOrderFile).map((o) => h("a", {
+        key: o.id,
+        href: o.manufacturingOrderFile.dataUrl,
+        target: "_blank",
+        rel: "noreferrer",
+        style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.teal, textDecoration: "none" }
+      }, h(Emoji, { size: 14 }, "\u{1F4C4}"), (o.category || o.title || "\u0623\u0648\u0631\u062F\u0631") + (o.dateReceived ? " \u2014 " + o.dateReceived : ""))))
+    ) : null,
     h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px" } },
       h("div", { style: { ...display, fontSize: 15, fontWeight: 700 } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"),
       allCustomerPieces.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: addLinkStyle }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null
@@ -1685,7 +1807,7 @@ function NewOrderModal({ onClose, onSave, existing, existingCategories }) {
   const [fabricShippingStatus, setFabricShippingStatus] = useState((existing && existing.fabricShippingStatus) || "");
   const [orderFile, setOrderFile] = useState((existing && existing.manufacturingOrderFile) || null);
   const [sellingPrice, setSellingPrice] = useState((existing && existing.sellingPrice) || "");
-  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" : "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: clientName, onChange: (e) => setClientName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: category, onChange: (e) => setCategory(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0642\u0633\u0645\u060C \u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u060C \u0633\u062A\u0627\u0626\u0631...", list: "order-category-suggestions" }), /* @__PURE__ */ React.createElement("datalist", { id: "order-category-suggestions" }, (existingCategories || ORDER_CATEGORIES || []).map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: date, onChange: (e) => setDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: deliveryDate, onChange: (e) => setDeliveryDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: fabricShippingStatus, onChange: (e) => setFabricShippingStatus(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, s))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0644\u0644\u0639\u0645\u064A\u0644 (\u062C.\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: sellingPrice, onChange: (e) => setSellingPrice(e.target.value), placeholder: "0" }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: orderFile, onChange: setOrderFile, onRemove: () => setOrderFile(null), folder: "manufacturing-orders" }), /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : "") } : { ...emptyOrder(), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"));
+  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" : "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: clientName, onChange: (e) => setClientName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: category, onChange: (e) => setCategory(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0642\u0633\u0645\u060C \u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u060C \u0633\u062A\u0627\u0626\u0631...", list: "order-category-suggestions" }), /* @__PURE__ */ React.createElement("datalist", { id: "order-category-suggestions" }, (existingCategories || ORDER_CATEGORIES || []).map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: date, onChange: (e) => setDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: deliveryDate, onChange: (e) => setDeliveryDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: fabricShippingStatus, onChange: (e) => setFabricShippingStatus(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, s))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0644\u0644\u0639\u0645\u064A\u0644 (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: sellingPrice, onChange: (e) => setSellingPrice(e.target.value), placeholder: "0" }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: orderFile, onChange: setOrderFile, onRemove: () => setOrderFile(null), folder: "manufacturing-orders" }), /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : "") } : { ...emptyOrder(), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"));
 }
 function BrandingModal({ branding, onClose, onSave }) {
   const [name, setName] = useState(branding.name || "");
@@ -1744,13 +1866,21 @@ function OrderDetail({ order, onBack, onUpdate, onDelete }) {
           h(NavTile, { active: false, onClick: () => setSection("materials-hub"), emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }),
           h(NavTile, { active: false, onClick: () => setSection("quote"), emoji: "\u{1F4B0}", label: "\u0639\u0631\u0636 \u0627\u0644\u0633\u0639\u0631" })
         ),
-        (cost.totalCost > 0 || cost.sellingPrice > 0) ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, marginBottom: 14 } },
+        (cost.materialsCost > 0 || cost.productionCostSAR > 0 || cost.productionCostEGP > 0 || cost.sellingPrice > 0) ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, marginBottom: 14 } },
           h("div", { style: { ...display, fontSize: 15, fontWeight: 700, marginBottom: 10 } }, "\u0627\u0644\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0642\u062F\u064A\u0631\u064A\u0629"),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u062E\u062A\u0627\u0631\u0629"), h("span", null, cost.materialsCost.toLocaleString("ar-EG"), " \u062C.\u0645")),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 8 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639"), h("span", null, cost.productionCost.toLocaleString("ar-EG"), " \u062C.\u0645")),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginBottom: 8 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629"), h("span", null, cost.totalCost.toLocaleString("ar-EG"), " \u062C.\u0645")),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639"), h("span", null, cost.sellingPrice.toLocaleString("ar-EG"), " \u062C.\u0645")),
-          cost.sellingPrice > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, color: cost.margin >= 0 ? COLORS.green : COLORS.danger } }, h("span", null, "\u0647\u0627\u0645\u0634 \u0627\u0644\u0631\u0628\u062D"), h("span", null, cost.margin.toLocaleString("ar-EG"), " \u062C.\u0645")) : null
+          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062E\u0627\u0645\u0627\u062A"), h("span", null, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
+          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u0631\u064A\u0627\u0644)"), h("span", null, cost.productionCostSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
+          cost.productionCostEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 8 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u062C\u0646\u064A\u0647 \u2014 \u0645\u0635\u0631)"), h("span", null, cost.productionCostEGP.toLocaleString("en-US"), " \u062C.\u0645")) : null,
+          cost.productionCostEGP > 0 ? h("div", { style: { background: COLORS.bg, borderRadius: 8, padding: 8, marginBottom: 8 } },
+            h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
+              h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645 (\u062C\u0646\u064A\u0647 \u0644\u0643\u0644 \u0631\u064A\u0627\u0644)"),
+              h("input", { type: "number", value: order.exchangeRate || "", onChange: (e) => onUpdate({ exchangeRate: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "\u0645\u062B\u0627\u0644: 12.5", style: { width: 90, padding: "5px 8px", fontSize: 12.5, borderRadius: 6, border: `1px solid ${COLORS.border}`, textAlign: "center" } })
+            ),
+            cost.exchangeRate > 0 ? h("div", { style: { fontSize: 12, color: COLORS.teal, marginTop: 6, fontWeight: 600 } }, "\u2248 " + cost.productionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 2 }) + " \u0631\u064A\u0627\u0644") : h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 6 } }, "\u062D\u0637\u064A \u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0639\u0634\u0627\u0646 \u064A\u062A\u062D\u0648\u0644 \u0627\u0644\u0645\u0628\u0644\u063A \u0644\u0644\u0631\u064A\u0627\u0644")
+          ) : null,
+          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginBottom: 8 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629 (\u0631\u064A\u0627\u0644)"), h("span", null, cost.totalCost.toLocaleString("en-US", { maximumFractionDigits: 2 }), " \u0631\u064A\u0627\u0644")),
+          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639"), h("span", null, cost.sellingPrice.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
+          cost.sellingPrice > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, color: cost.margin >= 0 ? COLORS.green : COLORS.danger } }, h("span", null, "\u0647\u0627\u0645\u0634 \u0627\u0644\u0631\u0628\u062D"), h("span", null, cost.margin.toLocaleString("en-US", { maximumFractionDigits: 2 }), " \u0631\u064A\u0627\u0644")) : null
         ) : null,
         h("button", { onClick: sendWhatsAppUpdate, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#25D366", color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14.5, fontWeight: 700, cursor: "pointer" } }, h(Emoji, { size: 18 }, "\u{1F4F1}"), "\u0625\u0631\u0633\u0627\u0644 \u062A\u062D\u062F\u064A\u062B \u0644\u0644\u0639\u0645\u064A\u0644")
       ),
@@ -1848,7 +1978,7 @@ function MaterialsPage({ order, onUpdate, forcedView }) {
     const isMeasured = MEASURED_TYPES.includes(m.type);
     const isCoded = CODED_TYPES.includes(m.type);
     const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold;
-    return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, isMeasured ? m.materialName : m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.description), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 320 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, ["\u0627\u062E\u062A\u064A\u0627\u0631", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0645\u062F\u0629"].map((c) => /* @__PURE__ */ React.createElement("th", { key: c, style: { padding: "4px 6px", textAlign: "start", color: COLORS.muted, fontWeight: 600, fontSize: 11 } }, c)))), /* @__PURE__ */ React.createElement("tbody", null, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("tr", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { cursor: "pointer", borderTop: `1px solid ${COLORS.border}`, background: q.chosen ? COLORS.goldSoft : "transparent" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: q.chosen ? 700 : 400 } }, q.supplierName), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: 700, color: COLORS.ink } }, q.price, " \u062C.\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", color: COLORS.muted } }, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
+    return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, isMeasured ? m.materialName : m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.description), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 320 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, ["\u0627\u062E\u062A\u064A\u0627\u0631", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0645\u062F\u0629"].map((c) => /* @__PURE__ */ React.createElement("th", { key: c, style: { padding: "4px 6px", textAlign: "start", color: COLORS.muted, fontWeight: 600, fontSize: 11 } }, c)))), /* @__PURE__ */ React.createElement("tbody", null, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("tr", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { cursor: "pointer", borderTop: `1px solid ${COLORS.border}`, background: q.chosen ? COLORS.goldSoft : "transparent" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: q.chosen ? 700 : 400 } }, q.supplierName), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: 700, color: COLORS.ink } }, q.price, " \u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", color: COLORS.muted } }, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
   })), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddMaterial(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062E\u0627\u0645\u0629")), showAddMaterial && /* @__PURE__ */ React.createElement(AddMaterialModal, { onClose: () => setShowAddMaterial(false), onSave: (m) => {
     addMaterial(m);
     setShowAddMaterial(false);
@@ -2011,7 +2141,7 @@ function AddQuoteModal({ onClose, onSave, existing }) {
   const [price, setPrice] = useState((existing && existing.price) || "");
   const [leadTimeDays, setLeadTimeDays] = useState((existing && existing.leadTimeDays) || "");
   const [notes, setNotes] = useState((existing && existing.notes) || "");
-  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0631\u0636 \u0633\u0639\u0631" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631 (\u062C.\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F (\u064A\u0648\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: leadTimeDays, onChange: (e) => setLeadTimeDays(e.target.value), placeholder: "0" }))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement("button", { disabled: !supplierName.trim() || !price || !leadTimeDays, style: primaryBtn(!supplierName.trim() || !price || !leadTimeDays), onClick: () => onSave({ id: existing ? existing.id : uid(), supplierName: supplierName.trim(), price: Number(price), leadTimeDays: Number(leadTimeDays), notes: notes.trim(), chosen: (existing && existing.chosen) || false }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0631\u0636"));
+  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0631\u0636 \u0633\u0639\u0631" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631 (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F (\u064A\u0648\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: leadTimeDays, onChange: (e) => setLeadTimeDays(e.target.value), placeholder: "0" }))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement("button", { disabled: !supplierName.trim() || !price || !leadTimeDays, style: primaryBtn(!supplierName.trim() || !price || !leadTimeDays), onClick: () => onSave({ id: existing ? existing.id : uid(), supplierName: supplierName.trim(), price: Number(price), leadTimeDays: Number(leadTimeDays), notes: notes.trim(), chosen: (existing && existing.chosen) || false }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0631\u0636"));
 }
 function DistributionPage({ order, onUpdate }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -2055,21 +2185,24 @@ function ProductionQuotePage({ order, onUpdate }) {
   const addItem = (it) => onUpdate({ productionQuoteItems: [...items, it] });
   const updateItem = (it) => onUpdate({ productionQuoteItems: items.map((x) => x.id === it.id ? it : x) });
   const removeItem = (id) => onUpdate({ productionQuoteItems: items.filter((i) => i.id !== id) });
-  const total = items.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const totalSAR = items.filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const totalEGP = items.filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
-    items.forEach((it) => rows.push([it.pieceName || "", it.supplierName || "", Number(it.price) || 0, it.notes || ""]));
-    rows.push(["", "", "", ""]);
-    rows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", total, ""]);
+    const rows = [["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
+    items.forEach((it) => rows.push([it.pieceName || "", it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]));
+    rows.push(["", "", "", "", ""]);
+    if (totalSAR > 0) rows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalSAR, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", ""]);
+    if (totalEGP > 0) rows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", ""]);
     exportToExcel(`\u062A\u0633\u0639\u064A\u0631-${order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"}`, [{ name: "\u0627\u0644\u062A\u0633\u0639\u064A\u0631", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
-    const dataRows = items.map((it) => [it.pieceName || "", it.supplierName || "", Number(it.price) || 0, it.notes || ""]);
-    dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", total, ""]);
+    const headers = ["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
+    const dataRows = items.map((it) => [it.pieceName || "", it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]);
+    if (totalSAR > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalSAR, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", ""]);
+    if (totalEGP > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", ""]);
     printAsPdf("\u062A\u0633\u0639\u064A\u0631 " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
   };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("ar-EG"), " \u062C.\u0645"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, total.toLocaleString("ar-EG"), " \u062C.\u0645")), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, totalSAR > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")), totalEGP > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645"))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
     addItem(it);
     setShowAdd(false);
   } }), editingItem && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { existing: editingItem, onClose: () => setEditingItem(null), onSave: (it) => {
@@ -2081,10 +2214,11 @@ function AddQuoteItemModal({ onClose, onSave, existing }) {
   const [pieceName, setPieceName] = useState((existing && existing.pieceName) || "");
   const [supplierName, setSupplierName] = useState((existing && existing.supplierName) || "");
   const [price, setPrice] = useState((existing && existing.price) || "");
+  const [currency, setCurrency] = useState((existing && existing.currency) || "\u0631\u064A\u0627\u0644");
   const [notes, setNotes] = useState((existing && existing.notes) || "");
   const [priceFile, setPriceFile] = useState((existing && existing.priceFile) || null);
   const canSave = pieceName.trim() && price;
-  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0642\u0637\u0639\u0629"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: pieceName, onChange: (e) => setPieceName(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u0629 3 \u0645\u0642\u0627\u0639\u062F" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F \u0623\u0648 \u0627\u0644\u0648\u0631\u0634\u0629" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631 (\u062C.\u0645)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: priceFile, onChange: setPriceFile, onRemove: () => setPriceFile(null), folder: "quotes" }), /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: existing ? existing.id : uid(), pieceName: pieceName.trim(), supplierName: supplierName.trim(), price: Number(price), notes: notes.trim(), priceFile }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0646\u0635\u0631"));
+  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0642\u0637\u0639\u0629"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: pieceName, onChange: (e) => setPieceName(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u0629 3 \u0645\u0642\u0627\u0639\u062F" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F \u0623\u0648 \u0627\u0644\u0648\u0631\u0634\u0629" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0639\u0645\u0644\u0629"), /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: currency, onChange: (e) => setCurrency(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A"), /* @__PURE__ */ React.createElement("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A")))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: priceFile, onChange: setPriceFile, onRemove: () => setPriceFile(null), folder: "quotes" }), /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: existing ? existing.id : uid(), pieceName: pieceName.trim(), supplierName: supplierName.trim(), price: Number(price), currency, notes: notes.trim(), priceFile }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0646\u0635\u0631"));
 }
 function ProductionPage({ order, onUpdate }) {
   const [showAddLog, setShowAddLog] = useState(false);
@@ -2129,7 +2263,7 @@ const DEFAULT_PRODUCTION_SUPPLIERS = {
   "مصر": ["نجارة عبدالرحمن", "نجارة صابر", "الدهان", "التنجيد", "مصنع 36", "مصنع زمزم", "مصنع عسل", "مصنع نوح", "الاستيل", "التغليف", "الشحن"],
   "الدمام": ["ابو محمود", "الكينعي", "بستان", "عادى نسيب", "الدهان", "التنجيد", "التغليف", "الشحن"]
 };
-const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن"];
+const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
 const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تنفيذ عند مورد", viewer: "مشاهدة فقط" };
@@ -2165,7 +2299,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
       description, manufacturingEntity: entity, supplierName, currentLocation: supplierName, baseStage: "نجارة",
       image, peopleCount: isSofaType(pieceType) ? (Number(peopleCount) || 0) : "", metersCount: isWoodType(pieceType) ? (Number(metersCount) || 0) : "",
       fabricShippingStatus: isSofaType(pieceType) ? pieceFabricStatus : "",
-      status: "لم يتم البدء", agreedDeadline: "", stages: {}, shippingDate: "", arrivalDate: "", createdAt: todayStr()
+      status: "لم يتم البدء", agreedDeadline: "", stages: {}, shippingDate: "", arrivalDate: "", createdAt: (/* @__PURE__ */ new Date()).toISOString()
     });
     setCustomerName(""); setCustomerDeliveryDate(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setImage(null);
   };
@@ -2227,11 +2361,19 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
     if (!canEdit) return;
     const p = { ...piece, stages: { ...(piece.stages || {}) } };
     const prevLocation = piece.currentLocation;
+    const currentStageKey = LOCATION_TO_STAGE_KEY[piece.currentLocation] || piece.baseStage || "\u0646\u062C\u0627\u0631\u0629";
     p.status = newStatus;
+    if (newStatus === "\u062C\u0627\u0631\u0649") {
+      p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), start: (p.stages[currentStageKey] && p.stages[currentStageKey].start) || todayStr() };
+    }
+    if (newStatus === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C") {
+      p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), end: (p.stages[currentStageKey] && p.stages[currentStageKey].end) || todayStr() };
+    }
     if (STATUS_TARGET[newStatus]) {
       const target = STATUS_TARGET[newStatus];
       const stageKey = STATUS_STAGE_KEY[target];
       p.currentLocation = target;
+      p.status = "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621";
       p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "" };
     }
     onUpdate(p);
@@ -2279,7 +2421,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.shippingDate || "", onChange: (e) => updateField("shippingDate", e.target.value) })),
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.arrivalDate || "", onChange: (e) => updateField("arrivalDate", e.target.value) }))
       ),
-      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))), h("div", { style: { display: "flex", gap: 8 } }, h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingDate || "", onChange: (e) => updateField("fabricShippingDate", e.target.value) })), h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalDate || "", onChange: (e) => updateField("fabricArrivalDate", e.target.value) })))) : null,
+      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))), h("div", { style: { display: "flex", gap: 8 } }, h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingDate || "", onChange: (e) => updateField("fabricShippingDate", e.target.value) })), h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalDate || "", onChange: (e) => updateField("fabricArrivalDate", e.target.value) }))), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalStatus || "", onChange: (e) => updateField("fabricArrivalStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))) : null,
       isWoodType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.metersCount || "", onChange: (e) => updateField("metersCount", e.target.value) })) : null,
       h("label", { style: labelStyle }, "\u0635\u0648\u0631\u0629 \u0627\u0644\u0642\u0637\u0639\u0629"),
       h("input", { type: "file", accept: "image/*", onChange: async (e) => {
@@ -2304,12 +2446,10 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
         h("div", { style: { display: "flex", gap: 6 } },
           h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].start) || "", onChange: (e) => updateStageDate(stage, "start", e.target.value) })),
           h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].end) || "", onChange: (e) => updateStageDate(stage, "end", e.target.value) }))
-        )
+        ),
+        h("label", { style: { ...labelStyle, marginTop: 6 } }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u0645\u0631\u062D\u0644\u0629"),
+        h("textarea", { style: { ...fieldStyle, marginBottom: 0, padding: "6px 8px", fontSize: 12, minHeight: 44 }, value: (piece.stages[stage] && piece.stages[stage].notes) || "", onChange: (e) => updateStageDate(stage, "notes", e.target.value) })
       )),
-      h("div", { style: { display: "flex", gap: 8 } },
-        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الشحن"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: piece.shippingDate || "", onChange: (e) => updateField("shippingDate", e.target.value) })),
-        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الوصول"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: piece.arrivalDate || "", onChange: (e) => updateField("arrivalDate", e.target.value) }))
-      )
     ) : null
   );
 }
@@ -2322,7 +2462,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onGoToDeliveries }) {
+function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, myRole, mySupplierScope, onGoToDeliveries }) {
   const [entity, setEntity] = useState(null);
   if (!entity) {
     return h("div", null,
@@ -2332,7 +2472,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, 
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, myRole, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries });
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
 function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece) {
@@ -2346,6 +2486,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
       const datePieces = dateGroups[dateKey];
       const customerGroups = {};
       datePieces.forEach((p) => (customerGroups[p.customerName] = customerGroups[p.customerName] || []).push(p));
+      Object.keys(customerGroups).forEach((name) => customerGroups[name].sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || "")));
       const names = Object.keys(customerGroups);
       return h("div", { key: dateKey, style: { marginBottom: 18 } },
         h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, marginBottom: 8 } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
@@ -2503,7 +2644,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack, onGoToDeliveries }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, myRole, mySupplierScope, onBack, onGoToDeliveries }) {
   const [stageKey, setStageKey] = useState(null);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
   const allLocations = productionSuppliers[entity] || [];
@@ -2560,9 +2701,9 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
-  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack: () => setStageKey(null) });
+  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, myRole, mySupplierScope, onBack: () => setStageKey(null) });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, myRole, mySupplierScope, onBack }) {
+function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, myRole, mySupplierScope, onBack }) {
   const [activeLoc, setActiveLoc] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
@@ -2577,7 +2718,19 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
         group.locations.map((loc) => {
           const locPieces = entityPieces.filter((p) => p.currentLocation === loc);
           const count = countDistinctOrders(locPieces);
-          return h(NavTile, { key: loc, active: false, onClick: () => setActiveLoc(loc), emoji: "\u{1F3E2}", label: loc + (count ? " (" + count + ")" : "") });
+          return h("div", { key: loc, style: { position: "relative" } },
+            h(NavTile, { active: false, onClick: () => setActiveLoc(loc), emoji: "\u{1F3E2}", label: loc + (count ? " (" + count + ")" : "") }),
+            group.allowAdd && myRole === "admin" ? h("button", {
+              onClick: (e) => {
+                e.stopPropagation();
+                const msg = locPieces.length > 0
+                  ? "\u0641\u064A\u0647 " + locPieces.length + " \u0642\u0637\u0639\u0629 \u0645\u0633\u062C\u0644\u0629 \u0639\u0646\u062F \"" + loc + "\" \u062D\u0627\u0644\u064A\u064B\u0627. \u062D\u0630\u0641 \u0627\u0644\u0645\u0648\u0631\u062F \u0645\u0646 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0645\u0634 \u0647\u064A\u062D\u0630\u0641 \u0627\u0644\u0642\u0637\u0639\u060C \u0628\u0633 \u0645\u0634 \u0647\u064A\u0638\u0647\u0631 \u062A\u0627\u0646\u064A \u0644\u0644\u0625\u0636\u0627\u0641\u0629. \u0645\u062A\u0623\u0643\u062F\u0629\u061F"
+                  : "\u062A\u0623\u0643\u062F\u064A \u0625\u0646\u0643 \u0639\u0627\u0648\u0632\u0629 \u062A\u062D\u0630\u0641\u064A \u0627\u0644\u0645\u0648\u0631\u062F \"" + loc + "\"\u061F";
+                if (window.confirm(msg)) onRemoveSupplier(entity, loc);
+              },
+              style: { position: "absolute", top: 6, left: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 999, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }
+            }, h(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null
+          );
         })
       ),
       group.allowAdd && myRole === "admin" ? (!showAdd
@@ -2610,9 +2763,9 @@ function renderFullProductionTable(piecesList, showCustomerCol) {
           showCustomerCol ? h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName) : null,
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingDate || "\u2014") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricArrivalDate || "\u2014") : "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "\u2014") : "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "\u2014") : "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
           h("td", { style: { padding: "8px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
@@ -2671,7 +2824,11 @@ function FullProductionPage({ pieces }) {
   } else if (viewMode === "customer") {
     const groups = {};
     filtered.forEach((p) => { (groups[p.customerName] = groups[p.customerName] || []).push(p); });
-    const names = Object.keys(groups).sort((a, b) => a.localeCompare(b, "ar"));
+    const names = Object.keys(groups).sort((a, b) => {
+      const dateA = groups[a].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+      const dateB = groups[b].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+      return dateA.localeCompare(dateB);
+    });
     body = names.map((name) => h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 } },
       h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } }, h("span", null, name), h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")),
       h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate)))
@@ -2691,7 +2848,7 @@ function FullProductionPage({ pieces }) {
     const rows = [["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
+      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
@@ -2699,7 +2856,7 @@ function FullProductionPage({ pieces }) {
     const headers = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
+      return [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
