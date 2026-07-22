@@ -277,6 +277,10 @@ function computeMaterialsRollup(materials) {
   });
   return Object.values(groups);
 }
+function normalizeDigits(s) {
+  if (s == null) return s;
+  return String(s).replace(/[\u0660-\u0669]/g, (d) => "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669".indexOf(d)).replace(/[\u06F0-\u06F9]/g, (d) => "\u06F0\u06F1\u06F2\u06F3\u06F4\u06F5\u06F6\u06F7\u06F8\u06F9".indexOf(d));
+}
 function exportToExcel(filename, sheets) {
   try {
     const wb = XLSX.utils.book_new();
@@ -447,6 +451,14 @@ function App() {
   const mySupplierScope = myMember ? myMember.supplierScope || [] : [];
   const canEditDistribution = myRole === "admin" || myRole === "distributor";
   const canEditFullProduction = myRole === "admin";
+  const canEditOrder = (o) => {
+    if (isOwner || myRole === "admin") return true;
+    if (myRole === "engineer") return !!(o && o.createdBy && user && o.createdBy === user.email && !o.approved);
+    return false;
+  };
+  const globalReadOnly = myRole === "viewer" || myRole === "engineer";
+  const myPermittedTabs = (isOwner || myRole === "admin") ? null : (myMember && myMember.permittedTabs !== undefined ? myMember.permittedTabs : ALL_TABS.map((t) => t.key));
+  const canSeeTab = (key) => myPermittedTabs === null || myPermittedTabs.includes(key);
   useEffect(() => {
     if (!user || !isAllowed) {
       setDataLoaded(false);
@@ -612,7 +624,8 @@ function App() {
     logActivity("\u0639\u062F\u0651\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0623\u0648\u0631\u062F\u0631: " + (ord ? ord.title : id));
   };
   const addOrder = (o) => {
-    persistRecordWrite(ordersColRef().doc(o.id).set(o));
+    const withOwner = { ...o, createdBy: (user && user.email) || "", approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "" };
+    persistRecordWrite(ordersColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F: " + o.title);
   };
   const deleteOrder = (id) => {
@@ -638,7 +651,9 @@ function App() {
   if (!dataLoaded) {
     return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A\u0643..." });
   }
-  const SECTION_TITLE = tab === "customers" ? "\u0627\u0644\u0639\u0645\u0644\u0627\u0621"
+  const SECTION_TITLE = tab === "review" ? "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"
+    : tab === "my-orders" ? "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A"
+    : tab === "customers" ? "\u0627\u0644\u0639\u0645\u0644\u0627\u0621"
     : tab === "distribution" ? "\u0627\u0644\u062A\u0648\u0632\u064A\u0639"
     : tab === "egypt-upholstery" ? "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631"
     : tab === "production-board" ? "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"
@@ -657,7 +672,9 @@ function App() {
       order: selectedOrder,
       onBack: () => setSelectedId(null),
       onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
-      onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); }
+      onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); },
+      canEdit: canEditOrder(selectedOrder),
+      isAdminUser: isOwner || myRole === "admin"
     }) : tab ? h(React.Fragment, null,
       h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
         h("button", { onClick: () => setTab(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -666,17 +683,25 @@ function App() {
         )
       ),
       h("main", { style: { padding: 16, paddingBottom: 100 } },
+        !canSeeTab(tab) ? h("div", { style: { textAlign: "center", padding: "40px 20px" } },
+          h("div", { style: { fontSize: 40, marginBottom: 12 } }, "\u{1F512}"),
+          h("p", { style: { fontSize: 14.5, fontWeight: 600, color: COLORS.ink, marginBottom: 6 } }, "\u0645\u0639\u0646\u062F\u0643\u064A\u0634 \u0635\u0644\u0627\u062D\u064A\u0629 \u0644\u0644\u062F\u062E\u0648\u0644 \u0647\u0646\u0627"),
+          h("p", { style: { fontSize: 12.5, color: COLORS.muted } }, "\u0643\u0644\u0651\u0645\u064A \u0645\u062F\u064A\u0631\u0629 \u0627\u0644\u062D\u0633\u0627\u0628 \u0644\u0648 \u0645\u062D\u062A\u0627\u062C\u0629 \u0635\u0644\u0627\u062D\u064A\u0629 \u0644\u0644\u0642\u0633\u0645 \u062F\u0647")
+        ) : h(React.Fragment, null,
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: setSelectedId, pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution }),
-        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece }),
+        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, myRole, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
         tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces }),
-        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece }),
+        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
+        tab === "review" && h(ReviewPage, { orders, onOpen: setSelectedId, onUpdateOrder: updateOrder, isAdminUser: isOwner || myRole === "admin" }),
+        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, onOpen: setSelectedId }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: setSelectedId })
+        )
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
       h("div", {
@@ -733,18 +758,8 @@ function App() {
               h(Emoji, { size: 13 }, "\u2039")
             )));
         })() : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 20 } },
-        h(NavTile, { active: false, accent: true, onClick: () => setShowNewOrder(true), emoji: "\u2795", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" }),
-        h(NavTile, { active: false, onClick: () => setTab("materials-hub"), emoji: "\u{1F9F5}", label: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
-        h(NavTile, { active: false, onClick: () => setTab("customers"), emoji: "\u{1F465}", label: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
-        h(NavTile, { active: false, onClick: () => setTab("distribution"), emoji: "\u{1F4E6}", label: "\u0627\u0644\u062A\u0648\u0632\u064A\u0639" }),
-        h(NavTile, { active: false, onClick: () => setTab("egypt-upholstery"), emoji: "\u{1F6CB}\uFE0F", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
-        h(NavTile, { active: false, onClick: () => setTab("production-board"), emoji: "\u{1F3ED}", label: "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }),
-        h(NavTile, { active: false, onClick: () => setTab("full-production"), emoji: "\u{1F4CB}", label: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644" }),
-        h(NavTile, { active: false, onClick: () => setTab("dashboard"), emoji: "\u{1F4CA}", label: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A" }),
-        h(NavTile, { active: false, onClick: () => setTab("activity-log"), emoji: "\u{1F4DC}", label: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
-        h(NavTile, { active: false, onClick: () => setTab("supplier-performance"), emoji: "\u2B50", label: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" }),
-        h(NavTile, { active: false, onClick: () => setTab("today-queue"), emoji: "\u{1F4CB}", label: "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629" }),
-        h(NavTile, { active: false, onClick: () => setTab("deliveries"), emoji: "\u{1F69A}", label: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" })
+        myRole !== "viewer" && h(NavTile, { active: false, accent: true, onClick: () => setShowNewOrder(true), emoji: "\u2795", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" }),
+        ALL_TABS.map((t) => h(NavTile, { key: t.key, active: false, locked: !canSeeTab(t.key), onClick: () => setTab(t.key), emoji: t.emoji, label: t.label }))
         )
       )
     )),
@@ -985,7 +1000,7 @@ function primaryBtn(disabled) {
     cursor: disabled ? "not-allowed" : "pointer"
   };
 }
-function NavTile({ active, onClick, emoji, label, accent }) {
+function NavTile({ active, onClick, emoji, label, accent, locked }) {
   return h(
     "button",
     {
@@ -1004,9 +1019,11 @@ function NavTile({ active, onClick, emoji, label, accent }) {
         background: accent ? COLORS.gold : COLORS.surface,
         boxShadow: active ? `0 0 0 2px ${COLORS.goldSoft}` : accent ? "0 4px 12px rgba(184,135,61,0.35)" : "0 1px 3px rgba(42,33,27,0.07)",
         cursor: "pointer",
-        overflow: "hidden"
+        overflow: "hidden",
+        opacity: locked ? 0.55 : 1
       }
     },
+    locked ? h("span", { style: { position: "absolute", top: 8, insetInlineEnd: 8, fontSize: 15 } }, "\u{1F512}") : null,
     h("span", { style: { fontSize: "clamp(44px, 12vw, 62px)", lineHeight: 1 } }, emoji),
     h("span", { style: { fontSize: 12.5, fontWeight: 700, color: accent ? "#fff" : active ? COLORS.gold : COLORS.ink, textAlign: "center" } }, label)
   );
@@ -1175,8 +1192,83 @@ function CustomersList({ orders, onOpen }) {
   }
   return /* @__PURE__ */ React.createElement("div", null, filterPanel, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, customers.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, c.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.muted } }, c.orders.length, " \u0623\u0648\u0631\u062F\u0631")), c.engineerName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F477}"), c.engineerName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, c.orders.map((o) => /* @__PURE__ */ React.createElement("button", { key: o.id, onClick: () => onOpen(o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, o.title || "\u0623\u0648\u0631\u062F\u0631 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, orderStatusLabel(o)))))))));
 }
+function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser }) {
+  const [showDone, setShowDone] = useState(false);
+  const all = orders.filter((o) => o.createdBy);
+  const queue = all.filter((o) => o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629");
+  const done = all.filter((o) => o.reviewStatus === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629");
+  const list = showDone ? done : queue;
+  const sorted = list.slice().sort((a, b) => (a.enteredAt || "").localeCompare(b.enteredAt || ""));
+  const fmtDateTime = (iso) => iso ? iso.replace("T", " ").slice(0, 16) : "\u2014";
+  const statusLabel = (o) => (o.editCount || 0) === 0 ? "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" : "\u0628\u0639\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644 " + o.editCount;
+  const setReview = (o, val) => {
+    const patch = { reviewStatus: val, reviewDate: todayStr() };
+    if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") patch.inRevisionAt = todayStr();
+    patch.approved = val === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629";
+    onUpdateOrder(o.id, patch);
+  };
+  const cols = ["\u062A\u0627\u0631\u064A\u062E \u062F\u062E\u0648\u0644 \u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"];
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F9FE}", title: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" }),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      h("button", { onClick: () => setShowDone(false), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${!showDone ? COLORS.gold : COLORS.border}`, background: !showDone ? COLORS.goldSoft : COLORS.surface, color: !showDone ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u23F3 \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 (" + queue.length + ")"),
+      h("button", { onClick: () => setShowDone(true), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${showDone ? COLORS.gold : COLORS.border}`, background: showDone ? COLORS.goldSoft : COLORS.surface, color: showDone ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645\u062A \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627 (" + done.length + ")")
+    ),
+    sorted.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0647\u0646\u0627" }) :
+    h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 980 } },
+        h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+        h("tbody", null, sorted.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", cursor: "pointer", color: COLORS.teal, fontWeight: 600 }, onClick: () => onOpen(o.id) }, fmtDateTime(o.enteredAt)),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)),
+          h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, o.clientName || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.category || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", direction: "ltr", textAlign: "start" } }, o.createdBy || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.inRevisionAt || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.reviewDate || "\u2014"),
+          h("td", { style: { padding: "9px 10px" } }, h("select", { value: o.reviewStatus || "", disabled: !isAdminUser, onChange: (e) => setReview(o, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+            h("option", { value: "" }, "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"),
+            h("option", { value: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" }, "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644"),
+            h("option", { value: "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" }, "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")
+          ))
+        )))
+      )
+    )
+  );
+}
+function MyOrdersPage({ orders, myEmail, onOpen }) {
+  const mine = orders.filter((o) => o.createdBy && myEmail && o.createdBy === myEmail);
+  const byDate = (a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99");
+  const pending = mine.filter((o) => !o.approved).slice().sort(byDate);
+  const approved = mine.filter((o) => o.approved).slice().sort(byDate);
+  const card = (o) => h("div", { key: o.id, onClick: () => onOpen(o.id), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } },
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      h("div", null,
+        h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.title || "\u0628\u062F\u0648\u0646 \u0639\u0646\u0648\u0627\u0646"),
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645")
+      ),
+      h(Emoji, { size: 13, color: COLORS.muted }, "\u2039")
+    ),
+    h("div", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, marginTop: 6 } }, orderStatusLabel(o)),
+    o.deliveryDate ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 3 } }, "\u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate) : null
+  );
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4C1}", title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A" }),
+    mine.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0639\u0645\u0644\u062A\u064A\u0634 \u0623\u064A \u0623\u0648\u0631\u062F\u0631" }) : h(React.Fragment, null,
+      pending.length > 0 ? h("div", { style: { marginBottom: 18 } },
+        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: COLORS.gold, margin: "0 0 8px" } }, h(Emoji, { size: 13 }, "\u23F3"), "\u0644\u0633\u0629 \u0645\u0627 \u0627\u062A\u0639\u062A\u0645\u062F\u062A (" + pending.length + ")"),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, pending.map(card))
+      ) : null,
+      approved.length > 0 ? h("div", null,
+        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: COLORS.green, margin: "0 0 8px" } }, h(Emoji, { size: 13 }, "\u2705"), "\u0645\u0639\u062A\u0645\u062F\u0629 (" + approved.length + ")"),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, approved.map(card))
+      ) : null
+    )
+  );
+}
 function MaterialsHubPage({ orders, onOpenOrder }) {
   const [view, setView] = useState("byCustomer");
+  const [missingSearch, setMissingSearch] = useState("");
   const customerGroups = {};
   orders.forEach((o) => {
     const key = (o.clientName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
@@ -1199,14 +1291,31 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
     }
     return (m.quantity || "\u2014") + " " + (m.unit || "");
   };
+  const missingSearchNorm = normalizeDigits(missingSearch.trim()).toLowerCase();
+  const filteredMissing = !missingSearchNorm ? missingMaterials : missingMaterials.filter((item) => {
+    const hay = normalizeDigits([item.customerName, item.orderTitle, item.material.type, item.material.companyName, item.material.itemCode, item.material.description, item.material.materialName].filter(Boolean).join(" ")).toLowerCase();
+    return hay.includes(missingSearchNorm);
+  });
+  const missingByClient = {};
+  filteredMissing.forEach((item) => {
+    const key = item.customerName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
+    (missingByClient[key] = missingByClient[key] || []).push(item);
+  });
+  const FAR_DATE = "9999-99-99";
+  const missingGroups = Object.keys(missingByClient).map((name) => {
+    const items = missingByClient[name].slice().sort((a, b) => (a.deliveryDate || FAR_DATE).localeCompare(b.deliveryDate || FAR_DATE));
+    const earliest = items.reduce((min, it) => (it.deliveryDate && it.deliveryDate < min) ? it.deliveryDate : min, FAR_DATE);
+    return { name, items, earliest };
+  }).sort((a, b) => a.earliest.localeCompare(b.earliest));
   const exportMissingExcel = () => {
     const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0646\u0648\u0639 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629"]];
-    missingMaterials.forEach((item) => rows.push([item.customerName, item.orderTitle || "", item.deliveryDate || "", item.material.type || "", item.material.description || item.material.materialName || "", materialDetailStr(item.material), item.material.availability || ""]));
+    missingGroups.forEach((g) => g.items.forEach((item) => rows.push([item.customerName, item.orderTitle || "", item.deliveryDate || "", item.material.type || "", normalizeDigits(item.material.description || item.material.materialName || ""), materialDetailStr(item.material), item.material.availability || ""])));
     exportToExcel("\u0627\u0644\u062E\u0627\u0645\u0627\u062A-\u062A\u062D\u062A-\u0627\u0644\u0637\u0644\u0628", [{ name: "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628", rows }]);
   };
   const exportMissingPdf = () => {
     const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0646\u0648\u0639 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629"];
-    const dataRows = missingMaterials.map((item) => [item.customerName, item.orderTitle || "", item.deliveryDate || "", item.material.type || "", item.material.description || item.material.materialName || "", materialDetailStr(item.material), item.material.availability || ""]);
+    const dataRows = [];
+    missingGroups.forEach((g) => g.items.forEach((item) => dataRows.push([item.customerName, item.orderTitle || "", item.deliveryDate || "", item.material.type || "", normalizeDigits(item.material.description || item.material.materialName || ""), materialDetailStr(item.material), item.material.availability || ""])));
     printAsPdf("\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628", headers, dataRows);
   };
   const toggleBtn = (key, label, emoji) => h("button", {
@@ -1237,17 +1346,22 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
     ) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
+      h("input", { style: fieldStyle, value: missingSearch, onChange: (e) => setMissingSearch(e.target.value), placeholder: "\u0628\u062D\u062B \u0628\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F..." }),
       h(ExportButtons, { onExcel: exportMissingExcel, onPdf: exportMissingPdf }),
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, missingMaterials.map((item, idx) => {
-        const isOrder = item.material.availability === "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628" || item.material.availability === "\u062C\u0627\u0631\u064A \u062A\u0635\u0646\u064A\u0639\u0647";
-        return h("div", { key: idx, style: { background: COLORS.surface, border: `1px solid ${isOrder ? COLORS.gold : COLORS.danger}`, borderRadius: 12, padding: 12 } },
-          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-            h("span", { style: { fontWeight: 700 } }, item.material.description || item.material.materialName || item.material.type),
-            h("span", { style: { fontSize: 11, fontWeight: 700, color: isOrder ? COLORS.gold : COLORS.danger, background: isOrder ? COLORS.goldSoft : "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, item.material.availability)
-          ),
-          h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4 } }, item.customerName, " \u00B7 ", item.orderTitle, item.deliveryDate ? " \u00B7 \u062A\u0633\u0644\u064A\u0645: " + item.deliveryDate : "")
-        );
-      })))
+      missingGroups.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, missingGroups.map((g) => h("div", { key: g.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
+        h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700 } }, g.name),
+        h("div", { style: { padding: 10, display: "flex", flexDirection: "column", gap: 10 } }, g.items.map((item, idx) => {
+          const isOrder = item.material.availability === "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628" || item.material.availability === "\u062C\u0627\u0631\u064A \u062A\u0635\u0646\u064A\u0639\u0647";
+          return h("div", { key: idx, style: { background: COLORS.bg, border: `1px solid ${isOrder ? COLORS.gold : COLORS.danger}`, borderRadius: 12, padding: 12 } },
+            h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+              h("span", { style: { fontWeight: 700 } }, normalizeDigits(item.material.description || item.material.materialName || item.material.type)),
+              h("span", { style: { fontSize: 11, fontWeight: 700, color: isOrder ? COLORS.gold : COLORS.danger, background: isOrder ? COLORS.goldSoft : "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, item.material.availability)
+            ),
+            h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4 } }, item.orderTitle, item.deliveryDate ? " \u00B7 \u062A\u0633\u0644\u064A\u0645: " + item.deliveryDate : "")
+          );
+        }))
+      ))))
     ) : (
       customerRollups.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u0645\u062A\u0633\u062C\u0644\u0629 \u0641\u064A \u0623\u064A \u0623\u0648\u0631\u062F\u0631" }) :
       h(React.Fragment, null,
@@ -1258,22 +1372,32 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
         const types = Object.keys(byType);
         return h("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
           h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700 } }, c.name),
-          h("div", { style: { padding: 10, display: "flex", flexDirection: "column", gap: 10 } }, types.map((t, idx) => h("div", { key: t, style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderTop: idx === 0 ? "none" : `1px dashed ${COLORS.border}`, paddingTop: idx === 0 ? 0 : 10 } },
-            h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
-              h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "3px 9px", borderRadius: 6, alignSelf: "flex-start", marginBottom: 3 } }, t),
-              byType[t].map((r, i) => h("span", { key: i, style: { fontSize: 14.5, fontWeight: 600, color: COLORS.ink, lineHeight: 1.5 } }, r.label))
-            ),
-            h("div", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" } },
-              h("span", { style: { fontSize: 12, opacity: 0, marginBottom: 3 } }, "\u200B"),
-              byType[t].map((r, i) => h("span", { key: i, style: { fontSize: 14.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap", lineHeight: 1.5 } }, r.total.toFixed(2), " ", r.unit))
-            )
-          )))
+          h("div", { style: { padding: 10, display: "flex", flexDirection: "column", gap: 10 } }, types.map((t, idx) => {
+            const grandTotal = byType[t].reduce((sum, r) => sum + r.total, 0);
+            const groupUnit = byType[t][0].unit;
+            return h("div", { key: t, style: { display: "flex", flexDirection: "column", gap: 6, borderTop: idx === 0 ? "none" : `1px dashed ${COLORS.border}`, paddingTop: idx === 0 ? 0 : 10 } },
+              h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+                h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+                  h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "3px 9px", borderRadius: 6, alignSelf: "flex-start", marginBottom: 3 } }, t),
+                  byType[t].map((r, i) => h("span", { key: i, style: { fontSize: 14.5, fontWeight: 600, color: COLORS.ink, lineHeight: 1.5 } }, r.label))
+                ),
+                h("div", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" } },
+                  h("span", { style: { fontSize: 12, opacity: 0, marginBottom: 3 } }, "\u200B"),
+                  byType[t].map((r, i) => h("span", { key: i, style: { fontSize: 14.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap", lineHeight: 1.5 } }, r.total.toFixed(2), " ", r.unit))
+                )
+              ),
+              byType[t].length > 1 ? h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.goldSoft, borderRadius: 8, padding: "6px 10px", marginTop: 2 } },
+                h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, "\u0625\u062C\u0645\u0627\u0644\u064A " + t),
+                h("span", { style: { fontSize: 14.5, fontWeight: 700, color: COLORS.gold } }, grandTotal.toFixed(2), " ", groupUnit)
+              ) : null
+            );
+          }))
         );
       }))
     ))
   );
 }
-function EgyptUpholsteryPage({ pieces, onUpdate }) {
+function EgyptUpholsteryPage({ pieces, onUpdate, readOnly }) {
   const relevant = pieces.filter((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && isSofaType(p.pieceType));
   const groups = {};
   relevant.forEach((p) => { (groups[p.customerName] = groups[p.customerName] || []).push(p); });
@@ -1309,10 +1433,10 @@ function EgyptUpholsteryPage({ pieces, onUpdate }) {
                 return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
                   h("td", { style: { padding: "10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
                   h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
-                  h("td", { style: { padding: "10px" } }, h("select", { value: p.fabricShippingStatus || "", onChange: (e) => onUpdate({ ...p, fabricShippingStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 110, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s)))),
-                  h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.fabricShippingDate || "", onChange: (e) => onUpdate({ ...p, fabricShippingDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
-                  h("td", { style: { padding: "10px" } }, h("select", { value: p.fabricArrivalStatus || "", onChange: (e) => onUpdate({ ...p, fabricArrivalStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))),
-                  h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.fabricArrivalDate || "", onChange: (e) => onUpdate({ ...p, fabricArrivalDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
+                  h("td", { style: { padding: "10px" } }, h("select", { value: p.fabricShippingStatus || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, fabricShippingStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 110, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s)))),
+                  h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.fabricShippingDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, fabricShippingDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
+                  h("td", { style: { padding: "10px" } }, h("select", { value: p.fabricArrivalStatus || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, fabricArrivalStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))),
+                  h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.fabricArrivalDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, fabricArrivalDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
                   h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, u ? h("span", { style: { fontWeight: 700, color: u.urgent ? COLORS.danger : COLORS.gold } }, u.daysLeft + " \u064A\u0648\u0645") : "\u2014")
                 );
               }))
@@ -1322,7 +1446,7 @@ function EgyptUpholsteryPage({ pieces, onUpdate }) {
       }))
   );
 }
-function DeliveriesPage({ pieces, onUpdate }) {
+function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   const [query, setQuery] = useState("");
   const ready = pieces.filter((p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate)
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
@@ -1356,12 +1480,12 @@ function DeliveriesPage({ pieces, onUpdate }) {
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
               h("td", { style: { padding: "9px 10px" } }, p.image && p.image.dataUrl ? h("img", { src: p.image.dataUrl, style: { width: 38, height: 38, borderRadius: 7, objectFit: "cover" } }) : "\u2014"),
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
-              h("td", { style: { padding: "9px 10px" } }, h("select", { value: p.deliveryConfirmed || "", onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+              h("td", { style: { padding: "9px 10px" } }, h("select", { value: p.deliveryConfirmed || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
                 h("option", { value: "" }, "\u0641\u0627\u0631\u063A"),
                 h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
                 h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
               )),
-              h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
+              h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
               h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: achColor, background: achBg, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" } }, h(Emoji, { size: 12 }, achEmoji), a.type + (a.days > 0 ? " (" + a.days + " \u064A\u0648\u0645)" : "")) : h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u2014"))
             );
           }))
@@ -1473,17 +1597,18 @@ function SupplierPerformancePage({ pieces }) {
     if (!p.supplierName) return;
     if (!bySupplier[p.supplierName]) bySupplier[p.supplierName] = { pieces: [], early: 0, onTime: 0, late: 0, unknown: 0, inProgress: 0 };
     const rec = bySupplier[p.supplierName];
+    const qty = Number(p.pieceCount) || 1;
     rec.pieces.push(p);
     if (p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") {
-      if (p.currentLocation === p.supplierName) rec.inProgress += 1;
+      if (p.currentLocation === p.supplierName) rec.inProgress += qty;
       return;
     }
-    if (!p.agreedDeadline) { rec.unknown += 1; return; }
+    if (!p.agreedDeadline) { rec.unknown += qty; return; }
     const shipStart = p.stages && p.stages["\u0634\u062D\u0646"] && p.stages["\u0634\u062D\u0646"].start;
-    if (!shipStart) { rec.unknown += 1; return; }
-    if (shipStart < p.agreedDeadline) rec.early += 1;
-    else if (shipStart === p.agreedDeadline) rec.onTime += 1;
-    else rec.late += 1;
+    if (!shipStart) { rec.unknown += qty; return; }
+    if (shipStart < p.agreedDeadline) rec.early += qty;
+    else if (shipStart === p.agreedDeadline) rec.onTime += qty;
+    else rec.late += qty;
   });
   const names = Object.keys(bySupplier).sort((a, b) => a.localeCompare(b, "ar"));
   return h("div", null,
@@ -1493,14 +1618,14 @@ function SupplierPerformancePage({ pieces }) {
         const r = bySupplier[name];
         const evaluated = r.early + r.onTime + r.late;
         const pct = evaluated > 0 ? Math.round(((r.early + r.onTime) / evaluated) * 100) : null;
-        const orderCount = countDistinctOrders(r.pieces);
+        const totalPieceCount = r.pieces.reduce((s, p) => s + (Number(p.pieceCount) || 1), 0);
         return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } },
           h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
             h("span", { style: { fontWeight: 700, fontSize: 15 } }, name),
             pct !== null ? h("span", { style: { fontSize: 13, fontWeight: 700, color: pct >= 80 ? COLORS.green : pct >= 50 ? COLORS.gold : COLORS.danger } }, "\u0627\u0644\u062A\u0632\u0627\u0645: " + pct + "%") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0645\u0641\u064A\u0634 \u0628\u064A\u0627\u0646\u0627\u062A \u0643\u0641\u0627\u064A\u0629")
           ),
           h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: COLORS.muted } },
-            h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A: " + orderCount),
+            h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0642\u0637\u0639: " + totalPieceCount),
             h("span", null, "\u{1F535} \u0642\u0628\u0644 \u0627\u0644\u0645\u064A\u0639\u0627\u062F: " + r.early),
             h("span", null, "\u{1F7E2} \u0641\u064A \u0627\u0644\u0645\u064A\u0639\u0627\u062F: " + r.onTime),
             h("span", null, "\u{1F534} \u0645\u062A\u0623\u062E\u0631: " + r.late),
@@ -1900,7 +2025,7 @@ function BrandingModal({ branding, onClose, onSave }) {
   };
   return /* @__PURE__ */ React.createElement(Modal, { title: "\u0634\u0639\u0627\u0631 \u0648\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0634\u0639\u0627\u0631"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } }, logo ? /* @__PURE__ */ React.createElement("img", { src: logo, alt: "logo", style: { width: 56, height: 56, borderRadius: 14, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 56, height: 56, borderRadius: 14, background: COLORS.goldSoft, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 24 }, "\u{1F528}")), /* @__PURE__ */ React.createElement("label", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "12px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0627\u062E\u062A\u064A\u0627\u0631 \u0635\u0648\u0631\u0629", /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", onChange: handleFile, style: { display: "none" } })), logo && /* @__PURE__ */ React.createElement("button", { onClick: () => setLogo(null), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: "Al Khobar Orders", dir: "ltr" }), /* @__PURE__ */ React.createElement("button", { disabled: !name.trim(), style: primaryBtn(!name.trim()), onClick: () => onSave({ name: name.trim(), logo }) }, "\u062D\u0641\u0638"));
 }
-function OrderDetail({ order, onBack, onUpdate, onDelete }) {
+function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditOrder, setShowEditOrder] = useState(false);
   const [section, setSection] = useState(null);
@@ -1910,12 +2035,14 @@ function OrderDetail({ order, onBack, onUpdate, onDelete }) {
     h("div", { style: { flex: 1 } },
       h("div", { style: { ...display, fontSize: 21, fontWeight: 700 } }, order.title),
       h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, order.clientName, " \u00B7 ", order.dateReceived),
-      h("div", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, marginTop: 2 } }, orderStatusLabel(order))
+      h("div", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, marginTop: 2 } }, orderStatusLabel(order)),
+      order.createdBy ? h("div", { style: { fontSize: 11.5, color: order.approved ? COLORS.green : COLORS.muted, fontWeight: 600, marginTop: 2 } }, order.approved ? "\u2705 \u0645\u0639\u062A\u0645\u062F" : "\u23F3 \u0644\u0633\u0629 \u0645\u0627 \u0627\u062A\u0639\u062A\u0645\u062F") : null
     ),
-    h("button", { onClick: () => setShowEditOrder(true), style: iconBtnStyle, title: "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }, h(Emoji, { size: 17 }, "\u270F\uFE0F")),
-    h("button", { onClick: () => setConfirmDelete(true), style: iconBtnStyle }, h(Emoji, { size: 17, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
+    isAdminUser && order.createdBy ? h("button", { onClick: () => onUpdate({ approved: !order.approved, reviewStatus: !order.approved ? "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" : "", reviewDate: todayStr() }), style: iconBtnStyle, title: order.approved ? "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" : "\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0646\u0647\u0627\u0626\u064A\u0629" }, h(Emoji, { size: 17, color: order.approved ? COLORS.green : COLORS.gold }, order.approved ? "\u2705" : "\u{1F512}")) : null,
+    canEdit ? h("button", { onClick: () => setShowEditOrder(true), style: iconBtnStyle, title: "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }, h(Emoji, { size: 17 }, "\u270F\uFE0F")) : null,
+    canEdit ? h("button", { onClick: () => setConfirmDelete(true), style: iconBtnStyle }, h(Emoji, { size: 17, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null
   );
-  const editOrderModal = showEditOrder && h(NewOrderModal, { existing: order, onClose: () => setShowEditOrder(false), onSave: (patch) => { onUpdate(patch); setShowEditOrder(false); } });
+  const editOrderModal = showEditOrder && h(NewOrderModal, { existing: order, onClose: () => setShowEditOrder(false), onSave: (patch) => { onUpdate(isAdminUser ? patch : { ...patch, editCount: (order.editCount || 0) + 1 }); setShowEditOrder(false); } });
   const subHeader = (title, onBackClick) => h("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "16px 16px 0" } },
     h("button", { onClick: onBackClick, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
     h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, title)
@@ -1946,7 +2073,7 @@ function OrderDetail({ order, onBack, onUpdate, onDelete }) {
           cost.productionCostEGP > 0 ? h("div", { style: { background: COLORS.bg, borderRadius: 8, padding: 8, marginBottom: 8 } },
             h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
               h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645 (\u062C\u0646\u064A\u0647 \u0644\u0643\u0644 \u0631\u064A\u0627\u0644)"),
-              h("input", { type: "number", value: order.exchangeRate || "", onChange: (e) => onUpdate({ exchangeRate: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "\u0645\u062B\u0627\u0644: 12.5", style: { width: 90, padding: "5px 8px", fontSize: 12.5, borderRadius: 6, border: `1px solid ${COLORS.border}`, textAlign: "center" } })
+              h("input", { type: "number", value: order.exchangeRate || "", disabled: !canEdit, onChange: (e) => onUpdate({ exchangeRate: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "\u0645\u062B\u0627\u0644: 12.5", style: { width: 90, padding: "5px 8px", fontSize: 12.5, borderRadius: 6, border: `1px solid ${COLORS.border}`, textAlign: "center" } })
             ),
             cost.exchangeRate > 0 ? h("div", { style: { fontSize: 12, color: COLORS.teal, marginTop: 6, fontWeight: 600 } }, "\u2248 " + cost.productionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 2 }) + " \u0631\u064A\u0627\u0644") : h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 6 } }, "\u062D\u0637\u064A \u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0639\u0634\u0627\u0646 \u064A\u062A\u062D\u0648\u0644 \u0627\u0644\u0645\u0628\u0644\u063A \u0644\u0644\u0631\u064A\u0627\u0644")
           ) : null,
@@ -1963,7 +2090,7 @@ function OrderDetail({ order, onBack, onUpdate, onDelete }) {
   if (section === "quote") {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       subHeader("\u0639\u0631\u0636 \u0627\u0644\u0633\u0639\u0631", () => setSection(null)),
-      h("div", { style: { padding: 16 } }, h(ProductionQuotePage, { order, onUpdate })),
+      h("div", { style: { padding: 16 } }, h(ProductionQuotePage, { order, onUpdate, canEdit })),
       deleteModal,
       editOrderModal
     );
@@ -1983,12 +2110,12 @@ function OrderDetail({ order, onBack, onUpdate, onDelete }) {
   }
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
     subHeader(materialsView === "items" ? "\u0625\u0636\u0627\u0641\u0629 \u062E\u0627\u0645\u0627\u062A" : "\u062A\u062C\u0645\u064A\u0639 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631", () => setMaterialsView(null)),
-    h("div", { style: { padding: "0 16px" } }, h(MaterialsPage, { order, onUpdate, forcedView: materialsView })),
+    h("div", { style: { padding: "0 16px" } }, h(MaterialsPage, { order, onUpdate, forcedView: materialsView, canEdit })),
     deleteModal,
     editOrderModal
   );
 }
-function MaterialsPage({ order, onUpdate, forcedView }) {
+function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [editingQuote, setEditingQuote] = useState(null);
@@ -1999,16 +2126,16 @@ function MaterialsPage({ order, onUpdate, forcedView }) {
   const [typeTab, setTypeTab] = useState("\u0627\u0644\u0643\u0644");
   const presentTypes = Array.from(new Set((order.materials || []).map((m) => m.type).filter(Boolean)));
   const itemsForTab = typeTab === "\u0627\u0644\u0643\u0644" ? (order.materials || []) : (order.materials || []).filter((m) => m.type === typeTab);
-  const addMaterial = (m) => onUpdate({ materials: [...(order.materials || []), m] });
-  const updateMaterial = (m) => onUpdate({ materials: (order.materials || []).map((x) => x.id === m.id ? m : x) });
-  const removeMaterial = (id) => onUpdate({ materials: (order.materials || []).filter((m) => m.id !== id), quotes: (order.quotes || []).filter((q) => q.materialId !== id) });
-  const addPiece = (materialId, piece) => onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: [...m.pieces || [], piece] } : m) });
-  const updatePieceInMaterial = (materialId, piece) => onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: (m.pieces || []).map((p) => p.id === piece.id ? piece : p) } : m) });
-  const removePiece = (materialId, pieceId) => onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: (m.pieces || []).filter((p) => p.id !== pieceId) } : m) });
-  const addQuote = (q) => onUpdate({ quotes: [...(order.quotes || []), q] });
-  const updateQuote = (q) => onUpdate({ quotes: (order.quotes || []).map((x) => x.id === q.id ? q : x) });
-  const removeQuote = (id) => onUpdate({ quotes: (order.quotes || []).filter((q) => q.id !== id) });
-  const chooseQuote = (materialId, quoteId) => onUpdate({ quotes: (order.quotes || []).map((q) => q.materialId === materialId ? { ...q, chosen: q.id === quoteId ? !q.chosen : false } : q) });
+  const addMaterial = (m) => { if (!canEdit) return; onUpdate({ materials: [...(order.materials || []), m] }); };
+  const updateMaterial = (m) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).map((x) => x.id === m.id ? m : x) }); };
+  const removeMaterial = (id) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).filter((m) => m.id !== id), quotes: (order.quotes || []).filter((q) => q.materialId !== id) }); };
+  const addPiece = (materialId, piece) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: [...m.pieces || [], piece] } : m) }); };
+  const updatePieceInMaterial = (materialId, piece) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: (m.pieces || []).map((p) => p.id === piece.id ? piece : p) } : m) }); };
+  const removePiece = (materialId, pieceId) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: (m.pieces || []).filter((p) => p.id !== pieceId) } : m) }); };
+  const addQuote = (q) => { if (!canEdit) return; onUpdate({ quotes: [...(order.quotes || []), q] }); };
+  const updateQuote = (q) => { if (!canEdit) return; onUpdate({ quotes: (order.quotes || []).map((x) => x.id === q.id ? q : x) }); };
+  const removeQuote = (id) => { if (!canEdit) return; onUpdate({ quotes: (order.quotes || []).filter((q) => q.id !== id) }); };
+  const chooseQuote = (materialId, quoteId) => { if (!canEdit) return; onUpdate({ quotes: (order.quotes || []).map((q) => q.materialId === materialId ? { ...q, chosen: q.id === quoteId ? !q.chosen : false } : q) }); };
   const rollup = computeMaterialsRollup((order.materials || []));
   const exportRollupExcel = () => {
     const rows = [["\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "\u0627\u0644\u0648\u062D\u062F\u0629"]];
@@ -2061,25 +2188,26 @@ function MaterialsPage({ order, onUpdate, forcedView }) {
       const isMeasured = MEASURED_TYPES.includes(typeTab);
       const isCoded = CODED_TYPES.includes(typeTab);
       const imgCell = (url) => url ? '<img src="' + url + '" style="width:60px;height:60px;object-fit:cover;border-radius:6px">' : "\u2014";
+      const drawingCell = (f) => f ? '<a href="' + f.dataUrl + '" target="_blank" style="color:#4F7C82;text-decoration:none">\u{1F4CE} ' + (f.name || "\u0645\u0644\u0641") + '</a>' : "\u2014";
       if (isMeasured) {
-        const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+        const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"];
         const dataRows = [];
         itemsForTab.forEach((m) => {
           if ((m.pieces || []).length > 0) {
-            m.pieces.forEach((p) => dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", imgCell(p.image)]));
+            m.pieces.forEach((p) => dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", imgCell(p.image), drawingCell(p.drawingFile)]));
           } else {
-            dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", "\u2014", "\u2014", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", "\u2014"]);
+            dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", "\u2014", "\u2014", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", "\u2014", "\u2014"]);
           }
         });
-        printAsPdf(typeTab + " " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
+        printAsPdf((order.clientName || "\u0627\u0644\u0639\u0645\u064A\u0644") + " - " + typeTab, headers, dataRows);
       } else if (isCoded) {
         const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0643\u0648\u062F \u0627\u0644\u0635\u0646\u0641", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631"];
         const dataRows = itemsForTab.map((m) => [order.clientName || "", order.deliveryDate || "", m.itemCode || "\u2014", m.companyName || "\u2014", m.quantity || "", m.unit || "", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || ""]);
-        printAsPdf(typeTab + " " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
+        printAsPdf((order.clientName || "\u0627\u0644\u0639\u0645\u064A\u0644") + " - " + typeTab, headers, dataRows);
       } else {
         const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631"];
         const dataRows = itemsForTab.map((m) => [order.clientName || "", order.deliveryDate || "", m.description || "\u2014", m.quantity || "", m.unit || "", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || ""]);
-        printAsPdf(typeTab + " " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
+        printAsPdf((order.clientName || "\u0627\u0644\u0639\u0645\u064A\u0644") + " - " + typeTab, headers, dataRows);
       }
       return;
     }
@@ -2096,15 +2224,15 @@ function MaterialsPage({ order, onUpdate, forcedView }) {
         dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "\u2014", m.description || "\u2014", "\u2014", "\u2014", isMeasured ? "\u2014" : m.quantity, isMeasured ? "\u2014" : m.unit, m.availability || "", "\u2014"]);
       }
     });
-    printAsPdf("\u062E\u0627\u0645\u0627\u062A " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
+    printAsPdf((order.clientName || "\u0627\u0644\u0639\u0645\u064A\u0644") + " - \u062C\u0645\u064A\u0639 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", headers, dataRows);
   };
-  return /* @__PURE__ */ React.createElement("div", null, !forcedView && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } }, /* @__PURE__ */ React.createElement(TabButton, { active: view === "items", onClick: () => setView("items"), emoji: "\u{1F9F5}", label: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }), /* @__PURE__ */ React.createElement(TabButton, { active: view === "rollup", onClick: () => setView("rollup"), emoji: "\u{1F4CA}", label: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A" })), view === "rollup" ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4CA}", title: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u062A\u0634\u0627\u0628\u0647\u0629" }), rollup.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u062E\u0627\u0645\u0627\u062A \u0641\u064A \u062A\u0628\u0648\u064A\u0628 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0639\u0634\u0627\u0646 \u064A\u0638\u0647\u0631 \u0627\u0644\u062A\u062C\u0645\u064A\u0639 \u0647\u0646\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, rollup.map((r, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6, marginLeft: 6 } }, r.type), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600 } }, r.label)), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, r.total.toFixed(2), " ", r.unit)))), (order.materials || []).length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportRollupExcel, onPdf: exportRollupPdf })) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629" }), presentTypes.length > 1 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, ["\u0627\u0644\u0643\u0644"].concat(presentTypes).map((t) => /* @__PURE__ */ React.createElement("button", { key: t, onClick: () => setTypeTab(t), style: { padding: "7px 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${typeTab === t ? COLORS.gold : COLORS.border}`, background: typeTab === t ? COLORS.goldSoft : "#fff", color: typeTab === t ? COLORS.gold : COLORS.muted, cursor: "pointer" } }, t))), itemsForTab.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportItemsExcel, onPdf: exportItemsPdf }), itemsForTab.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629 (\u0642\u0645\u0627\u0634\u060C \u0631\u062E\u0627\u0645\u060C \u0632\u062C\u0627\u062C...) \u0644\u062D\u0635\u0631 \u0627\u0644\u0643\u0645\u064A\u0627\u062A" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, itemsForTab.map((m) => {
+  return /* @__PURE__ */ React.createElement("div", null, !forcedView && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } }, /* @__PURE__ */ React.createElement(TabButton, { active: view === "items", onClick: () => setView("items"), emoji: "\u{1F9F5}", label: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }), /* @__PURE__ */ React.createElement(TabButton, { active: view === "rollup", onClick: () => setView("rollup"), emoji: "\u{1F4CA}", label: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A" })), view === "rollup" ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4CA}", title: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u062A\u0634\u0627\u0628\u0647\u0629" }), rollup.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u062E\u0627\u0645\u0627\u062A \u0641\u064A \u062A\u0628\u0648\u064A\u0628 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0639\u0634\u0627\u0646 \u064A\u0638\u0647\u0631 \u0627\u0644\u062A\u062C\u0645\u064A\u0639 \u0647\u0646\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, rollup.map((r, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6, marginLeft: 6 } }, r.type), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 600 } }, r.label)), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, r.total.toFixed(2), " ", r.unit)))), (order.materials || []).length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportRollupExcel, onPdf: exportRollupPdf })) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629" }), presentTypes.length > 1 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 } }, ["\u0627\u0644\u0643\u0644"].concat(presentTypes).map((t) => /* @__PURE__ */ React.createElement("button", { key: t, onClick: () => setTypeTab(t), style: { padding: "7px 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${typeTab === t ? COLORS.gold : COLORS.border}`, background: typeTab === t ? COLORS.goldSoft : "#fff", color: typeTab === t ? COLORS.gold : COLORS.muted, cursor: "pointer" } }, t))), itemsForTab.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportItemsExcel, onPdf: exportItemsPdf }), itemsForTab.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629 (\u0642\u0645\u0627\u0634\u060C \u0631\u062E\u0627\u0645\u060C \u0632\u062C\u0627\u062C...) \u0644\u062D\u0635\u0631 \u0627\u0644\u0643\u0645\u064A\u0627\u062A" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } }, itemsForTab.map((m) => {
     const quotesForMaterial = (order.quotes || []).filter((q) => q.materialId === m.id);
     const isMeasured = MEASURED_TYPES.includes(m.type);
     const isCoded = CODED_TYPES.includes(m.type);
     const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold;
     return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, isMeasured ? m.materialName : m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.description), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 320 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, ["\u0627\u062E\u062A\u064A\u0627\u0631", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0645\u062F\u0629"].map((c) => /* @__PURE__ */ React.createElement("th", { key: c, style: { padding: "4px 6px", textAlign: "start", color: COLORS.muted, fontWeight: 600, fontSize: 11 } }, c)))), /* @__PURE__ */ React.createElement("tbody", null, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("tr", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { cursor: "pointer", borderTop: `1px solid ${COLORS.border}`, background: q.chosen ? COLORS.goldSoft : "transparent" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: q.chosen ? 700 : 400 } }, q.supplierName), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: 700, color: COLORS.ink } }, q.price, " \u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", color: COLORS.muted } }, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
-  })), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddMaterial(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062E\u0627\u0645\u0629")), showAddMaterial && /* @__PURE__ */ React.createElement(AddMaterialModal, { onClose: () => setShowAddMaterial(false), onSave: (m) => {
+  })), canEdit && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddMaterial(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062E\u0627\u0645\u0629")), showAddMaterial && /* @__PURE__ */ React.createElement(AddMaterialModal, { onClose: () => setShowAddMaterial(false), onSave: (m) => {
     addMaterial(m);
     setShowAddMaterial(false);
   } }), editingMaterial && /* @__PURE__ */ React.createElement(AddMaterialModal, { existing: editingMaterial, onClose: () => setEditingMaterial(null), onSave: (m) => {
@@ -2225,13 +2353,13 @@ function AddMaterialModal({ onClose, onSave, existing }) {
     h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({
     id: existing ? existing.id : uid(),
     type,
-    description: isCoded ? (companyName.trim() + (itemCode.trim() ? " - " + itemCode.trim() : "")) : description.trim(),
+    description: isCoded ? (companyName.trim() + (itemCode.trim() ? " - " + normalizeDigits(itemCode.trim()) : "")) : description.trim(),
     orderDate,
     leadTimeDays,
     availability,
     quantity: isMeasured ? "" : quantity,
     unit: isMeasured ? "" : unit,
-    itemCode: isCoded ? itemCode.trim() : "",
+    itemCode: isCoded ? normalizeDigits(itemCode.trim()) : "",
     companyName: isCoded ? companyName.trim() : "",
     materialName: isMeasured ? materialName.trim() : "",
     marbleType: type === "رخام" ? marbleType.trim() : "",
@@ -2318,13 +2446,13 @@ function AddDistributionItemModal({ onClose, onSave, existing }) {
   const canSave = description.trim() && pieceCount;
   return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0646\u0635\u0631 \u062A\u0648\u0632\u064A\u0639" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631 \u062A\u0648\u0632\u064A\u0639", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0648\u0635\u0641 \u0627\u0644\u0639\u0646\u0635\u0631"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u0629 3 \u0645\u0642\u0627\u0639\u062F" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: pieceCount, onChange: (e) => setPieceCount(e.target.value), placeholder: "0" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639 \u0627\u0644\u0645\u0633\u0624\u0648\u0644 \u0639\u0646 \u0627\u0644\u0639\u0646\u0635\u0631" }), /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: existing ? existing.id : uid(), description: description.trim(), pieceCount: Number(pieceCount), supplierName: supplierName.trim() }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0646\u0635\u0631"));
 }
-function ProductionQuotePage({ order, onUpdate }) {
+function ProductionQuotePage({ order, onUpdate, canEdit }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const items = order.productionQuoteItems || [];
-  const addItem = (it) => onUpdate({ productionQuoteItems: [...items, it] });
-  const updateItem = (it) => onUpdate({ productionQuoteItems: items.map((x) => x.id === it.id ? it : x) });
-  const removeItem = (id) => onUpdate({ productionQuoteItems: items.filter((i) => i.id !== id) });
+  const addItem = (it) => { if (!canEdit) return; onUpdate({ productionQuoteItems: [...items, it] }); };
+  const updateItem = (it) => { if (!canEdit) return; onUpdate({ productionQuoteItems: items.map((x) => x.id === it.id ? it : x) }); };
+  const removeItem = (id) => { if (!canEdit) return; onUpdate({ productionQuoteItems: items.filter((i) => i.id !== id) }); };
   const totalSAR = items.filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
   const totalEGP = items.filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
   const exportExcel = () => {
@@ -2342,7 +2470,7 @@ function ProductionQuotePage({ order, onUpdate }) {
     if (totalEGP > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", ""]);
     printAsPdf("\u062A\u0633\u0639\u064A\u0631 " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
   };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, totalSAR > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")), totalEGP > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645"))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, totalSAR > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")), totalEGP > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645"))), canEdit && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
     addItem(it);
     setShowAdd(false);
   } }), editingItem && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { existing: editingItem, onClose: () => setEditingItem(null), onSave: (it) => {
@@ -2406,7 +2534,22 @@ const DEFAULT_PRODUCTION_SUPPLIERS = {
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
-const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تنفيذ عند مورد", viewer: "مشاهدة فقط" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", viewer: "مشاهدة فقط" };
+const ALL_TABS = [
+  { key: "review", label: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", emoji: "\u{1F9FE}" },
+  { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
+  { key: "materials-hub", label: "الخامات", emoji: "🧵" },
+  { key: "customers", label: "العملاء", emoji: "👥" },
+  { key: "distribution", label: "التوزيع", emoji: "📦" },
+  { key: "egypt-upholstery", label: "تنجيد مصر", emoji: "🛋️" },
+  { key: "production-board", label: "أقسام الإنتاج", emoji: "🏭" },
+  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
+  { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
+  { key: "activity-log", label: "سجل النشاط", emoji: "📜" },
+  { key: "supplier-performance", label: "تقييم الموردين", emoji: "⭐" },
+  { key: "today-queue", label: "طابور شغل النهاردة", emoji: "📋" },
+  { key: "deliveries", label: "الجاهزية والتسليم", emoji: "🚚" }
+];
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function daysUntil(d) { if (!d) return null; return Math.round((new Date(d) - new Date(todayStr())) / 86400000); }
 function isSofaType(t) { return (t || "").includes("كنب"); }
@@ -3080,7 +3223,7 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   const addMember = () => {
     const e = newEmail.trim().toLowerCase();
     if (!e || members.some((m) => m.email === e)) return;
-    setMembers([...members, { email: e, role: "viewer", supplierScope: [] }]);
+    setMembers([...members, { email: e, role: "viewer", supplierScope: [], permittedTabs: [] }]);
     setNewEmail("");
   };
   const removeMember = (email) => { if (email === access.ownerEmail) return; setMembers(members.filter((m) => m.email !== email)); };
@@ -3091,9 +3234,19 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
       return { ...m, supplierScope: has ? m.supplierScope.filter((s) => s !== supplier) : [...(m.supplierScope || []), supplier] };
     }));
   };
+  const memberTabs = (m) => m.permittedTabs !== undefined ? m.permittedTabs : ALL_TABS.map((t) => t.key);
+  const toggleTab = (email, tabKey) => {
+    setMembers(members.map((m) => {
+      if (m.email !== email) return m;
+      const current = memberTabs(m);
+      const has = current.includes(tabKey);
+      return { ...m, permittedTabs: has ? current.filter((k) => k !== tabKey) : [...current, tabKey] };
+    }));
+  };
+  const setAllTabs = (email, allOn) => updateMember(email, { permittedTabs: allOn ? ALL_TABS.map((t) => t.key) : [] });
   const save = () => onSave({ ...access, allowedEmails: members.map((m) => m.email), members });
   return h(Modal, { title: "إدارة الأدوار والصلاحيات", onClose },
-    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'حددي دور كل مستخدم. دور "تنفيذ عند مورد" يقدر يعدل بس القطع اللي عند الموردين المحددين له.'),
+    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'حددي دور كل مستخدم، وتحت كل واحد حددي بالظبط الأقسام اللي يقدر يدخلها من التطبيق — أي قسم مش متحدد هيفضل ظاهر بس مقفول 🔒 وميقدرش يدخله. دور "مدير" بيشوف كل حاجة تلقائي. دور "مهندس مبيعات" يقدر يضيف أوردر ويعدل بس في أوردراته هو لحد ما تعتمديها من صفحة الأوردر (زرار 🔒/✅ في الأعلى).'),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
       h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "email@example.com", dir: "ltr" }),
       h("button", { onClick: addMember, style: { ...primaryBtn(false), width: 70, padding: "10px 0" } }, "إضافة")
@@ -3107,10 +3260,23 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
         h("select", { style: { ...fieldStyle, marginBottom: m.role === "production" ? 8 : 0 }, disabled: m.email === access.ownerEmail, value: m.role, onChange: (e) => updateMember(m.email, { role: e.target.value }) },
           Object.keys(ROLE_LABELS).map((r) => h("option", { key: r, value: r }, ROLE_LABELS[r]))
         ),
-        m.role === "production" ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, allSuppliers.map((s) =>
+        m.role === "production" ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((s) =>
           h("label", { key: s, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(s) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(s) ? COLORS.goldSoft : "#fff" } },
             h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(s), onChange: () => toggleScope(m.email, s), style: { display: "none" } }), s)
-        )) : null
+        )) : null,
+        m.role === "admin" || m.email === access.ownerEmail ? h("p", { style: { fontSize: 11.5, color: COLORS.muted, margin: 0 } }, "🔓 عندها/عنده كل الأقسام تلقائي") : h(React.Fragment, null,
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 6 } },
+            h("span", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted } }, "الأقسام المسموح بيها"),
+            h("div", { style: { display: "flex", gap: 10 } },
+              h("button", { onClick: () => setAllTabs(m.email, true), style: { background: "transparent", border: "none", color: COLORS.teal, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 } }, "تحديد الكل"),
+              h("button", { onClick: () => setAllTabs(m.email, false), style: { background: "transparent", border: "none", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 } }, "إلغاء الكل")
+            )
+          ),
+          h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, ALL_TABS.map((t) =>
+            h("label", { key: t.key, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${memberTabs(m).includes(t.key) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: memberTabs(m).includes(t.key) ? COLORS.goldSoft : "#fff" } },
+              h("input", { type: "checkbox", checked: memberTabs(m).includes(t.key), onChange: () => toggleTab(m.email, t.key), style: { display: "none" } }), t.emoji + " " + t.label)
+          ))
+        )
       )
     )),
     h("button", { style: primaryBtn(false), onClick: save }, "حفظ")
