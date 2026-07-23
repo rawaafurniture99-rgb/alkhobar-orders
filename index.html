@@ -448,6 +448,7 @@ function App() {
   const isOwner = access && user && access.ownerEmail === user.email;
   const myMember = access && access.members ? access.members.find((m) => m.email === (user && user.email)) : null;
   const myRole = isOwner ? "admin" : myMember ? myMember.role : "viewer";
+  const myDisplayName = (myMember && myMember.name && myMember.name.trim()) || (user && user.email) || "";
   const mySupplierScope = myMember ? myMember.supplierScope || [] : [];
   const canEditDistribution = myRole === "admin" || myRole === "distributor";
   const canEditFullProduction = myRole === "admin";
@@ -624,7 +625,7 @@ function App() {
     logActivity("\u0639\u062F\u0651\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0623\u0648\u0631\u062F\u0631: " + (ord ? ord.title : id));
   };
   const addOrder = (o) => {
-    const withOwner = { ...o, createdBy: (user && user.email) || "", approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "" };
+    const withOwner = { ...o, createdBy: (user && user.email) || "", engineerName: myDisplayName, approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "" };
     persistRecordWrite(ordersColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F: " + o.title);
   };
@@ -689,7 +690,7 @@ function App() {
           h("p", { style: { fontSize: 12.5, color: COLORS.muted } }, "\u0643\u0644\u0651\u0645\u064A \u0645\u062F\u064A\u0631\u0629 \u0627\u0644\u062D\u0633\u0627\u0628 \u0644\u0648 \u0645\u062D\u062A\u0627\u062C\u0629 \u0635\u0644\u0627\u062D\u064A\u0629 \u0644\u0644\u0642\u0633\u0645 \u062F\u0647")
         ) : h(React.Fragment, null,
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: setSelectedId, pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
-        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution }),
+        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution, orders, onUpdateOrder: updateOrder }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, myRole, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
@@ -699,8 +700,8 @@ function App() {
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
         tab === "review" && h(ReviewPage, { orders, onOpen: setSelectedId, onUpdateOrder: updateOrder, isAdminUser: isOwner || myRole === "admin" }),
-        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, onOpen: setSelectedId }),
-        tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: setSelectedId })
+        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, isAdminUser: isOwner || myRole === "admin", onOpen: setSelectedId, onUpdateOrder: updateOrder }),
+        tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: setSelectedId, onUpdateOrder: updateOrder })
         )
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -763,10 +764,9 @@ function App() {
         )
       )
     )),
-    showNewOrder && h(NewOrderModal, { existingCategories: [...new Set(orders.map((o) => (o.category || "").trim()).filter(Boolean))], onClose: () => setShowNewOrder(false), onSave: (o) => {
+    showNewOrder && h(NewOrderModal, { engineerName: myDisplayName, existingCategories: [...new Set(orders.map((o) => (o.category || "").trim()).filter(Boolean))], onClose: () => setShowNewOrder(false), onSave: (o) => {
       addOrder(o);
       setShowNewOrder(false);
-      setSelectedId(o.id);
     } }),
     showBranding && h(BrandingModal, { branding, onClose: () => setShowBranding(false), onSave: (b) => {
       persistBranding(b);
@@ -1019,11 +1019,9 @@ function NavTile({ active, onClick, emoji, label, accent, locked }) {
         background: accent ? COLORS.gold : COLORS.surface,
         boxShadow: active ? `0 0 0 2px ${COLORS.goldSoft}` : accent ? "0 4px 12px rgba(184,135,61,0.35)" : "0 1px 3px rgba(42,33,27,0.07)",
         cursor: "pointer",
-        overflow: "hidden",
-        opacity: locked ? 0.55 : 1
+        overflow: "hidden"
       }
     },
-    locked ? h("span", { style: { position: "absolute", top: 8, insetInlineEnd: 8, fontSize: 15 } }, "\u{1F512}") : null,
     h("span", { style: { fontSize: "clamp(44px, 12vw, 62px)", lineHeight: 1 } }, emoji),
     h("span", { style: { fontSize: 12.5, fontWeight: 700, color: accent ? "#fff" : active ? COLORS.gold : COLORS.ink, textAlign: "center" } }, label)
   );
@@ -1192,40 +1190,47 @@ function CustomersList({ orders, onOpen }) {
   }
   return /* @__PURE__ */ React.createElement("div", null, filterPanel, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, customers.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, c.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.muted } }, c.orders.length, " \u0623\u0648\u0631\u062F\u0631")), c.engineerName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F477}"), c.engineerName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, c.orders.map((o) => /* @__PURE__ */ React.createElement("button", { key: o.id, onClick: () => onOpen(o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, o.title || "\u0623\u0648\u0631\u062F\u0631 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, orderStatusLabel(o)))))))));
 }
+function RevisionNoteModal({ order, onClose, onSave }) {
+  const [note, setNote] = useState(order.revisionNote || "");
+  const [file, setFile] = useState(order.revisionFile || null);
+  return h(Modal, { title: "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", onClose },
+    h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644\u0647\u060C \u0648\u0645\u0645\u0643\u0646 \u062A\u0631\u0641\u0642\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u064A\u0648\u0636\u062D. \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0643\u0628\u064A\u0631\u0629 \u0642\u062F \u062A\u0641\u0634\u0644 \u0641\u064A \u0627\u0644\u062D\u0641\u0638 \u2014 \u0641\u0636\u0651\u0644\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u062C\u062F\u0627\u064B \u0623\u0648 \u0631\u0627\u0628\u0637 \u062E\u0627\u0631\u062C\u064A."),
+    h("label", { style: labelStyle }, "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 90, resize: "vertical" }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644..." }),
+    h(FileAttachField, { label: "\u0641\u064A\u062F\u064A\u0648 \u0623\u0648 \u0645\u0644\u0641 \u062A\u0648\u0636\u064A\u062D\u064A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file, onChange: setFile, onRemove: () => setFile(null), folder: "revision-notes", accept: "video/*,image/*" }),
+    h("button", { style: primaryBtn(false), onClick: () => onSave({ revisionNote: note.trim(), revisionFile: file }) }, "\u062D\u0641\u0638")
+  );
+}
 function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser }) {
-  const [showDone, setShowDone] = useState(false);
-  const all = orders.filter((o) => o.createdBy);
-  const queue = all.filter((o) => o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629");
-  const done = all.filter((o) => o.reviewStatus === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629");
-  const list = showDone ? done : queue;
-  const sorted = list.slice().sort((a, b) => (a.enteredAt || "").localeCompare(b.enteredAt || ""));
+  const [revisingOrder, setRevisingOrder] = useState(null);
+  const queue = orders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629");
+  const sorted = queue.slice().sort((a, b) => (a.enteredAt || "").localeCompare(b.enteredAt || ""));
   const fmtDateTime = (iso) => iso ? iso.replace("T", " ").slice(0, 16) : "\u2014";
   const statusLabel = (o) => (o.editCount || 0) === 0 ? "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" : "\u0628\u0639\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644 " + o.editCount;
   const setReview = (o, val) => {
-    const patch = { reviewStatus: val, reviewDate: todayStr() };
-    if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") patch.inRevisionAt = todayStr();
-    patch.approved = val === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629";
+    const patch = { reviewStatus: val };
+    if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") { patch.inRevisionAt = todayStr(); patch.approved = false; }
+    else if (val === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629") { patch.reviewDate = todayStr(); patch.approved = true; patch.distributionHandled = false; patch.materialsHandled = false; }
+    else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
+    if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") setRevisingOrder(o);
   };
-  const cols = ["\u062A\u0627\u0631\u064A\u062E \u062F\u062E\u0648\u0644 \u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"];
+  const cols = ["\u062A\u0627\u0631\u064A\u062E \u062F\u062E\u0648\u0644 \u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"];
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F9FE}", title: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" }),
-    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-      h("button", { onClick: () => setShowDone(false), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${!showDone ? COLORS.gold : COLORS.border}`, background: !showDone ? COLORS.goldSoft : COLORS.surface, color: !showDone ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u23F3 \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 (" + queue.length + ")"),
-      h("button", { onClick: () => setShowDone(true), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${showDone ? COLORS.gold : COLORS.border}`, background: showDone ? COLORS.goldSoft : COLORS.surface, color: showDone ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645\u062A \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627 (" + done.length + ")")
-    ),
-    sorted.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0647\u0646\u0627" }) :
+    sorted.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u062F\u0644\u0648\u0642\u062A\u064A" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 980 } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
         h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
         h("tbody", null, sorted.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", cursor: "pointer", color: COLORS.teal, fontWeight: 600 }, onClick: () => onOpen(o.id) }, fmtDateTime(o.enteredAt)),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)),
           h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, o.clientName || "\u2014"),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.category || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", direction: "ltr", textAlign: "start" } }, o.createdBy || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.engineerName || o.createdBy || "\u2014"),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.inRevisionAt || "\u2014"),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.reviewDate || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (o.revisionNote || o.revisionFile) ? h("button", { onClick: () => setRevisingOrder(o), style: { ...iconBtnStyle, color: COLORS.gold } }, h(Emoji, { size: 15 }, "\u{1F4DD}")) : (isAdminUser ? h("button", { onClick: () => setRevisingOrder(o), style: { fontSize: 11, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer" } }, "+ \u0625\u0636\u0627\u0641\u0629") : "\u2014")),
           h("td", { style: { padding: "9px 10px" } }, h("select", { value: o.reviewStatus || "", disabled: !isAdminUser, onChange: (e) => setReview(o, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
             h("option", { value: "" }, "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"),
             h("option", { value: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" }, "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644"),
@@ -1233,40 +1238,73 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser }) {
           ))
         )))
       )
-    )
+    ),
+    revisingOrder ? h(RevisionNoteModal, { order: revisingOrder, onClose: () => setRevisingOrder(null), onSave: (patch) => { onUpdateOrder(revisingOrder.id, patch); setRevisingOrder(null); } }) : null
   );
 }
-function MyOrdersPage({ orders, myEmail, onOpen }) {
-  const mine = orders.filter((o) => o.createdBy && myEmail && o.createdBy === myEmail);
-  const byDate = (a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99");
-  const pending = mine.filter((o) => !o.approved).slice().sort(byDate);
-  const approved = mine.filter((o) => o.approved).slice().sort(byDate);
-  const card = (o) => h("div", { key: o.id, onClick: () => onOpen(o.id), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } },
-    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder }) {
+  const [view, setView] = useState("revisions");
+  const [editingOrder, setEditingOrder] = useState(null);
+  const scoped = isAdminUser ? orders.filter((o) => o.createdBy) : orders.filter((o) => o.createdBy && myEmail && o.createdBy === myEmail);
+  const needsRevision = scoped.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644").sort((a, b) => (a.inRevisionAt || "").localeCompare(b.inRevisionAt || ""));
+  const reviewed = scoped.filter((o) => o.reviewStatus === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").sort((a, b) => (b.reviewDate || "").localeCompare(a.reviewDate || ""));
+  const monthLabel = (iso) => {
+    if (!iso) return "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E";
+    const d = new Date(iso);
+    const months = ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"];
+    return months[d.getMonth()] + " " + d.getFullYear();
+  };
+  const revisionCard = (o) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.gold}`, borderRadius: 12, padding: 12 } },
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }, onClick: () => onOpen(o.id) },
       h("div", null,
-        h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.title || "\u0628\u062F\u0648\u0646 \u0639\u0646\u0648\u0627\u0646"),
-        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645")
+        h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
+        h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, o.category || "\u2014", isAdminUser ? " \u00B7 " + (o.engineerName || o.createdBy) : "")
       ),
-      h(Emoji, { size: 13, color: COLORS.muted }, "\u2039")
+      h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, padding: "2px 8px", borderRadius: 999 } }, "\u{1F4DD} \u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644")
     ),
-    h("div", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, marginTop: 6 } }, orderStatusLabel(o)),
-    o.deliveryDate ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 3 } }, "\u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate) : null
+    o.revisionNote ? h("div", { style: { fontSize: 12.5, color: COLORS.ink, marginTop: 8, background: COLORS.bg, borderRadius: 8, padding: 8 } }, o.revisionNote) : null,
+    o.revisionFile ? h("a", { href: o.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.revisionFile.name || "\u0645\u0644\u0641 \u0645\u0631\u0641\u0642")) : null,
+    o.inRevisionAt ? h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 6 } }, "\u0637\u0644\u0628 \u0627\u0644\u062A\u0639\u062F\u064A\u0644: " + o.inRevisionAt) : null,
+    !isAdminUser ? h("button", { onClick: () => setEditingOrder(o), style: { ...addLinkStyle, marginTop: 8 } }, "\u270F\uFE0F \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
   );
+  const doneCard = (o) => h("div", { key: o.id, onClick: () => onOpen(o.id), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } },
+    h("div", { style: { fontWeight: 700, fontSize: 14.5, marginBottom: 6 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 3, fontSize: 12, color: COLORS.muted } },
+      h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
+      h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
+      !isAdminUser ? null : h("div", null, "\u0627\u0644\u0645\u0647\u0646\u062F\u0633/\u0629: " + (o.engineerName || o.createdBy || "\u2014")),
+      h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + orderStatusLabel(o))
+    )
+  );
+  const renderList = (list, cardFn) => {
+    if (list.length === 0) return h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" });
+    if (!isAdminUser) return h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map(cardFn));
+    const byEngineer = {};
+    list.forEach((o) => { const k = o.engineerName || o.createdBy || "\u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641"; (byEngineer[k] = byEngineer[k] || []).push(o); });
+    return h("div", { style: { display: "flex", flexDirection: "column", gap: 20 } }, Object.keys(byEngineer).sort((a, b) => a.localeCompare(b, "ar")).map((eng) => {
+      const byMonth = {};
+      byEngineer[eng].forEach((o) => { const mk = monthLabel(o.enteredAt); (byMonth[mk] = byMonth[mk] || []).push(o); });
+      return h("div", { key: eng },
+        h("div", { style: { fontWeight: 700, fontSize: 14, color: COLORS.ink, marginBottom: 8, paddingBottom: 6, borderBottom: `2px solid ${COLORS.gold}` } }, "\u{1F464} " + eng),
+        Object.keys(byMonth).map((mk) => h("div", { key: mk, style: { marginBottom: 12 } },
+          h("div", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted, margin: "0 0 6px" } }, mk),
+          h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, byMonth[mk].map(cardFn))
+        ))
+      );
+    }));
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4C1}", title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A" }),
-    mine.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0639\u0645\u0644\u062A\u064A\u0634 \u0623\u064A \u0623\u0648\u0631\u062F\u0631" }) : h(React.Fragment, null,
-      pending.length > 0 ? h("div", { style: { marginBottom: 18 } },
-        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: COLORS.gold, margin: "0 0 8px" } }, h(Emoji, { size: 13 }, "\u23F3"), "\u0644\u0633\u0629 \u0645\u0627 \u0627\u062A\u0639\u062A\u0645\u062F\u062A (" + pending.length + ")"),
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, pending.map(card))
-      ) : null,
-      approved.length > 0 ? h("div", null,
-        h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: COLORS.green, margin: "0 0 8px" } }, h(Emoji, { size: 13 }, "\u2705"), "\u0645\u0639\u062A\u0645\u062F\u0629 (" + approved.length + ")"),
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, approved.map(card))
-      ) : null
-    )
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+      h("button", { onClick: () => setView("revisions"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === "revisions" ? COLORS.gold : COLORS.border}`, background: view === "revisions" ? COLORS.goldSoft : COLORS.surface, color: view === "revisions" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u{1F4DD} \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629 (" + needsRevision.length + ")"),
+      h("button", { onClick: () => setView("done"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === "done" ? COLORS.gold : COLORS.border}`, background: view === "done" ? COLORS.goldSoft : COLORS.surface, color: view === "done" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u2705 \u0639\u0645\u0644\u0627\u0621 \u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 (" + reviewed.length + ")")
+    ),
+    view === "revisions" ? renderList(needsRevision, revisionCard) : renderList(reviewed, doneCard),
+    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", editCount: (editingOrder.editCount || 0) + 1 }); setEditingOrder(null); } }) : null
   );
 }
-function MaterialsHubPage({ orders, onOpenOrder }) {
+function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
   const [view, setView] = useState("byCustomer");
   const [missingSearch, setMissingSearch] = useState("");
   const customerGroups = {};
@@ -1335,6 +1373,7 @@ function MaterialsHubPage({ orders, onOpenOrder }) {
   };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
+    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A" }) : null,
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       toggleBtn("byCustomer", "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644", "\u{1F464}"),
       toggleBtn("rollup", "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A", "\u{1F4CA}"),
@@ -1996,15 +2035,39 @@ function GlobalSuppliersPage({ orders }) {
   }
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, suppliers.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 18, fontWeight: 700 } }, s.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u0639\u0646\u062F\u0647\u0627 \u0634\u063A\u0644")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 6 } }, s.orders.map((o, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { fontSize: 13, color: COLORS.muted, borderTop: idx > 0 ? `1px dashed ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: COLORS.ink } }, o.title), " \u2014 ", o.clientName, o.pieceCount > 0 && ` \xB7 ${o.pieceCount} \u0642\u0637\u0639\u0629`, o.stages.length > 0 && ` \xB7 ${o.stages.join("\u060C ")}`))))));
 }
-function NewOrderModal({ onClose, onSave, existing, existingCategories }) {
+const ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
+function NewOrderModal({ onClose, onSave, existing, existingCategories, engineerName }) {
   const [clientName, setClientName] = useState((existing && existing.clientName) || "");
   const [category, setCategory] = useState((existing && existing.category) || "");
-  const [date, setDate] = useState((existing && existing.dateReceived) || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+  const [date] = useState((existing && existing.dateReceived) || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
   const [deliveryDate, setDeliveryDate] = useState((existing && existing.deliveryDate) || "");
   const [fabricShippingStatus, setFabricShippingStatus] = useState((existing && existing.fabricShippingStatus) || "");
   const [orderFile, setOrderFile] = useState((existing && existing.manufacturingOrderFile) || null);
   const [sellingPrice, setSellingPrice] = useState((existing && existing.sellingPrice) || "");
-  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" : "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: clientName, onChange: (e) => setClientName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: category, onChange: (e) => setCategory(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0642\u0633\u0645\u060C \u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u060C \u0633\u062A\u0627\u0626\u0631...", list: "order-category-suggestions" }), /* @__PURE__ */ React.createElement("datalist", { id: "order-category-suggestions" }, (existingCategories || ORDER_CATEGORIES || []).map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: date, onChange: (e) => setDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: deliveryDate, onChange: (e) => setDeliveryDate(e.target.value) }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: fabricShippingStatus, onChange: (e) => setFabricShippingStatus(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, s))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0644\u0644\u0639\u0645\u064A\u0644 (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: sellingPrice, onChange: (e) => setSellingPrice(e.target.value), placeholder: "0" }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: orderFile, onChange: setOrderFile, onRemove: () => setOrderFile(null), folder: "manufacturing-orders" }), /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : "") } : { ...emptyOrder(), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"));
+  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" : "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", onClose },
+    /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
+    /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: clientName, onChange: (e) => setClientName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }),
+    /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"),
+    /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: category, onChange: (e) => setCategory(e.target.value) },
+      /* @__PURE__ */ React.createElement("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A \u0627\u0644\u0642\u0633\u0645..."),
+      ORDER_CATEGORY_OPTIONS.map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }, c))
+    ),
+    /* @__PURE__ */ React.createElement("p", { style: { fontSize: 11.5, color: COLORS.muted, margin: "-6px 0 12px" } }, "\u0645\u0633\u0637\u062D\u0627\u062A: \u0637\u0627\u0648\u0644\u0627\u062A \u0648\u0628\u0648\u0641\u064A\u0647\u0627\u062A \u00B7 \u062C\u064A\u0628\u0648\u0631\u062F: \u062E\u0632\u0627\u0626\u0646 \u0648TV \u0648\u0628\u0627\u0631\u062A\u0634\u0646 \u00B7 \u062E\u0634\u0628\u064A\u0627\u062A: \u062C\u0627\u0645\u0639 \u0628\u064A\u0646 \u0627\u0644\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0627\u0644\u062C\u064A\u0628\u0648\u0631\u062F"),
+    !existing ? /* @__PURE__ */ React.createElement(React.Fragment, null,
+      /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633/\u0629"),
+      /* @__PURE__ */ React.createElement("div", { style: { ...fieldStyle, background: COLORS.bg, color: COLORS.muted, display: "flex", alignItems: "center" } }, engineerName || "\u2014")
+    ) : null,
+    /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
+    /* @__PURE__ */ React.createElement("div", { style: { ...fieldStyle, background: COLORS.bg, color: COLORS.muted, display: "flex", alignItems: "center" } }, date),
+    /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
+    /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "date", value: deliveryDate, onChange: (e) => setDeliveryDate(e.target.value) }),
+    /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"),
+    /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: fabricShippingStatus, onChange: (e) => setFabricShippingStatus(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, s))),
+    /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0644\u0644\u0639\u0645\u064A\u0644 (\u0631\u064A\u0627\u0644)"),
+    /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: sellingPrice, onChange: (e) => setSellingPrice(e.target.value), placeholder: "0" }),
+    /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: orderFile, onChange: setOrderFile, onRemove: () => setOrderFile(null), folder: "manufacturing-orders" }),
+    /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : "") } : { ...emptyOrder(), title: (category.trim() || "\u0623\u0648\u0631\u062F\u0631") + (clientName.trim() ? " - " + clientName.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
+  );
 }
 function BrandingModal({ branding, onClose, onSave }) {
   const [name, setName] = useState(branding.name || "");
@@ -2038,7 +2101,7 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser }
       h("div", { style: { fontSize: 12, color: COLORS.gold, fontWeight: 600, marginTop: 2 } }, orderStatusLabel(order)),
       order.createdBy ? h("div", { style: { fontSize: 11.5, color: order.approved ? COLORS.green : COLORS.muted, fontWeight: 600, marginTop: 2 } }, order.approved ? "\u2705 \u0645\u0639\u062A\u0645\u062F" : "\u23F3 \u0644\u0633\u0629 \u0645\u0627 \u0627\u062A\u0639\u062A\u0645\u062F") : null
     ),
-    isAdminUser && order.createdBy ? h("button", { onClick: () => onUpdate({ approved: !order.approved, reviewStatus: !order.approved ? "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" : "", reviewDate: todayStr() }), style: iconBtnStyle, title: order.approved ? "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" : "\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0646\u0647\u0627\u0626\u064A\u0629" }, h(Emoji, { size: 17, color: order.approved ? COLORS.green : COLORS.gold }, order.approved ? "\u2705" : "\u{1F512}")) : null,
+    isAdminUser && order.createdBy ? h("button", { onClick: () => onUpdate({ approved: !order.approved, reviewStatus: !order.approved ? "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" : "", reviewDate: todayStr(), ...(!order.approved ? { distributionHandled: false, materialsHandled: false } : {}) }), style: iconBtnStyle, title: order.approved ? "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" : "\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0646\u0647\u0627\u0626\u064A\u0629" }, h(Emoji, { size: 17, color: order.approved ? COLORS.green : COLORS.gold }, order.approved ? "\u2705" : "\u{1F512}")) : null,
     canEdit ? h("button", { onClick: () => setShowEditOrder(true), style: iconBtnStyle, title: "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }, h(Emoji, { size: 17 }, "\u270F\uFE0F")) : null,
     canEdit ? h("button", { onClick: () => setConfirmDelete(true), style: iconBtnStyle }, h(Emoji, { size: 17, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null
   );
@@ -2557,7 +2620,26 @@ function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
 function isSoftGoodType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("مخدات") || s.includes("سجاد"); }
 
-function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit }) {
+function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, doneLabel, title, emoji }) {
+  const [tab, setTab] = useState("new");
+  const approved = orders.filter((o) => o.approved);
+  const fresh = approved.filter((o) => !o[flagKey]);
+  const done = approved.filter((o) => o[flagKey]);
+  const list = tab === "new" ? fresh : done;
+  return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+    h("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 } }, h(Emoji, { size: 15 }, emoji), title),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 10 } },
+      h("button", { onClick: () => setTab("new"), style: { flex: 1, padding: "7px 0", borderRadius: 8, border: `1px solid ${tab === "new" ? COLORS.gold : COLORS.border}`, background: tab === "new" ? COLORS.goldSoft : COLORS.bg, color: tab === "new" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u{1F195} \u0639\u0645\u0644\u0627\u0621 \u062C\u062F\u064A\u062F\u0629 (" + fresh.length + ")"),
+      h("button", { onClick: () => setTab("done"), style: { flex: 1, padding: "7px 0", borderRadius: 8, border: `1px solid ${tab === "done" ? COLORS.gold : COLORS.border}`, background: tab === "done" ? COLORS.goldSoft : COLORS.bg, color: tab === "done" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u2705 " + doneLabel + " (" + done.length + ")")
+    ),
+    list.length === 0 ? h("p", { style: { fontSize: 12, color: COLORS.muted, textAlign: "center", padding: "10px 0", margin: 0 } }, "\u0644\u0627 \u064A\u0648\u062C\u062F") :
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((o) => h("div", { key: o.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.bg, borderRadius: 8, padding: "8px 10px" } },
+      h("div", null, h("div", { style: { fontWeight: 700, fontSize: 13 } }, o.clientName || "\u2014"), h("div", { style: { fontSize: 11, color: COLORS.muted } }, o.category || "\u2014")),
+      tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: false }), style: { fontSize: 11, color: COLORS.muted, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "\u062A\u0631\u0627\u062C\u0639")
+    )))
+  );
+}
+function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder }) {
   const [editingPiece, setEditingPiece] = useState(null);
   const [entity, setEntity] = useState(ENTITIES[0]);
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
@@ -2595,6 +2677,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   const filteredRecent = recentQuery.trim() ? recent.filter((p) => (p.customerName || "").includes(recentQuery.trim())) : recent;
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
+    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
       h("label", { style: labelStyle }, "اسم العميل"),
       h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
@@ -3246,7 +3329,7 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   const setAllTabs = (email, allOn) => updateMember(email, { permittedTabs: allOn ? ALL_TABS.map((t) => t.key) : [] });
   const save = () => onSave({ ...access, allowedEmails: members.map((m) => m.email), members });
   return h(Modal, { title: "إدارة الأدوار والصلاحيات", onClose },
-    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'حددي دور كل مستخدم، وتحت كل واحد حددي بالظبط الأقسام اللي يقدر يدخلها من التطبيق — أي قسم مش متحدد هيفضل ظاهر بس مقفول 🔒 وميقدرش يدخله. دور "مدير" بيشوف كل حاجة تلقائي. دور "مهندس مبيعات" يقدر يضيف أوردر ويعدل بس في أوردراته هو لحد ما تعتمديها من صفحة الأوردر (زرار 🔒/✅ في الأعلى).'),
+    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'حددي دور كل مستخدم واسمه، وتحت كل واحد حددي بالظبط الأقسام اللي يقدر يدخلها من التطبيق — أي قسم مش متحدد هيفضل ظاهر بس مش هيقدر يدخله. دور "مدير" بيشوف كل حاجة تلقائي. دور "مهندس مبيعات" يقدر يضيف أوردر ويعدل بس في أوردراته هو لحد ما تعتمديها من صفحة الأوردر (زرار ✅ في الأعلى).'),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
       h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "email@example.com", dir: "ltr" }),
       h("button", { onClick: addMember, style: { ...primaryBtn(false), width: 70, padding: "10px 0" } }, "إضافة")
@@ -3257,6 +3340,7 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
           h("span", { style: { fontSize: 13, direction: "ltr" } }, m.email, m.email === access.ownerEmail ? " (صاحبة الحساب)" : ""),
           m.email !== access.ownerEmail ? h("button", { onClick: () => removeMember(m.email), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️")) : null
         ),
+        h("input", { style: { ...fieldStyle, marginBottom: 8 }, value: m.name || "", onChange: (e) => updateMember(m.email, { name: e.target.value }), placeholder: "اسم المستخدم (يظهر بدل الإيميل في التقارير)" }),
         h("select", { style: { ...fieldStyle, marginBottom: m.role === "production" ? 8 : 0 }, disabled: m.email === access.ownerEmail, value: m.role, onChange: (e) => updateMember(m.email, { role: e.target.value }) },
           Object.keys(ROLE_LABELS).map((r) => h("option", { key: r, value: r }, ROLE_LABELS[r]))
         ),
