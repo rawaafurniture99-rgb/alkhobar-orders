@@ -15,8 +15,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-app-compat.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-auth-compat.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-messaging-compat.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 
   <style>
     html, body { margin: 0; padding: 0; background: #F6F1E7; }
@@ -40,9 +40,15 @@
       cloudName: "c21jyesu",
       uploadPreset: "ml_default"
     };
-    // \u0645\u0641\u062A\u0627\u062D VAPID \u0644\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0627\u0644\u062E\u0627\u0631\u062C\u064A\u0629 (Push) - \u0647\u062A\u0644\u0627\u0642\u064A\u0647 \u0645\u0646:
-    // Firebase Console > Project settings > Cloud Messaging > Web configuration > Generate key pair
-    window.FCM_VAPID_KEY = "PASTE_YOUR_VAPID_KEY_HERE";
+    // \u0628\u064A\u0627\u0646\u0627\u062A OneSignal \u0644\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0627\u0644\u062E\u0627\u0631\u062C\u064A\u0629 (Push) - \u0647\u062A\u0644\u0627\u0642\u064A\u0647\u0645 \u0645\u0646 \u0644\u0648\u062D\u0629 \u062A\u062D\u0643\u0645 OneSignal:
+    // Settings > Keys & IDs
+    window.ONESIGNAL_APP_ID = "PASTE_YOUR_ONESIGNAL_APP_ID_HERE";
+    window.ONESIGNAL_REST_API_KEY = "PASTE_YOUR_ONESIGNAL_REST_API_KEY_HERE";
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(function (OneSignal) {
+      if (!window.ONESIGNAL_APP_ID || window.ONESIGNAL_APP_ID === "PASTE_YOUR_ONESIGNAL_APP_ID_HERE") return;
+      OneSignal.init({ appId: window.ONESIGNAL_APP_ID });
+    });
   </script>
 
   <script>
@@ -356,16 +362,51 @@ async function migrateLegacyArraysToSubcollections(existingData) {
   }
   await workspaceDocRef().update({ migratedToSubcollections: true });
 }
+async function fixUpholsteryAndStagesLegacyData() {
+  const snap = await piecesColRef().get();
+  const updates = [];
+  snap.docs.forEach((doc) => {
+    const p = doc.data();
+    const patch = {};
+    let changed = false;
+    if (!isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014") {
+      patch.upholsteryLocation = "\u2014";
+      changed = true;
+    }
+    if (isSoftGoodType(p.pieceType) && p.stages && p.stages["\u0646\u062C\u0627\u0631\u0629"]) {
+      const najara = p.stages["\u0646\u062C\u0627\u0631\u0629"];
+      const tanjeed = p.stages["\u062A\u0646\u062C\u064A\u062F"] || {};
+      const mergedTanjeed = { ...tanjeed };
+      if (najara.start && !mergedTanjeed.start) mergedTanjeed.start = najara.start;
+      if (najara.end && !mergedTanjeed.end) mergedTanjeed.end = najara.end;
+      const newStages = { ...p.stages };
+      newStages["\u062A\u0646\u062C\u064A\u062F"] = mergedTanjeed;
+      delete newStages["\u0646\u062C\u0627\u0631\u0629"];
+      patch.stages = newStages;
+      changed = true;
+    }
+    if (changed) updates.push({ ref: piecesColRef().doc(doc.id), data: patch });
+  });
+  for (let i = 0; i < updates.length; i += 400) {
+    const batch = db.batch();
+    updates.slice(i, i + 400).forEach(({ ref, data }) => batch.update(ref, data));
+    await batch.commit();
+  }
+  await workspaceDocRef().update({ fixedUpholsteryStagesV1: true });
+}
 async function ensureWorkspaceDoc() {
   const ref = workspaceDocRef();
   const snap = await ref.get();
   if (!snap.exists) {
-    await ref.set({ suppliers: [], branding: DEFAULT_BRANDING, productionSuppliers: DEFAULT_PRODUCTION_SUPPLIERS, migratedToSubcollections: true });
+    await ref.set({ suppliers: [], branding: DEFAULT_BRANDING, productionSuppliers: DEFAULT_PRODUCTION_SUPPLIERS, migratedToSubcollections: true, fixedUpholsteryStagesV1: true });
     return;
   }
   const data = snap.data() || {};
   if (!data.migratedToSubcollections) {
     await migrateLegacyArraysToSubcollections(data);
+  }
+  if (!data.fixedUpholsteryStagesV1) {
+    await fixUpholsteryAndStagesLegacyData();
   }
 }
 function accessDocRef() {
@@ -649,35 +690,37 @@ function App() {
     if (recipients.length === 0) return;
     const id = uid();
     notificationsColRef().doc(id).set({ id, toEmails: recipients, title, body: body || "", orderId: orderId || "", kind: kind || "", createdAt: (/* @__PURE__ */ new Date()).toISOString(), readBy: [] }).catch((e) => console.error("notification failed", e));
+    if (window.ONESIGNAL_APP_ID && window.ONESIGNAL_APP_ID !== "PASTE_YOUR_ONESIGNAL_APP_ID_HERE" && window.ONESIGNAL_REST_API_KEY && window.ONESIGNAL_REST_API_KEY !== "PASTE_YOUR_ONESIGNAL_REST_API_KEY_HERE") {
+      fetch("https://onesignal.com/api/v1/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Basic " + window.ONESIGNAL_REST_API_KEY },
+        body: JSON.stringify({
+          app_id: window.ONESIGNAL_APP_ID,
+          include_aliases: { external_id: recipients },
+          target_channel: "push",
+          headings: { en: title },
+          contents: { en: body || "" }
+        })
+      }).catch((e) => console.error("onesignal push failed", e));
+    }
   };
   const markNotificationRead = (id) => {
     if (!user) return;
     notificationsColRef().doc(id).update({ readBy: firebase.firestore.FieldValue.arrayUnion(user.email) }).catch((e) => console.error("mark read failed", e));
   };
   const unreadCount = notifications.filter((n) => !(n.readBy || []).includes(user && user.email)).length;
-  const saveFcmToken = (token) => {
-    if (!user || !access || !token) return;
-    if (myMember && myMember.fcmToken === token) return;
-    const nextMembers = (access.members || []).map((m) => m.email === user.email ? { ...m, fcmToken: token } : m);
-    persistAccess({ ...access, members: nextMembers });
-  };
-  const registerFcmToken = () => {
-    if (typeof firebase === "undefined" || !firebase.messaging || !navigator.serviceWorker || !window.FCM_VAPID_KEY || window.FCM_VAPID_KEY === "PASTE_YOUR_VAPID_KEY_HERE") return;
-    try {
-      navigator.serviceWorker.register("/firebase-messaging-sw.js").then((registration) => {
-        firebase.messaging().getToken({ vapidKey: window.FCM_VAPID_KEY, serviceWorkerRegistration: registration }).then((token) => { if (token) saveFcmToken(token); }).catch((e) => console.error("fcm token failed", e));
-      }).catch((e) => console.error("sw register failed", e));
-    } catch (e) { console.error(e); }
+  const registerOneSignal = () => {
+    if (!user || typeof window.OneSignalDeferred === "undefined") return;
+    window.OneSignalDeferred.push(function (OneSignal) {
+      OneSignal.login(user.email).catch((e) => console.error("onesignal login failed", e));
+      OneSignal.Notifications.requestPermission().catch((e) => console.error("onesignal permission failed", e));
+    });
   };
   const openNotifPanel = () => {
     setShowNotifPanel(true);
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().then((perm) => { if (perm === "granted") registerFcmToken(); });
-    } else if (Notification.permission === "granted") {
-      registerFcmToken();
-    }
+    registerOneSignal();
   };
+  useEffect(() => { if (user) registerOneSignal(); }, [user]);
   const addProductionPiece = (piece) => {
     persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
     logActivity("\u0623\u0636\u0627\u0641 \u0642\u0637\u0639\u0629 \u062C\u062F\u064A\u062F\u0629 \u0644ـ" + piece.customerName);
@@ -3310,17 +3353,17 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
 
 
 function renderFullProductionTable(piecesList, showCustomerCol) {
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]);
+  const cols = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]);
   return h("div", { style: { overflowX: "auto" } },
     h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 2250 : 2150 } },
       h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
       h("tbody", null, piecesList.map((p) => {
-        const ready = p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646";
         const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
+        const stageStatus = (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "");
         const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "\u2014";
         return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
-          h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, whiteSpace: "nowrap", background: ready ? "#E8F0E4" : COLORS.goldSoft, color: ready ? COLORS.green : COLORS.gold } }, ready ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632")),
           h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, whiteSpace: "nowrap", background: delivered ? "#E8F0E4" : "#FBEAE6", color: delivered ? COLORS.green : COLORS.danger } }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap", fontWeight: 600 } }, stageStatus),
           showCustomerCol ? h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName) : null,
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
@@ -3406,18 +3449,18 @@ function FullProductionPage({ pieces }) {
     ));
   }
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
+    const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
+      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
+    const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" ? "\u062C\u0627\u0647\u0632" : "\u063A\u064A\u0631 \u062C\u0627\u0647\u0632", p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
+      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", p.currentLocation || "", stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
