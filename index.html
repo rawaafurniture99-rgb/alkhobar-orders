@@ -500,20 +500,21 @@ function App() {
   const isAllowed = access && access.allowedEmails && access.allowedEmails.includes(user && user.email);
   const isOwner = access && user && access.ownerEmail === user.email;
   const myMember = access && access.members ? access.members.find((m) => m.email === (user && user.email)) : null;
-  const myRole = isOwner ? "admin" : myMember ? myMember.role : "viewer";
+  const myRoles = isOwner ? ["admin"] : myMember ? (myMember.roles && myMember.roles.length ? myMember.roles : (myMember.role ? [myMember.role] : ["viewer"])) : ["viewer"];
+  const hasRole = (r) => myRoles.includes(r);
   const myDisplayName = (myMember && myMember.name && myMember.name.trim()) || (user && user.email) || "";
   const emailToName = {};
   (access && access.members || []).forEach((m) => { if (m.name && m.name.trim()) emailToName[m.email] = m.name.trim(); });
   const mySupplierScope = myMember ? myMember.supplierScope || [] : [];
-  const canEditDistribution = myRole === "admin" || myRole === "distributor";
-  const canEditFullProduction = myRole === "admin";
+  const canEditDistribution = hasRole("admin") || hasRole("distributor");
+  const canEditFullProduction = hasRole("admin");
   const canEditOrder = (o) => {
-    if (isOwner || myRole === "admin") return true;
-    if (myRole === "engineer") return !!(o && o.createdBy && user && o.createdBy === user.email && !o.approved);
+    if (isOwner || hasRole("admin")) return true;
+    if (hasRole("engineer")) return !!(o && o.createdBy && user && o.createdBy === user.email && !o.approved);
     return false;
   };
-  const globalReadOnly = myRole === "viewer" || myRole === "engineer";
-  const myPermittedTabs = (isOwner || myRole === "admin") ? null : (myMember && myMember.permittedTabs !== undefined ? myMember.permittedTabs : ALL_TABS.map((t) => t.key));
+  const globalReadOnly = !hasRole("admin") && !hasRole("distributor") && !hasRole("production");
+  const myPermittedTabs = (isOwner || hasRole("admin")) ? null : (myMember && myMember.permittedTabs !== undefined ? myMember.permittedTabs : ALL_TABS.map((t) => t.key));
   const canSeeTab = (key) => myPermittedTabs === null || myPermittedTabs.includes(key);
   useEffect(() => { if (tab && !canSeeTab(tab)) setTab(null); }, [tab, myPermittedTabs]);
   useEffect(() => {
@@ -816,7 +817,7 @@ function App() {
       onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
       onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); setSelectedOrderSection(null); },
       canEdit: canEditOrder(selectedOrder),
-      isAdminUser: isOwner || myRole === "admin",
+      isAdminUser: isOwner || hasRole("admin"),
       onNotify: notify,
       emailsWithTabAccess,
       unreadCount,
@@ -838,15 +839,15 @@ function App() {
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution, orders, onUpdateOrder: updateOrder }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRole, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
         tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
-        tab === "review" && h(ReviewPage, { orders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || myRole === "admin", emailToName, onNotify: notify, emailsWithTabAccess }),
-        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, isAdminUser: isOwner || myRole === "admin", onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails }),
+        tab === "review" && h(ReviewPage, { orders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin"), emailToName, onNotify: notify, emailsWithTabAccess }),
+        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder })
         )
       ),
@@ -911,7 +912,7 @@ function App() {
               h(Emoji, { size: 13 }, "\u2039")
             )));
         })() : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 20 } },
-        myRole !== "viewer" && h(NavTile, { active: false, accent: true, onClick: () => setShowNewOrder(true), emoji: "\u2795", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" }),
+        !myRoles.every((r) => r === "viewer") && h(NavTile, { active: false, accent: true, onClick: () => setShowNewOrder(true), emoji: "\u2795", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" }),
         ALL_TABS.map((t) => h(NavTile, { key: t.key, active: false, locked: !canSeeTab(t.key), onClick: () => { if (canSeeTab(t.key)) setTab(t.key); }, emoji: t.emoji, label: t.label }))
         )
       )
@@ -935,7 +936,7 @@ function App() {
     showSettingsMenu && h(SettingsMenuModal, {
       onClose: () => setShowSettingsMenu(false),
       isOwner,
-      canManageRoles: isOwner || myRole === "admin",
+      canManageRoles: isOwner || hasRole("admin"),
       onTeam: () => { setShowSettingsMenu(false); setShowTeam(true); },
       onRoles: () => { setShowSettingsMenu(false); setShowRoles(true); },
       onBranding: () => { setShowSettingsMenu(false); setShowBranding(true); },
@@ -1778,6 +1779,27 @@ function DashboardPage({ orders, pieces }) {
   const categoryCounts = {};
   orders.forEach((o) => { const c = o.category || "\u0623\u062E\u0631\u0649"; categoryCounts[c] = (categoryCounts[c] || 0) + 1; });
   const maxCategoryCount = Math.max(1, ...Object.values(categoryCounts));
+  const STAGE_KEYS = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F", "\u062A\u063A\u0644\u064A\u0641", "\u0634\u062D\u0646"];
+  const stageAverages = STAGE_KEYS.map((key) => {
+    const durations = pieces.map((p) => p.stages && p.stages[key] ? dayDiff(p.stages[key].start, p.stages[key].end) : null).filter((d) => d !== null);
+    return { key, avg: durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0, count: durations.length };
+  }).filter((s) => s.count > 0).sort((a, b) => b.avg - a.avg);
+  const maxStageAvg = Math.max(1, ...stageAverages.map((s) => s.avg));
+  const supplierDurations = {};
+  pieces.forEach((p) => {
+    if (!p.supplierName) return;
+    const d = p.stages && p.stages["\u0646\u062C\u0627\u0631\u0629"] ? dayDiff(p.stages["\u0646\u062C\u0627\u0631\u0629"].start, p.stages["\u0646\u062C\u0627\u0631\u0629"].end) : null;
+    if (d !== null) (supplierDurations[p.supplierName] = supplierDurations[p.supplierName] || []).push(d);
+  });
+  const supplierAverages = Object.keys(supplierDurations).map((name) => ({
+    name, avg: supplierDurations[name].reduce((a, b) => a + b, 0) / supplierDurations[name].length, count: supplierDurations[name].length
+  })).sort((a, b) => b.avg - a.avg).slice(0, 5);
+  const maxSupplierAvg = Math.max(1, ...supplierAverages.map((s) => s.avg));
+  const atRiskPieces = pieces.filter((p) => {
+    if (!p.customerDeliveryDate || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
+    const d = daysUntil(p.customerDeliveryDate);
+    return d !== null && d <= 5;
+  }).sort((a, b) => daysUntil(a.customerDeliveryDate) - daysUntil(b.customerDeliveryDate)).slice(0, 8);
   const statCard = (emoji, label, value, color) => h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, textAlign: "center" } },
     h("div", { style: { fontSize: 26 } }, emoji),
     h("div", { style: { fontSize: 24, fontWeight: 700, color: color || COLORS.ink, marginTop: 6 } }, value),
@@ -1813,6 +1835,40 @@ function DashboardPage({ orders, pieces }) {
         h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 } }, h("span", null, c), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, categoryCounts[c])),
         h("div", { style: { height: 8, background: COLORS.bg, borderRadius: 999, overflow: "hidden" } },
           h("div", { style: { height: "100%", width: (categoryCounts[c] / maxCategoryCount * 100) + "%", background: COLORS.gold, borderRadius: 999 } })
+        )
+      )))
+    ) : null,
+    atRiskPieces.length > 0 ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.danger}`, borderRadius: 14, padding: 16, marginBottom: 16 } },
+      h("div", { style: { ...display, fontSize: 16, fontWeight: 700, marginBottom: 12, color: COLORS.danger, display: "flex", alignItems: "center", gap: 6 } }, h(Emoji, { size: 16 }, "\u26A0\uFE0F"), "\u0645\u0648\u0627\u0639\u064A\u062F \u0645\u062D\u062A\u0627\u062C\u0629 \u0645\u062A\u0627\u0628\u0639\u0629"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, atRiskPieces.map((p, idx) => {
+        const d = daysUntil(p.customerDeliveryDate);
+        const urgent = d <= 2;
+        return h("div", { key: idx, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.bg, borderRadius: 10, padding: "8px 12px" } },
+          h("div", null,
+            h("div", { style: { fontSize: 13, fontWeight: 700 } }, p.customerName || "\u2014"),
+            h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 2 } }, (p.pieceType || "\u2014") + " \u00B7 " + (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : ""))
+          ),
+          h("span", { style: { fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap", background: urgent ? "#FBEAE6" : COLORS.goldSoft, color: urgent ? COLORS.danger : COLORS.gold } }, d < 0 ? "\u0645\u062A\u0623\u062E\u0631 " + Math.abs(d) + " \u064A\u0648\u0645" : d === 0 ? "\u0627\u0644\u064A\u0648\u0645" : "\u0628\u0627\u0642\u064A " + d + " \u064A\u0648\u0645")
+        );
+      }))
+    ) : null,
+    stageAverages.length > 0 ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, marginBottom: 16 } },
+      h("div", { style: { ...display, fontSize: 16, fontWeight: 700, marginBottom: 4 } }, "\u{1F6A7} \u0645\u062A\u0648\u0633\u0637 \u0645\u062F\u0629 \u0643\u0644 \u0645\u0631\u062D\u0644\u0629"),
+      h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginBottom: 12 } }, "\u0623\u064A \u0645\u0631\u062D\u0644\u0629 \u0645\u062F\u062A\u0647\u0627 \u0637\u0648\u064A\u0644\u0629 \u064A\u0628\u0642\u0649 \u0647\u064A \u0627\u0644\u0627\u062E\u062A\u0646\u0627\u0642 \u0627\u0644\u062D\u0642\u064A\u0642\u064A"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, stageAverages.map((s) => h("div", { key: s.key },
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 } }, h("span", null, s.key), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, s.avg.toFixed(1) + " \u064A\u0648\u0645 (" + s.count + " \u0642\u0637\u0639\u0629)")),
+        h("div", { style: { height: 8, background: COLORS.bg, borderRadius: 999, overflow: "hidden" } },
+          h("div", { style: { height: "100%", width: (s.avg / maxStageAvg * 100) + "%", background: COLORS.gold, borderRadius: 999 } })
+        )
+      )))
+    ) : null,
+    supplierAverages.length > 0 ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, marginBottom: 16 } },
+      h("div", { style: { ...display, fontSize: 16, fontWeight: 700, marginBottom: 4 } }, "\u{1F3E2} \u0623\u0628\u0637\u0623 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 (\u0645\u062A\u0648\u0633\u0637 \u0645\u062F\u0629 \u0627\u0644\u0646\u062C\u0627\u0631\u0629)"),
+      h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginBottom: 12 } }, "\u0623\u0639\u0644\u0649 5 \u0645\u0648\u0631\u062F\u064A\u0646 \u0623\u062E\u0630\u0627\u064B \u0644\u0644\u0648\u0642\u062A"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, supplierAverages.map((sp) => h("div", { key: sp.name },
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 4 } }, h("span", null, sp.name), h("span", { style: { fontWeight: 700, color: COLORS.teal } }, sp.avg.toFixed(1) + " \u064A\u0648\u0645 (" + sp.count + " \u0642\u0637\u0639\u0629)")),
+        h("div", { style: { height: 8, background: COLORS.bg, borderRadius: 999, overflow: "hidden" } },
+          h("div", { style: { height: "100%", width: (sp.avg / maxSupplierAvg * 100) + "%", background: COLORS.teal, borderRadius: 999 } })
         )
       )))
     ) : null,
@@ -2794,14 +2850,14 @@ const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التن�
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
 const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", viewer: "مشاهدة فقط" };
 const ALL_TABS = [
-  { key: "review", label: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", emoji: "\u{1F9FE}" },
+  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
+  { key: "review", label: "المراجعة", emoji: "\u{1F9FE}" },
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
   { key: "materials-hub", label: "الخامات", emoji: "🧵" },
   { key: "customers", label: "العملاء", emoji: "👥" },
   { key: "distribution", label: "التوزيع", emoji: "📦" },
   { key: "egypt-upholstery", label: "تنجيد مصر", emoji: "🛋️" },
   { key: "production-board", label: "أقسام الإنتاج", emoji: "🏭" },
-  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
   { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
   { key: "activity-log", label: "سجل النشاط", emoji: "📜" },
   { key: "supplier-performance", label: "تقييم الموردين", emoji: "⭐" },
@@ -2810,6 +2866,7 @@ const ALL_TABS = [
 ];
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function daysUntil(d) { if (!d) return null; return Math.round((new Date(d) - new Date(todayStr())) / 86400000); }
+function dayDiff(a, b) { if (!a || !b) return null; const d1 = new Date(a), d2 = new Date(b); if (isNaN(d1) || isNaN(d2)) return null; const n = Math.round((d2 - d1) / 86400000); return n >= 0 ? n : null; }
 function isSofaType(t) { return (t || "").includes("كنب"); }
 function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
@@ -2955,6 +3012,11 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
   const dl = daysUntil(piece.agreedDeadline);
   const overdue = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl < 0;
   const nearDeadline = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl >= 0 && dl <= 2;
+  const custDays = daysUntil(piece.customerDeliveryDate);
+  const custDone = piece.status === "جاهز للتسليم" || piece.status === "إلى الشحن";
+  const timerColor = custDone ? COLORS.muted : (custDays !== null && custDays < 0) ? COLORS.danger : (custDays !== null && custDays <= 2) ? COLORS.danger : (custDays !== null && custDays <= 5) ? COLORS.gold : COLORS.teal;
+  const timerBg = custDone ? COLORS.bg : (custDays !== null && custDays <= 2) ? "#FBEAE6" : (custDays !== null && custDays <= 5) ? COLORS.goldSoft : "#E6EEEF";
+  const timerLabel = piece.customerDeliveryDate ? (custDays === null ? "—" : custDays < 0 ? "\u0645\u062A\u0623\u062E\u0631 " + Math.abs(custDays) + " \u064A\u0648\u0645" : custDays === 0 ? "\u0627\u0644\u064A\u0648\u0645" : "\u0628\u0627\u0642\u064A " + custDays + " \u064A\u0648\u0645") : null;
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8 } },
     h("div", { style: { display: "flex", gap: 10 } },
       piece.image ? h("img", { src: piece.image.dataUrl, style: { width: 52, height: 52, borderRadius: 8, objectFit: "cover", flexShrink: 0 } }) : h("div", { style: { width: 52, height: 52, borderRadius: 8, background: COLORS.bg, flexShrink: 0 } }),
@@ -2963,6 +3025,11 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
         h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, piece.pieceType + " · " + piece.pieceCount + " قطعة")
       )
     ),
+    timerLabel ? h("div", { style: { display: "flex", alignItems: "center", gap: 6, background: timerBg, borderRadius: 10, padding: "8px 12px" } },
+      h(Emoji, { size: 15, color: timerColor }, "\u23F1\uFE0F"),
+      h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A \u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:"),
+      h("span", { style: { fontSize: 13, fontWeight: 700, color: timerColor } }, timerLabel)
+    ) : null,
     piece.description ? h("div", { style: { fontSize: 12.5, color: COLORS.muted, background: COLORS.bg, borderRadius: 8, padding: 8 } }, piece.description) : null,
     h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: COLORS.muted } },
       h("span", null, "تسليم العميل: " + (piece.customerDeliveryDate || "—")),
@@ -3038,7 +3105,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRole, mySupplierScope, onGoToDeliveries }) {
+function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onGoToDeliveries }) {
   const [entity, setEntity] = useState(null);
   if (!entity) {
     return h("div", null,
@@ -3048,14 +3115,14 @@ function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, 
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRole, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries });
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
 function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece) {
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
+  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"];
   return h("div", null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B/\u0627\u0644\u0641\u0644\u062A\u0631" }) : null,
     dateKeys.map((dateKey) => {
@@ -3069,10 +3136,17 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
         names.map((name) => h("div", { key: name, style: { marginBottom: 12 } },
           h("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 6 } }, name),
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10 } },
-            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 720 } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 820 } },
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
-              h("tbody", null, customerGroups[name].map((p) => h("tr", { key: p.id, onClick: () => setOpenPiece(p), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" } },
+              h("tbody", null, customerGroups[name].map((p) => {
+                const custDays = daysUntil(p.customerDeliveryDate);
+                const custDone = p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646";
+                const tColor = custDone ? COLORS.muted : (custDays !== null && custDays <= 2) ? COLORS.danger : (custDays !== null && custDays <= 5) ? COLORS.gold : COLORS.teal;
+                const tBg = custDone ? COLORS.bg : (custDays !== null && custDays <= 2) ? "#FBEAE6" : (custDays !== null && custDays <= 5) ? COLORS.goldSoft : "#E6EEEF";
+                const tLabel = p.customerDeliveryDate ? (custDays === null ? "\u2014" : custDays < 0 ? "\u0645\u062A\u0623\u062E\u0631 " + Math.abs(custDays) : custDays === 0 ? "\u0627\u0644\u064A\u0648\u0645" : "\u0628\u0627\u0642\u064A " + custDays + " \u064A\u0648\u0645") : "\u2014";
+                return h("tr", { key: p.id, onClick: () => setOpenPiece(p), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" } },
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: COLORS.goldSoft, color: COLORS.gold, whiteSpace: "nowrap" } }, p.status)),
+                h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: tBg, color: tColor, whiteSpace: "nowrap" } }, "\u23F1\uFE0F " + tLabel)),
                 h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
                 h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover" } }) : "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
@@ -3083,7 +3157,8 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014")
-              )))
+                );
+              }))
             )
           )
         ))
@@ -3225,7 +3300,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRole, mySupplierScope, onBack, onGoToDeliveries }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack, onGoToDeliveries }) {
   const [stageKey, setStageKey] = useState(null);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
   const allLocations = productionSuppliers[entity] || [];
@@ -3295,13 +3370,13 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
-  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRole, mySupplierScope, onBack: () => setStageKey(null) });
+  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack: () => setStageKey(null) });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRole, mySupplierScope, onBack }) {
+function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack }) {
   const [activeLoc, setActiveLoc] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
-  const canEditPiece = (p) => myRole === "admin" || (myRole === "production" && mySupplierScope.includes(p.currentLocation));
+  const canEditPiece = (p) => myRoles.includes("admin") || (myRoles.includes("production") && mySupplierScope.includes(p.currentLocation));
   if (!activeLoc) {
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
@@ -3314,7 +3389,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
           const count = countDistinctOrders(locPieces);
           return h("div", { key: loc, style: { position: "relative" } },
             h(NavTile, { active: false, onClick: () => setActiveLoc(loc), emoji: "\u{1F3E2}", label: loc + (count ? " (" + count + ")" : "") }),
-            group.allowAdd && myRole === "admin" ? h("button", {
+            group.allowAdd && myRoles.includes("admin") ? h("button", {
               onClick: (e) => {
                 e.stopPropagation();
                 const msg = locPieces.length > 0
@@ -3324,7 +3399,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
               },
               style: { position: "absolute", top: 6, left: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 999, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }
             }, h(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null,
-            group.allowAdd && myRole === "admin" && onRenameSupplier ? h("button", {
+            group.allowAdd && myRoles.includes("admin") && onRenameSupplier ? h("button", {
               onClick: (e) => {
                 e.stopPropagation();
                 const next = window.prompt("\u0627\u0644\u0627\u0633\u0645 \u0627\u0644\u062C\u062F\u064A\u062F \u0644ـ\"" + loc + "\"", loc);
@@ -3335,7 +3410,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
           );
         })
       ),
-      group.allowAdd && myRole === "admin" ? (!showAdd
+      group.allowAdd && myRoles.includes("admin") ? (!showAdd
         ? h("button", { onClick: () => setShowAdd(true), style: { padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: `1px dashed ${COLORS.gold}`, background: "#fff", color: COLORS.gold, cursor: "pointer" } }, "+ \u0645\u0648\u0631\u062F \u0622\u062E\u0631")
         : h("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, h("input", { style: { ...fieldStyle, marginBottom: 0, padding: "6px 8px", fontSize: 13, width: 140 }, value: newSupplierName, onChange: (e) => setNewSupplierName(e.target.value) }), h("button", { onClick: () => { if (newSupplierName.trim()) { onAddSupplier(entity, newSupplierName.trim()); setNewSupplierName(""); setShowAdd(false); } }, style: { ...primaryBtn(false), width: 60, padding: "6px 0" } }, "\u2713"))) : null
     );
@@ -3516,13 +3591,24 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   const [newEmail, setNewEmail] = useState("");
   const allSuppliers = Object.values(productionSuppliers || {}).flat();
   const updateMember = (email, patch) => setMembers(members.map((m) => (m.email === email ? { ...m, ...patch } : m)));
+  const memberRoles = (m) => m.roles && m.roles.length ? m.roles : (m.role ? [m.role] : ["viewer"]);
   const addMember = () => {
     const e = newEmail.trim().toLowerCase();
     if (!e || members.some((m) => m.email === e)) return;
-    setMembers([...members, { email: e, role: "viewer", supplierScope: [], permittedTabs: [] }]);
+    setMembers([...members, { email: e, roles: ["viewer"], role: "viewer", supplierScope: [], permittedTabs: [] }]);
     setNewEmail("");
   };
   const removeMember = (email) => { if (email === access.ownerEmail) return; setMembers(members.filter((m) => m.email !== email)); };
+  const toggleRole = (email, roleKey) => {
+    setMembers(members.map((m) => {
+      if (m.email !== email) return m;
+      const current = memberRoles(m);
+      const has = current.includes(roleKey);
+      const next = has ? current.filter((r) => r !== roleKey) : [...current, roleKey];
+      const finalRoles = next.length ? next : ["viewer"];
+      return { ...m, roles: finalRoles, role: finalRoles[0] };
+    }));
+  };
   const toggleScope = (email, supplier) => {
     setMembers(members.map((m) => {
       if (m.email !== email) return m;
@@ -3542,26 +3628,30 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   const setAllTabs = (email, allOn) => updateMember(email, { permittedTabs: allOn ? ALL_TABS.map((t) => t.key) : [] });
   const save = () => onSave({ ...access, allowedEmails: members.map((m) => m.email), members });
   return h(Modal, { title: "إدارة الأدوار والصلاحيات", onClose },
-    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'حددي دور كل مستخدم واسمه، وتحت كل واحد حددي بالظبط الأقسام اللي يقدر يدخلها من التطبيق — أي قسم مش متحدد هيفضل ظاهر بس مش هيقدر يدخله. دور "مدير" بيشوف كل حاجة تلقائي. دور "مهندس مبيعات" يقدر يضيف أوردر ويعدل بس في أوردراته هو لحد ما تعتمديها من صفحة الأوردر (زرار ✅ في الأعلى).'),
+    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'تقدري تحددي أكتر من دور لنفس المستخدم مع بعض (مثلاً "توزيع" و"تحديث تصنيع" سوا). وتحت كل واحد حددي بالظبط الأقسام اللي يقدر يدخلها من التطبيق — أي قسم مش متحدد هيفضل ظاهر بس مش هيقدر يدخله. دور "مدير" بيشوف كل حاجة تلقائي. دور "مهندس مبيعات" يقدر يضيف أوردر ويعدل بس في أوردراته هو لحد ما تعتمديها من صفحة الأوردر (زرار ✅ في الأعلى).'),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
       h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "email@example.com", dir: "ltr" }),
       h("button", { onClick: addMember, style: { ...primaryBtn(false), width: 70, padding: "10px 0" } }, "إضافة")
     ),
-    h("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 } }, members.map((m) =>
-      h("div", { key: m.email, style: { border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 } }, members.map((m) => {
+      const roles = memberRoles(m);
+      const isOwnerRow = m.email === access.ownerEmail;
+      return h("div", { key: m.email, style: { border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
         h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
-          h("span", { style: { fontSize: 13, direction: "ltr" } }, m.email, m.email === access.ownerEmail ? " (صاحبة الحساب)" : ""),
-          m.email !== access.ownerEmail ? h("button", { onClick: () => removeMember(m.email), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️")) : null
+          h("span", { style: { fontSize: 13, direction: "ltr" } }, m.email, isOwnerRow ? " (صاحبة الحساب)" : ""),
+          !isOwnerRow ? h("button", { onClick: () => removeMember(m.email), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️")) : null
         ),
         h("input", { style: { ...fieldStyle, marginBottom: 8 }, value: m.name || "", onChange: (e) => updateMember(m.email, { name: e.target.value }), placeholder: "اسم المستخدم (يظهر بدل الإيميل في التقارير)" }),
-        h("select", { style: { ...fieldStyle, marginBottom: m.role === "production" ? 8 : 0 }, disabled: m.email === access.ownerEmail, value: m.role, onChange: (e) => updateMember(m.email, { role: e.target.value }) },
-          Object.keys(ROLE_LABELS).map((r) => h("option", { key: r, value: r }, ROLE_LABELS[r]))
-        ),
-        m.role === "production" ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((s) =>
+        h("div", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted, marginBottom: 6 } }, "الأدوار"),
+        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: roles.includes("production") ? 10 : 10 } }, Object.keys(ROLE_LABELS).map((r) =>
+          h("label", { key: r, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${roles.includes(r) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "4px 9px", cursor: isOwnerRow ? "default" : "pointer", background: roles.includes(r) ? COLORS.goldSoft : "#fff", opacity: isOwnerRow ? 0.6 : 1 } },
+            h("input", { type: "checkbox", checked: roles.includes(r), disabled: isOwnerRow, onChange: () => toggleRole(m.email, r), style: { display: "none" } }), ROLE_LABELS[r])
+        )),
+        roles.includes("production") ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((s) =>
           h("label", { key: s, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(s) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(s) ? COLORS.goldSoft : "#fff" } },
             h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(s), onChange: () => toggleScope(m.email, s), style: { display: "none" } }), s)
         )) : null,
-        m.role === "admin" || m.email === access.ownerEmail ? h("p", { style: { fontSize: 11.5, color: COLORS.muted, margin: 0 } }, "🔓 عندها/عنده كل الأقسام تلقائي") : h(React.Fragment, null,
+        roles.includes("admin") || isOwnerRow ? h("p", { style: { fontSize: 11.5, color: COLORS.muted, margin: 0 } }, "🔓 عندها/عنده كل الأقسام تلقائي") : h(React.Fragment, null,
           h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, marginBottom: 6 } },
             h("span", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted } }, "الأقسام المسموح بيها"),
             h("div", { style: { display: "flex", gap: 10 } },
@@ -3574,8 +3664,8 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
               h("input", { type: "checkbox", checked: memberTabs(m).includes(t.key), onChange: () => toggleTab(m.email, t.key), style: { display: "none" } }), t.emoji + " " + t.label)
           ))
         )
-      )
-    )),
+      );
+    })),
     h("button", { style: primaryBtn(false), onClick: save }, "حفظ")
   );
 }
