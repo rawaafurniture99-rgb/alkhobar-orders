@@ -687,7 +687,7 @@ function App() {
     return Array.from(emails);
   };
   const notify = ({ toEmails, title, body, orderId, kind }) => {
-    const recipients = Array.from(new Set((toEmails || []).filter((e) => e && e !== (user && user.email))));
+    const recipients = Array.from(new Set([...(toEmails || []), ...adminEmails()].filter((e) => e && e !== (user && user.email))));
     if (recipients.length === 0) return;
     const id = uid();
     notificationsColRef().doc(id).set({ id, toEmails: recipients, title, body: body || "", orderId: orderId || "", kind: kind || "", createdAt: (/* @__PURE__ */ new Date()).toISOString(), readBy: [] }).catch((e) => console.error("notification failed", e));
@@ -953,7 +953,18 @@ function App() {
           onClick: () => {
             if (!isRead) markNotificationRead(n.id);
             setShowNotifPanel(false);
-            if (n.orderId) setSelectedId(n.orderId);
+            if (n.kind === "new-order" || n.kind === "resubmit") {
+              setSelectedId(null);
+              setTab("review");
+            } else if (n.kind === "approved") {
+              setSelectedId(null);
+              if (canSeeTab("distribution")) setTab("distribution");
+              else if (canSeeTab("materials-hub")) setTab("materials-hub");
+              else if (n.orderId) setSelectedId(n.orderId);
+            } else if (n.orderId) {
+              setTab(null);
+              setSelectedId(n.orderId);
+            }
           },
           style: { background: isRead ? COLORS.bg : COLORS.goldSoft, border: `1px solid ${isRead ? COLORS.border : COLORS.gold}`, borderRadius: 10, padding: 10, cursor: "pointer" }
         },
@@ -1450,7 +1461,8 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
       h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
       h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
       h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + orderStatusLabel(o))
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + orderStatusLabel(o)),
+      o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
     )
   );
   const tabsRow = h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
@@ -2358,11 +2370,6 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser, 
     h("button", { onClick: () => setConfirmDelete(false), style: { ...primaryBtn(false), background: "transparent", color: COLORS.ink, border: `1px solid ${COLORS.border}` } }, "\u0625\u0644\u063A\u0627\u0621")
   );
 
-  const sendWhatsAppUpdate = () => {
-    const msg = "\u0645\u0631\u062D\u0628\u064B\u0627 " + (order.clientName || "") + "\u060C \u062A\u062D\u062F\u064A\u062B \u0628\u062E\u0635\u0648\u0635 \u0623\u0648\u0631\u062F\u0631\u0643 (" + order.title + "):\n\u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629: " + orderStatusLabel(order) + (order.deliveryDate ? "\n\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0648\u0642\u0639: " + order.deliveryDate : "") + "\n\u0634\u0643\u0631\u064B\u0627 \u0644\u062A\u0639\u0627\u0645\u0644\u0643 \u0645\u0639\u0646\u0627 \u{1F49B}";
-    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
-  };
-  const cost = computeOrderCost(order);
   if (section === "menu") {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       subHeader("\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0648\u0627\u0644\u062A\u0633\u0639\u064A\u0631", () => setSection(null)),
@@ -2377,25 +2384,22 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser, 
     );
   }
   if (!section) {
+    const infoRow = (label, value, valueColor) => h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${COLORS.border}` } },
+      h("span", { style: { fontSize: 13, color: COLORS.muted } }, label),
+      h("span", { style: { fontSize: 14, fontWeight: 700, color: valueColor || COLORS.ink } }, value)
+    );
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       h("div", { style: { padding: 16 } },
-        (cost.materialsCost > 0 || cost.productionCostSAR > 0 || cost.productionCostEGP > 0 || cost.sellingPrice > 0) ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, marginBottom: 14 } },
-          h("div", { style: { ...display, fontSize: 15, fontWeight: 700, marginBottom: 10 } }, "\u0627\u0644\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0642\u062F\u064A\u0631\u064A\u0629"),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062E\u0627\u0645\u0627\u062A"), h("span", null, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u0631\u064A\u0627\u0644)"), h("span", null, cost.productionCostSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-          cost.productionCostEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 8 } }, h("span", null, "\u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u062C\u0646\u064A\u0647 \u2014 \u0645\u0635\u0631)"), h("span", null, cost.productionCostEGP.toLocaleString("en-US"), " \u062C.\u0645")) : null,
-          cost.productionCostEGP > 0 ? h("div", { style: { background: COLORS.bg, borderRadius: 8, padding: 8, marginBottom: 8 } },
-            h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
-              h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645 (\u062C\u0646\u064A\u0647 \u0644\u0643\u0644 \u0631\u064A\u0627\u0644)"),
-              h("input", { type: "number", value: order.exchangeRate || "", disabled: !canEdit, onChange: (e) => onUpdate({ exchangeRate: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "\u0645\u062B\u0627\u0644: 12.5", style: { width: 90, padding: "5px 8px", fontSize: 12.5, borderRadius: 6, border: `1px solid ${COLORS.border}`, textAlign: "center" } })
-            ),
-            cost.exchangeRate > 0 ? h("div", { style: { fontSize: 12, color: COLORS.teal, marginTop: 6, fontWeight: 600 } }, "\u2248 " + cost.productionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 2 }) + " \u0631\u064A\u0627\u0644") : h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 6 } }, "\u062D\u0637\u064A \u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0639\u0634\u0627\u0646 \u064A\u062A\u062D\u0648\u0644 \u0627\u0644\u0645\u0628\u0644\u063A \u0644\u0644\u0631\u064A\u0627\u0644")
-          ) : null,
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginBottom: 8 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629 (\u0631\u064A\u0627\u0644)"), h("span", null, cost.totalCost.toLocaleString("en-US", { maximumFractionDigits: 2 }), " \u0631\u064A\u0627\u0644")),
-          h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: COLORS.muted, marginBottom: 4 } }, h("span", null, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639"), h("span", null, cost.sellingPrice.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-          cost.sellingPrice > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, color: cost.margin >= 0 ? COLORS.green : COLORS.danger } }, h("span", null, "\u0647\u0627\u0645\u0634 \u0627\u0644\u0631\u0628\u062D"), h("span", null, cost.margin.toLocaleString("en-US", { maximumFractionDigits: 2 }), " \u0631\u064A\u0627\u0644")) : null
-        ) : null,
-        h("button", { onClick: sendWhatsAppUpdate, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#25D366", color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14.5, fontWeight: 700, cursor: "pointer" } }, h(Emoji, { size: 18 }, "\u{1F4F1}"), "\u0625\u0631\u0633\u0627\u0644 \u062A\u062D\u062F\u064A\u062B \u0644\u0644\u0639\u0645\u064A\u0644")
+        h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "4px 16px" } },
+          infoRow("\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", order.clientName || "\u2014"),
+          infoRow("\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", order.deliveryDate || "\u2014"),
+          infoRow("\u0627\u0644\u0642\u0633\u0645", order.category || "\u2014"),
+          infoRow("\u0627\u0644\u062D\u0627\u0644\u0629", orderStatusLabel(order), COLORS.gold),
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0" } },
+            h("span", { style: { fontSize: 13, color: COLORS.muted } }, "\u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F"),
+            order.createdBy ? h("span", { style: { fontSize: 13, fontWeight: 700, color: order.approved ? COLORS.green : COLORS.muted } }, order.approved ? "\u2705 \u0645\u0639\u062A\u0645\u062F" : "\u23F3 \u0644\u0633\u0629 \u0645\u0627 \u0627\u062A\u0639\u062A\u0645\u062F") : h("span", { style: { fontSize: 13, color: COLORS.muted } }, "\u2014")
+          )
+        )
       ),
       deleteModal,
       editOrderModal
@@ -2850,13 +2854,13 @@ const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التن�
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
 const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", viewer: "مشاهدة فقط" };
 const ALL_TABS = [
-  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
   { key: "review", label: "المراجعة", emoji: "\u{1F9FE}" },
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
   { key: "materials-hub", label: "الخامات", emoji: "🧵" },
-  { key: "customers", label: "العملاء", emoji: "👥" },
   { key: "distribution", label: "التوزيع", emoji: "📦" },
   { key: "egypt-upholstery", label: "تنجيد مصر", emoji: "🛋️" },
+  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
+  { key: "customers", label: "العملاء", emoji: "👥" },
   { key: "production-board", label: "أقسام الإنتاج", emoji: "🏭" },
   { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
   { key: "activity-log", label: "سجل النشاط", emoji: "📜" },
@@ -2886,7 +2890,11 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, doneLabel, title, e
     ),
     list.length === 0 ? h("p", { style: { fontSize: 12, color: COLORS.muted, textAlign: "center", padding: "10px 0", margin: 0 } }, "\u0644\u0627 \u064A\u0648\u062C\u062F") :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((o) => h("div", { key: o.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.bg, borderRadius: 8, padding: "8px 10px" } },
-      h("div", null, h("div", { style: { fontWeight: 700, fontSize: 13 } }, o.clientName || "\u2014"), h("div", { style: { fontSize: 11, color: COLORS.muted } }, o.category || "\u2014")),
+      h("div", null,
+        h("div", { style: { fontWeight: 700, fontSize: 13 } }, o.clientName || "\u2014"),
+        h("div", { style: { fontSize: 11, color: COLORS.muted } }, o.category || "\u2014"),
+        o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
+      ),
       tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
     )))
   );
