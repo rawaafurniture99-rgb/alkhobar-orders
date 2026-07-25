@@ -664,19 +664,31 @@ function App() {
   }, [dataLoaded, orders]);
   const deadlineNotifiedRef = useRef(false);
   useEffect(() => {
-    if (!dataLoaded || deadlineNotifiedRef.current) return;
+    if (!dataLoaded || deadlineNotifiedRef.current || !access) return;
     deadlineNotifiedRef.current = true;
-    const soon = productionPieces.filter((p) => {
-      if (!p.agreedDeadline || p.status === "إلى الشحن") return false;
-      const d = Math.round((new Date(p.agreedDeadline) - new Date(new Date().toISOString().slice(0, 10))) / 86400000);
-      return d <= 2;
+    const productionEmailsForLocation = (location) => {
+      const emails = new Set();
+      (access.members || []).forEach((m) => {
+        if (!memberHasRole(m, "production")) return;
+        const scope = m.supplierScope || [];
+        if (scope.length === 0 || scope.includes(location)) emails.add(m.email);
+      });
+      return Array.from(emails);
+    };
+    productionPieces.forEach((p) => {
+      if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineNotified) return;
+      const d = daysUntil(p.agreedDeadline);
+      if (d === null || d > 2) return;
+      const late = d < 0;
+      notify({
+        toEmails: productionEmailsForLocation(p.currentLocation),
+        title: late ? "⚠️ قطعة متأخرة عن الموعد المتفق عليه" : "⏰ قطعة قريبة من الموعد المتفق عليه",
+        body: (p.customerName || "—") + " — " + (p.pieceType || "—") + " عند " + (p.currentLocation || "—"),
+        kind: "deadline"
+      });
+      piecesColRef().doc(p.id).update({ deadlineNotified: true }).catch((e) => console.error("deadline flag failed", e));
     });
-    if (soon.length === 0) return;
-    if (typeof Notification === "undefined") return;
-    const fire = () => new Notification("Al Khobar Orders", { body: `عندك ${soon.length} قطعة قريبة من الموعد المتفق عليه أو متأخرة` });
-    if (Notification.permission === "granted") fire();
-    else if (Notification.permission !== "denied") Notification.requestPermission().then((perm) => { if (perm === "granted") fire(); });
-  }, [dataLoaded, productionPieces]);
+  }, [dataLoaded, productionPieces, access]);
   const persistField = useCallback((field, value) => {
     if (!user) return;
     workspaceDocRef().update({ [field]: value }).then(() => {
@@ -1489,7 +1501,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1130 } },
         h("thead", null, h("tr", null, cols.map((c, idx) => h("th", { key: idx, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
         h("tbody", null, sorted.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
-          h("td", { style: { padding: "9px 10px" } }, h("button", { onClick: () => onOpen(o.id), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" } }, h(Emoji, { size: 12 }, "\u{1F4C2}"), "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631")),
+          h("td", { style: { padding: "9px 10px" } }, o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641") : h("span", { style: { fontSize: 11, color: COLORS.muted, whiteSpace: "nowrap" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0644\u0641")),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", cursor: "pointer", color: COLORS.teal, fontWeight: 600 }, onClick: () => onOpen(o.id) }, fmtDateTime(o.enteredAt)),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)),
           h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, o.clientName || "\u2014"),
@@ -1790,6 +1802,12 @@ function DeliveryCalendar({ pieces, onSelectDay }) {
   });
   const todayObj = new Date();
   const isCurrentMonth = todayObj.getFullYear() === year && todayObj.getMonth() === month;
+  const jumpTo = (newMonth, newYear) => {
+    const diff = (newYear - todayObj.getFullYear()) * 12 + (newMonth - todayObj.getMonth());
+    setMonthOffset(diff);
+  };
+  const yearOptions = [];
+  for (let y = todayObj.getFullYear() - 1; y <= todayObj.getFullYear() + 2; y++) yearOptions.push(y);
   const cells = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -1797,7 +1815,14 @@ function DeliveryCalendar({ pieces, onSelectDay }) {
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, marginBottom: 14 } },
     h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 } },
       h("button", { onClick: () => setMonthOffset(monthOffset - 1), style: iconBtnStyle }, h(Emoji, { size: 17 }, "\u203A")),
-      h("div", { style: { ...display, fontSize: 18, fontWeight: 700 } }, `${AR_MONTHS[month]} ${year}`),
+      h("div", { style: { display: "flex", gap: 6 } },
+        h("select", { value: month, onChange: (e) => jumpTo(Number(e.target.value), year), style: { fontSize: 13, fontWeight: 700, padding: "5px 6px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } },
+          AR_MONTHS.map((m, i) => h("option", { key: m, value: i }, m))
+        ),
+        h("select", { value: year, onChange: (e) => jumpTo(month, Number(e.target.value)), style: { fontSize: 13, fontWeight: 700, padding: "5px 6px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } },
+          yearOptions.map((y) => h("option", { key: y, value: y }, y))
+        )
+      ),
       h("button", { onClick: () => setMonthOffset(monthOffset + 1), style: iconBtnStyle }, h(Emoji, { size: 17 }, "\u2039"))
     ),
     h("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 } },
@@ -1853,8 +1878,16 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   const delivered = pieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
     .sort((a, b) => (b.actualDeliveryDate || "").localeCompare(a.actualDeliveryDate || ""));
-  const onTimeCount = delivered.filter((p) => { const a = achievement(p); return a && a.type !== "\u062A\u0623\u062E\u064A\u0631"; }).length;
-  const lateCount = delivered.filter((p) => { const a = achievement(p); return a && a.type === "\u062A\u0623\u062E\u064A\u0631"; }).length;
+  const countOrders = (list) => new Set(list.map((p) => p.customerName || "\u2014")).size;
+  const customerAchievement = {};
+  delivered.forEach((p) => {
+    const a = achievement(p);
+    if (!a) return;
+    const isLate = a.type === "\u062A\u0623\u062E\u064A\u0631";
+    if (customerAchievement[p.customerName] !== "late") customerAchievement[p.customerName] = isLate ? "late" : "onTime";
+  });
+  const onTimeCount = Object.values(customerAchievement).filter((v) => v === "onTime").length;
+  const lateCount = Object.values(customerAchievement).filter((v) => v === "late").length;
   const renderRow = (p, showAchievement) => {
     const a = achievement(p);
     const achColor = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? COLORS.green : a.type === "\u062A\u0623\u062E\u064A\u0631" ? COLORS.danger : COLORS.teal) : COLORS.muted;
@@ -1882,7 +1915,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
     h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" }),
     delivered.length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 } },
       h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "10px 6px", textAlign: "center" } },
-        h("div", { style: { fontSize: 18, fontWeight: 700, color: COLORS.ink } }, delivered.length),
+        h("div", { style: { fontSize: 18, fontWeight: 700, color: COLORS.ink } }, countOrders(delivered)),
         h("div", { style: { fontSize: 10.5, color: COLORS.muted, marginTop: 2 } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u0633\u0644\u0651\u0645")
       ),
       h("div", { style: { background: "#E8F0E4", border: `1px solid ${COLORS.green}`, borderRadius: 12, padding: "10px 6px", textAlign: "center" } },
@@ -1895,8 +1928,8 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
       )
     ) : null,
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-      h(TabButton, { active: view === "list", onClick: () => setView("list"), emoji: "\u{1F4CB}", label: "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0633\u0644\u0645\u062A (" + ready.length + ")" }),
-      h(TabButton, { active: view === "delivered", onClick: () => setView("delivered"), emoji: "\u2705", label: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (" + delivered.length + ")" }),
+      h(TabButton, { active: view === "list", onClick: () => setView("list"), emoji: "\u{1F4CB}", label: "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0633\u0644\u0645\u062A (" + countOrders(ready) + ")" }),
+      h(TabButton, { active: view === "delivered", onClick: () => setView("delivered"), emoji: "\u2705", label: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (" + countOrders(delivered) + ")" }),
       h(TabButton, { active: view === "calendar", onClick: () => { setView("calendar"); setSelectedDay(null); }, emoji: "\u{1F4C5}", label: "\u062A\u0642\u0648\u064A\u0645" })
     ),
     view === "calendar" ? h(React.Fragment, null,
