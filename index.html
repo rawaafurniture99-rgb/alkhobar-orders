@@ -683,7 +683,7 @@ function App() {
       notify({
         toEmails: productionEmailsForLocation(p.currentLocation),
         title: late ? "⚠️ قطعة متأخرة عن الموعد المتفق عليه" : "⏰ قطعة قريبة من الموعد المتفق عليه",
-        body: (p.customerName || "—") + " — " + (p.pieceType || "—") + " عند " + (p.currentLocation || "—"),
+        body: (p.customerName || "—") + " - " + (p.currentLocation || "—"),
         kind: "deadline"
       });
       piecesColRef().doc(p.id).update({ deadlineNotified: true }).catch((e) => console.error("deadline flag failed", e));
@@ -964,7 +964,7 @@ function App() {
         const atRiskCount = orders.filter((o) => {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
-          return d !== null && d >= 1 && d <= 5;
+          return d !== null && d >= 1 && d <= 7;
         }).length;
         const readyCount = productionPieces.filter((p) => (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate) && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
         const items = [
@@ -2499,7 +2499,10 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
           const matchingOrder = customerOrders.find((o) => o.deliveryDate === dateKey) || null;
           const receivedDate = matchingOrder ? matchingOrder.dateReceived : "";
           return h("div", { key: dateKey, style: { marginBottom: 16 } },
-            h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, margin: "0 0 8px" } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
+            h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } },
+              h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
+              matchingOrder && onOpenOrder ? h("button", { onClick: () => onOpenOrder(matchingOrder.id), style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 11 }, "\u{1F4C2}"), "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+            ),
             h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, dateGroups[dateKey].map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "6px 14px" } },
               detailRow("\u{1F464}", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", name),
               detailRow("\u{1F4C5}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)", receivedDate),
