@@ -697,10 +697,16 @@ function App() {
     const entry = { id: uid(), userEmail: user.email, text, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
     activityLogColRef().doc(entry.id).set(entry).catch((e) => console.error("activity log failed", e));
   };
+  const memberHasRole = (m, r) => (m.roles && m.roles.length ? m.roles : (m.role ? [m.role] : [])).includes(r);
   const adminEmails = () => {
     const emails = /* @__PURE__ */ new Set();
     if (access && access.ownerEmail) emails.add(access.ownerEmail);
-    (access && access.members || []).forEach((m) => { if (m.role === "admin") emails.add(m.email); });
+    (access && access.members || []).forEach((m) => { if (memberHasRole(m, "admin")) emails.add(m.email); });
+    return Array.from(emails);
+  };
+  const reviewTeamEmails = () => {
+    const emails = new Set(adminEmails());
+    (access && access.members || []).forEach((m) => { if (memberHasRole(m, "engineers-manager")) emails.add(m.email); });
     return Array.from(emails);
   };
   const emailsWithTabAccess = (tabKey) => {
@@ -798,7 +804,7 @@ function App() {
     const withOwner = { ...o, createdBy: (user && user.email) || "", engineerName: myDisplayName, approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "" };
     persistRecordWrite(ordersColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F: " + o.title);
-    notify({ toEmails: adminEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F \u064A\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", body: (myDisplayName || "") + " \u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u0644ـ" + (o.clientName || ""), orderId: withOwner.id, kind: "new-order" });
+    notify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F \u064A\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", body: (myDisplayName || "") + " \u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u0644ـ" + (o.clientName || ""), orderId: withOwner.id, kind: "new-order" });
   };
   const deleteOrder = (id) => {
     const ord = orders.find((o) => o.id === id);
@@ -870,13 +876,13 @@ function App() {
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
-        tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces }),
+        tab === "dashboard" && h(DashboardPage, { orders, pieces: productionPieces, emailToName, isAdminUser: isOwner || hasRole("admin") }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
-        tab === "review" && h(ReviewPage, { orders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin"), emailToName, onNotify: notify, emailsWithTabAccess }),
-        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails }),
+        tab === "review" && h(ReviewPage, { orders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), emailToName, onNotify: notify, emailsWithTabAccess }),
+        tab === "my-orders" && h(MyOrdersPage, { orders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder })
         )
       ),
@@ -1483,7 +1489,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     revisingOrder ? h(RevisionNoteModal, { order: revisingOrder, onClose: () => setRevisingOrder(null), onSave: (patch) => { onUpdateOrder(revisingOrder.id, patch); setRevisingOrder(null); } }) : null
   );
 }
-function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails }) {
+function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails }) {
   const [tab, setTab] = useState("revisions");
   const [selectedEngineer, setSelectedEngineer] = useState(null);
   const [monthFilter, setMonthFilter] = useState("");
@@ -1556,7 +1562,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
     tabsRow,
     currentList.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, currentList.map(tab === "revisions" ? revisionCard : doneCard)),
-    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", editCount: (editingOrder.editCount || 0) + 1 }); if (onNotify && adminEmails) onNotify({ toEmails: adminEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
+    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", editCount: (editingOrder.editCount || 0) + 1 }); if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
   );
 }
 function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
@@ -1740,11 +1746,79 @@ function EgyptUpholsteryPage({ pieces, onUpdate, readOnly }) {
       }))
   );
 }
+function DeliveryCalendar({ pieces, onSelectDay }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const base = new Date();
+  base.setDate(1);
+  base.setMonth(base.getMonth() + monthOffset);
+  const year = base.getFullYear();
+  const month = base.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const countByDay = {};
+  pieces.forEach((p) => {
+    if (!p.customerDeliveryDate) return;
+    const d = new Date(p.customerDeliveryDate);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const day = d.getDate();
+      countByDay[day] = (countByDay[day] || 0) + 1;
+    }
+  });
+  const todayObj = new Date();
+  const isCurrentMonth = todayObj.getFullYear() === year && todayObj.getMonth() === month;
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const WEEKDAYS = ["\u0623\u062D", "\u0627\u062B\u0646", "\u062B\u0644\u0627", "\u0623\u0631\u0628", "\u062E\u0645\u064A", "\u062C\u0645\u0639", "\u0633\u0628\u062A"];
+  return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, marginBottom: 14 } },
+    h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 } },
+      h("button", { onClick: () => setMonthOffset(monthOffset - 1), style: iconBtnStyle }, h(Emoji, { size: 17 }, "\u203A")),
+      h("div", { style: { ...display, fontSize: 18, fontWeight: 700 } }, `${AR_MONTHS[month]} ${year}`),
+      h("button", { onClick: () => setMonthOffset(monthOffset + 1), style: iconBtnStyle }, h(Emoji, { size: 17 }, "\u2039"))
+    ),
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 } },
+      WEEKDAYS.map((w) => h("div", { key: w, style: { textAlign: "center", fontSize: 11, color: COLORS.muted, fontWeight: 700, padding: "4px 0" } }, w))
+    ),
+    h("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 } },
+      cells.map((d, i) => {
+        if (d === null) return h("div", { key: "empty-" + i });
+        const count = countByDay[d] || 0;
+        const isToday = isCurrentMonth && todayObj.getDate() === d;
+        return h(
+          "button",
+          {
+            key: d,
+            onClick: () => count > 0 && onSelectDay(`${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`),
+            style: {
+              aspectRatio: "1",
+              borderRadius: 10,
+              border: isToday ? `2px solid ${COLORS.gold}` : `1px solid ${COLORS.border}`,
+              background: count > 0 ? COLORS.goldSoft : "#fff",
+              cursor: count > 0 ? "pointer" : "default",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 2,
+              padding: 2
+            }
+          },
+          h("span", { style: { fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: COLORS.ink } }, d),
+          count > 0 && h("span", { style: { fontSize: 9.5, fontWeight: 700, color: COLORS.gold, background: "#fff", borderRadius: 999, padding: "1px 5px" } }, count)
+        );
+      })
+    )
+  );
+}
 function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   const [query, setQuery] = useState("");
+  const [view, setView] = useState("list");
+  const [selectedDay, setSelectedDay] = useState(null);
   const ready = pieces.filter((p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate)
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
+  const dayPieces = selectedDay ? pieces.filter((p) => p.customerDeliveryDate === selectedDay) : [];
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0627\u0644\u0625\u0646\u062C\u0627\u0632/\u0627\u0644\u062A\u0623\u062E\u064A\u0631"];
   const achievement = (p) => {
     if (!p.actualDeliveryDate || !p.customerDeliveryDate) return null;
@@ -1755,36 +1829,59 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" }),
-    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
-      h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
-          h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-          h("tbody", null, ready.map((p) => {
-            const a = achievement(p);
-            const achColor = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? COLORS.green : a.type === "\u062A\u0623\u062E\u064A\u0631" ? COLORS.danger : COLORS.teal) : COLORS.muted;
-            const achBg = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "#E8F0E4" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "#FBEAE6" : "#EAF1F1") : COLORS.bg;
-            const achEmoji = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "\u2705" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "\u23F0" : "\u{1F3AF}") : null;
-            return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
-              h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
-              h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
-              h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
-              h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount),
-              h("td", { style: { padding: "9px 10px", maxWidth: 150, whiteSpace: "normal" } }, p.description || "\u2014"),
-              h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
-              h("td", { style: { padding: "9px 10px" } }, p.image && p.image.dataUrl ? h("img", { src: p.image.dataUrl, style: { width: 38, height: 38, borderRadius: 7, objectFit: "cover" } }) : "\u2014"),
-              h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
-              h("td", { style: { padding: "9px 10px" } }, h("select", { value: p.deliveryConfirmed || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
-                h("option", { value: "" }, "\u0641\u0627\u0631\u063A"),
-                h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
-                h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
-              )),
-              h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
-              h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: achColor, background: achBg, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" } }, h(Emoji, { size: 12 }, achEmoji), a.type + (a.days > 0 ? " (" + a.days + " \u064A\u0648\u0645)" : "")) : h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u2014"))
-            );
-          }))
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      h(TabButton, { active: view === "list", onClick: () => setView("list"), emoji: "\u{1F4CB}", label: "\u0642\u0627\u0626\u0645\u0629" }),
+      h(TabButton, { active: view === "calendar", onClick: () => { setView("calendar"); setSelectedDay(null); }, emoji: "\u{1F4C5}", label: "\u062A\u0642\u0648\u064A\u0645" })
+    ),
+    view === "calendar" ? h(React.Fragment, null,
+      h(DeliveryCalendar, { pieces, onSelectDay: setSelectedDay }),
+      selectedDay ? h(React.Fragment, null,
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+          h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, `\u0645\u0648\u0627\u0639\u064A\u062F \u064A\u0648\u0645 ${selectedDay}`),
+          h("button", { onClick: () => setSelectedDay(null), style: { ...addLinkStyle, marginTop: 0 } }, "\u0625\u062E\u0641\u0627\u0621")
+        ),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+          dayPieces.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            h("div", null,
+              h("div", { style: { fontWeight: 700 } }, p.customerName),
+              h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, (p.pieceType || "\u2014") + " \xB7 " + (p.pieceCount || 0) + " \u0642\u0637\u0639\u0629")
+            ),
+            h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, p.currentLocation || "\u2014")
+          ))
         )
-      )
+      ) : h(EmptyHint, { text: "\u0627\u0636\u063A\u0637\u064A \u0639\u0644\u0649 \u0623\u064A \u064A\u0648\u0645 \u0641\u064A\u0647 \u0645\u0648\u0627\u0639\u064A\u062F \u062A\u0633\u0644\u064A\u0645 (\u0645\u0644\u0648\u0651\u0646) \u0639\u0634\u0627\u0646 \u062A\u0634\u0648\u0641\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644" })
+    ) : h(React.Fragment, null,
+      h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+        h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+          h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
+            h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+            h("tbody", null, ready.map((p) => {
+              const a = achievement(p);
+              const achColor = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? COLORS.green : a.type === "\u062A\u0623\u062E\u064A\u0631" ? COLORS.danger : COLORS.teal) : COLORS.muted;
+              const achBg = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "#E8F0E4" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "#FBEAE6" : "#EAF1F1") : COLORS.bg;
+              const achEmoji = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "\u2705" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "\u23F0" : "\u{1F3AF}") : null;
+              return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+                h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+                h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount),
+                h("td", { style: { padding: "9px 10px", maxWidth: 150, whiteSpace: "normal" } }, p.description || "\u2014"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
+                h("td", { style: { padding: "9px 10px" } }, p.image && p.image.dataUrl ? h("img", { src: p.image.dataUrl, style: { width: 38, height: 38, borderRadius: 7, objectFit: "cover" } }) : "\u2014"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
+                h("td", { style: { padding: "9px 10px" } }, h("select", { value: p.deliveryConfirmed || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+                  h("option", { value: "" }, "\u0641\u0627\u0631\u063A"),
+                  h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
+                  h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
+                )),
+                h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
+                h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: achColor, background: achBg, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" } }, h(Emoji, { size: 12 }, achEmoji), a.type + (a.days > 0 ? " (" + a.days + " \u064A\u0648\u0645)" : "")) : h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u2014"))
+              );
+            }))
+          )
+        )
+    )
   );
 }
 function TodayQueuePage({ pieces }) {
@@ -1824,7 +1921,7 @@ function TodayQueuePage({ pieces }) {
       )
   );
 }
-function DashboardPage({ orders, pieces }) {
+function DashboardPage({ orders, pieces, emailToName, isAdminUser }) {
   const now = /* @__PURE__ */ new Date();
   const thisMonthKey = now.toISOString().slice(0, 7);
   const ordersThisMonth = orders.filter((o) => (o.dateReceived || "").slice(0, 7) === thisMonthKey).length;
@@ -1865,6 +1962,20 @@ function DashboardPage({ orders, pieces }) {
     const d = daysUntil(p.customerDeliveryDate);
     return d !== null && d <= 5;
   }).sort((a, b) => daysUntil(a.customerDeliveryDate) - daysUntil(b.customerDeliveryDate)).slice(0, 8);
+  const thisMonthPrefix = todayStr().slice(0, 7);
+  const engineerOrders = {};
+  orders.forEach((o) => {
+    if (!o.createdBy) return;
+    (engineerOrders[o.createdBy] = engineerOrders[o.createdBy] || []).push(o);
+  });
+  const engineerStats = Object.keys(engineerOrders).map((email) => {
+    const list = engineerOrders[email];
+    const thisMonthCount = list.filter((o) => (o.enteredAt || "").slice(0, 7) === thisMonthPrefix).length;
+    const approvalDurations = list.filter((o) => o.approved && o.enteredAt && o.reviewDate).map((o) => dayDiff(o.enteredAt, o.reviewDate)).filter((d) => d !== null);
+    const avgApprovalDays = approvalDurations.length ? approvalDurations.reduce((a, b) => a + b, 0) / approvalDurations.length : null;
+    const avgEdits = list.length ? list.reduce((a, o) => a + (o.editCount || 0), 0) / list.length : 0;
+    return { email, name: (emailToName && emailToName[email]) || email, thisMonthCount, avgApprovalDays, avgEdits, total: list.length };
+  }).sort((a, b) => b.thisMonthCount - a.thisMonthCount);
   const statCard = (emoji, label, value, color) => h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, textAlign: "center" } },
     h("div", { style: { fontSize: 26 } }, emoji),
     h("div", { style: { fontSize: 24, fontWeight: 700, color: color || COLORS.ink, marginTop: 6 } }, value),
@@ -1936,6 +2047,24 @@ function DashboardPage({ orders, pieces }) {
           h("div", { style: { height: "100%", width: (sp.avg / maxSupplierAvg * 100) + "%", background: COLORS.teal, borderRadius: 999 } })
         )
       )))
+    ) : null,
+    isAdminUser && engineerStats.length > 0 ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, marginBottom: 16 } },
+      h("div", { style: { ...display, fontSize: 16, fontWeight: 700, marginBottom: 4 } }, "\u{1F464} \u0623\u062F\u0627\u0621 \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646"),
+      h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginBottom: 12 } }, "\u0645\u0631\u062A\u0628\u064A\u0646 \u062D\u0633\u0628 \u0639\u062F\u062F \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0634\u0647\u0631 \u062F\u0647"),
+      h("div", { style: { overflowX: "auto" } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 480 } },
+          h("thead", null, h("tr", null,
+            ["\u0627\u0644\u0645\u0647\u0646\u062F\u0633/\u0629", "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0634\u0647\u0631", "\u0625\u062C\u0645\u0627\u0644\u064A", "\u0645\u062A\u0648\u0633\u0637 \u0648\u0642\u062A \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F", "\u0645\u062A\u0648\u0633\u0637 \u0639\u062F\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A"].map((c) => h("th", { key: c, style: { padding: "7px 8px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c))
+          )),
+          h("tbody", null, engineerStats.map((e) => h("tr", { key: e.email, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            h("td", { style: { padding: "7px 8px", fontWeight: 700, whiteSpace: "nowrap" } }, e.name),
+            h("td", { style: { padding: "7px 8px", textAlign: "center", fontWeight: 700, color: COLORS.gold } }, e.thisMonthCount),
+            h("td", { style: { padding: "7px 8px", textAlign: "center" } }, e.total),
+            h("td", { style: { padding: "7px 8px", textAlign: "center" } }, e.avgApprovalDays === null ? "\u2014" : e.avgApprovalDays.toFixed(1) + " \u064A\u0648\u0645"),
+            h("td", { style: { padding: "7px 8px", textAlign: "center" } }, e.avgEdits.toFixed(1))
+          )))
+        )
+      )
     ) : null,
     h("button", { onClick: exportFullBackup, style: { width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: COLORS.ink, color: "#fff", border: "none", borderRadius: 12, padding: "13px 0", fontSize: 14.5, fontWeight: 700, cursor: "pointer" } }, h(Emoji, { size: 17 }, "\u{1F4BE}"), "\u062A\u062D\u0645\u064A\u0644 \u0646\u0633\u062E\u0629 \u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629 \u0634\u0627\u0645\u0644\u0629 (Excel)")
   );
@@ -2905,7 +3034,7 @@ const DEFAULT_PRODUCTION_SUPPLIERS = {
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
-const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", viewer: "مشاهدة فقط" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", viewer: "مشاهدة فقط" };
 const ALL_TABS = [
   { key: "review", label: "المراجعة", emoji: "\u{1F9FE}" },
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
