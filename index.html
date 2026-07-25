@@ -872,7 +872,7 @@ function App() {
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         !canSeeTab(tab) ? null : h(React.Fragment, null,
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
-        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution, orders, onUpdateOrder: updateOrder }),
+        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution, orders, onUpdateOrder: updateOrder, onOpenOrder: (id) => openOrder(id, "menu") }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
@@ -929,12 +929,16 @@ function App() {
       })(),
       (() => {
         const reviewCount = orders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
-        const atRiskCount = productionPieces.filter((p) => {
-          if (!p.customerDeliveryDate || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
-          const d = daysUntil(p.customerDeliveryDate);
-          return d !== null && d <= 5;
+        const atRiskCount = orders.filter((o) => {
+          if (!o.deliveryDate) return false;
+          const d = daysUntil(o.deliveryDate);
+          return d !== null && d >= 1 && d <= 5;
         }).length;
-        const readyCount = productionPieces.filter((p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
+        const readyCount = orders.filter((o) => {
+          if (!o.deliveryDate) return false;
+          const d = daysUntil(o.deliveryDate);
+          return d !== null && d <= 0;
+        }).length;
         const items = [
           canSeeTab("review") ? { emoji: "\u{1F9FE}", count: reviewCount, label: "\u0645\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", color: COLORS.gold, tab: "review" } : null,
           { emoji: "\u23F3", count: atRiskCount, label: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", color: COLORS.danger, tab: canSeeTab("dashboard") ? "dashboard" : null },
@@ -1634,7 +1638,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
   };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
-    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A" }) : null,
+    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A" }) : null,
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       toggleBtn("byCustomer", "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644", "\u{1F464}"),
       toggleBtn("rollup", "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A", "\u{1F4CA}"),
@@ -3040,10 +3044,10 @@ const ALL_TABS = [
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
   { key: "materials-hub", label: "الخامات", emoji: "🧵" },
   { key: "distribution", label: "التوزيع", emoji: "📦" },
-  { key: "egypt-upholstery", label: "تنجيد مصر", emoji: "🛋️" },
-  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
   { key: "customers", label: "العملاء", emoji: "👥" },
+  { key: "egypt-upholstery", label: "تنجيد مصر", emoji: "🛋️" },
   { key: "production-board", label: "أقسام الإنتاج", emoji: "🏭" },
+  { key: "full-production", label: "الإنتاج الكامل", emoji: "📋" },
   { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
   { key: "activity-log", label: "سجل النشاط", emoji: "📜" },
   { key: "supplier-performance", label: "تقييم الموردين", emoji: "⭐" },
@@ -3058,7 +3062,7 @@ function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
 function isSoftGoodType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("مخدات") || s.includes("سجاد"); }
 
-function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, doneLabel, title, emoji }) {
+function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji }) {
   const [tab, setTab] = useState("new");
   const approved = orders.filter((o) => o.approved);
   const fresh = approved.filter((o) => !o[flagKey]);
@@ -3077,11 +3081,14 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, doneLabel, title, e
         h("div", { style: { fontSize: 11, color: COLORS.muted } }, o.category || "\u2014"),
         o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
       ),
-      tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
+      h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+        onOpenOrder ? h("button", { onClick: () => onOpenOrder(o.id), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u0641\u062A\u062D") : null,
+        tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
+      )
     )))
   );
 }
-function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder }) {
+function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder, onOpenOrder }) {
   const [editingPiece, setEditingPiece] = useState(null);
   const [entity, setEntity] = useState(ENTITIES[0]);
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
@@ -3119,7 +3126,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   const filteredRecent = recentQuery.trim() ? recent.filter((p) => (p.customerName || "").includes(recentQuery.trim())) : recent;
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
-    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
+    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
       h("label", { style: labelStyle }, "اسم العميل"),
       h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
