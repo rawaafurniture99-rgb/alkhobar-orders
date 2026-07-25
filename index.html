@@ -872,7 +872,7 @@ function App() {
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         !canSeeTab(tab) ? null : h(React.Fragment, null,
         tab === "customers" && h(CustomersHubPage, { orders, pieces: productionPieces, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null) }),
-        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution, orders, onUpdateOrder: updateOrder, onOpenOrder: (id) => openOrder(id, "menu") }),
+        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditDistribution, orders, onUpdateOrder: updateOrder }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: globalReadOnly }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries") }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditFullProduction }),
@@ -2472,7 +2472,7 @@ function GlobalSuppliersPage({ orders }) {
   }
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, suppliers.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 18, fontWeight: 700 } }, s.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u0639\u0646\u062F\u0647\u0627 \u0634\u063A\u0644")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 6 } }, s.orders.map((o, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { fontSize: 13, color: COLORS.muted, borderTop: idx > 0 ? `1px dashed ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: COLORS.ink } }, o.title), " \u2014 ", o.clientName, o.pieceCount > 0 && ` \xB7 ${o.pieceCount} \u0642\u0637\u0639\u0629`, o.stages.length > 0 && ` \xB7 ${o.stages.join("\u060C ")}`))))));
 }
-const ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
+const ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u062A\u0646\u062C\u064A\u062F", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
 function NewOrderModal({ onClose, onSave, existing, existingCategories, engineerName }) {
   const [clientName, setClientName] = useState((existing && existing.clientName) || "");
   const [category, setCategory] = useState((existing && existing.category) || "");
@@ -2585,7 +2585,14 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser, 
             h("span", { style: { fontSize: 13, color: COLORS.muted } }, "\u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F"),
             order.createdBy ? h("span", { style: { fontSize: 13, fontWeight: 700, color: order.approved ? COLORS.green : COLORS.muted } }, order.approved ? "\u2705 \u0645\u0639\u062A\u0645\u062F" : "\u23F3 \u0644\u0633\u0629 \u0645\u0627 \u0627\u062A\u0639\u062A\u0645\u062F") : h("span", { style: { fontSize: 13, color: COLORS.muted } }, "\u2014")
           )
-        )
+        ),
+        isAdminUser && order.approved ? h("button", {
+          onClick: () => {
+            if (!window.confirm("\u0647\u062A\u0631\u062C\u0639\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629\u061F \u0647\u064A\u062E\u0631\u062C \u0645\u0646 \u0637\u0648\u0627\u0628\u064A\u0631 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0648\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0644\u062D\u062F \u0645\u0627 \u064A\u062A\u0639\u062A\u0645\u062F \u062A\u0627\u0646\u064A.")) return;
+            onUpdate({ approved: false, reviewStatus: "", distributionHandled: false, materialsHandled: false });
+          },
+          style: { width: "100%", marginTop: 12, background: COLORS.bg, color: COLORS.gold, border: `1px solid ${COLORS.gold}`, borderRadius: 12, padding: "11px 0", fontSize: 13.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
+        }, h(Emoji, { size: 15 }, "\u21A9\uFE0F"), "\u0625\u0631\u062C\u0627\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629") : null
       ),
       deleteModal,
       editOrderModal
@@ -3082,13 +3089,13 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLa
         o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
       ),
       h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-        onOpenOrder ? h("button", { onClick: () => onOpenOrder(o.id), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u0641\u062A\u062D") : null,
+        onOpenOrder ? h("button", { onClick: () => onOpenOrder(o.id), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u062D\u0635\u0631") : null,
         tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
       )
     )))
   );
 }
-function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder, onOpenOrder }) {
+function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder }) {
   const [editingPiece, setEditingPiece] = useState(null);
   const [entity, setEntity] = useState(ENTITIES[0]);
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
@@ -3126,7 +3133,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   const filteredRecent = recentQuery.trim() ? recent.filter((p) => (p.customerName || "").includes(recentQuery.trim())) : recent;
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
-    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
+    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
       h("label", { style: labelStyle }, "اسم العميل"),
       h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
