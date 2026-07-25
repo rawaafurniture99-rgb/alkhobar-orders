@@ -954,11 +954,7 @@ function App() {
           const d = daysUntil(o.deliveryDate);
           return d !== null && d >= 1 && d <= 5;
         }).length;
-        const readyCount = orders.filter((o) => {
-          if (!o.deliveryDate) return false;
-          const d = daysUntil(o.deliveryDate);
-          return d !== null && d <= 0;
-        }).length;
+        const readyCount = productionPieces.filter((p) => (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate) && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
         const items = [
           canSeeTab("review") ? { emoji: "\u{1F9FE}", count: reviewCount, label: "\u0645\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", color: COLORS.gold, tab: "review" } : null,
           { emoji: "\u23F3", count: atRiskCount, label: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", color: COLORS.danger, tab: canSeeTab("dashboard") ? "dashboard" : null },
@@ -1842,7 +1838,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("list");
   const [selectedDay, setSelectedDay] = useState(null);
-  const ready = pieces.filter((p) => p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate)
+  const ready = pieces.filter((p) => (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate) && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
   const dayPieces = selectedDay ? pieces.filter((p) => p.customerDeliveryDate === selectedDay) : [];
@@ -1854,10 +1850,53 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
     if (diffDays > 0) return { type: "\u062A\u0623\u062E\u064A\u0631", days: diffDays };
     return { type: "\u0641\u064A \u0627\u0644\u0645\u0648\u0639\u062F", days: 0 };
   };
+  const delivered = pieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
+    .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
+    .sort((a, b) => (b.actualDeliveryDate || "").localeCompare(a.actualDeliveryDate || ""));
+  const onTimeCount = delivered.filter((p) => { const a = achievement(p); return a && a.type !== "\u062A\u0623\u062E\u064A\u0631"; }).length;
+  const lateCount = delivered.filter((p) => { const a = achievement(p); return a && a.type === "\u062A\u0623\u062E\u064A\u0631"; }).length;
+  const renderRow = (p, showAchievement) => {
+    const a = achievement(p);
+    const achColor = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? COLORS.green : a.type === "\u062A\u0623\u062E\u064A\u0631" ? COLORS.danger : COLORS.teal) : COLORS.muted;
+    const achBg = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "#E8F0E4" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "#FBEAE6" : "#EAF1F1") : COLORS.bg;
+    const achEmoji = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "\u2705" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "\u23F0" : "\u{1F3AF}") : null;
+    return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+      h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
+      h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
+      h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+      h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount),
+      h("td", { style: { padding: "9px 10px", maxWidth: 150, whiteSpace: "normal" } }, p.description || "\u2014"),
+      h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
+      h("td", { style: { padding: "9px 10px" } }, p.image && p.image.dataUrl ? h("img", { src: p.image.dataUrl, style: { width: 38, height: 38, borderRadius: 7, objectFit: "cover" } }) : "\u2014"),
+      h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
+      h("td", { style: { padding: "9px 10px" } }, h("select", { value: p.deliveryConfirmed || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+        h("option", { value: "" }, "\u0641\u0627\u0631\u063A"),
+        h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
+        h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
+      )),
+      h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
+      showAchievement ? h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: achBg, color: achColor, whiteSpace: "nowrap" } }, achEmoji + " " + a.type + (a.days ? " " + a.days + " \u064A\u0648\u0645" : "")) : "\u2014") : h("td", { style: { padding: "9px 10px" } }, "\u2014")
+    );
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" }),
+    delivered.length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 } },
+      h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "10px 6px", textAlign: "center" } },
+        h("div", { style: { fontSize: 18, fontWeight: 700, color: COLORS.ink } }, delivered.length),
+        h("div", { style: { fontSize: 10.5, color: COLORS.muted, marginTop: 2 } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u0633\u0644\u0651\u0645")
+      ),
+      h("div", { style: { background: "#E8F0E4", border: `1px solid ${COLORS.green}`, borderRadius: 12, padding: "10px 6px", textAlign: "center" } },
+        h("div", { style: { fontSize: 18, fontWeight: 700, color: COLORS.green } }, onTimeCount),
+        h("div", { style: { fontSize: 10.5, color: COLORS.green, marginTop: 2 } }, "\u2705 \u0625\u0646\u062C\u0627\u0632/\u0641\u064A \u0627\u0644\u0645\u0648\u0639\u062F")
+      ),
+      h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 12, padding: "10px 6px", textAlign: "center" } },
+        h("div", { style: { fontSize: 18, fontWeight: 700, color: COLORS.danger } }, lateCount),
+        h("div", { style: { fontSize: 10.5, color: COLORS.danger, marginTop: 2 } }, "\u23F0 \u062A\u0623\u062E\u064A\u0631")
+      )
+    ) : null,
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-      h(TabButton, { active: view === "list", onClick: () => setView("list"), emoji: "\u{1F4CB}", label: "\u0642\u0627\u0626\u0645\u0629" }),
+      h(TabButton, { active: view === "list", onClick: () => setView("list"), emoji: "\u{1F4CB}", label: "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0633\u0644\u0645\u062A (" + ready.length + ")" }),
+      h(TabButton, { active: view === "delivered", onClick: () => setView("delivered"), emoji: "\u2705", label: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (" + delivered.length + ")" }),
       h(TabButton, { active: view === "calendar", onClick: () => { setView("calendar"); setSelectedDay(null); }, emoji: "\u{1F4C5}", label: "\u062A\u0642\u0648\u064A\u0645" })
     ),
     view === "calendar" ? h(React.Fragment, null,
@@ -1879,35 +1918,23 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
       ) : h(EmptyHint, { text: "\u0627\u0636\u063A\u0637\u064A \u0639\u0644\u0649 \u0623\u064A \u064A\u0648\u0645 \u0641\u064A\u0647 \u0645\u0648\u0627\u0639\u064A\u062F \u062A\u0633\u0644\u064A\u0645 (\u0645\u0644\u0648\u0651\u0646) \u0639\u0634\u0627\u0646 \u062A\u0634\u0648\u0641\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644" })
     ) : h(React.Fragment, null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-      ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
-        h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-          h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
-            h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-            h("tbody", null, ready.map((p) => {
-              const a = achievement(p);
-              const achColor = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? COLORS.green : a.type === "\u062A\u0623\u062E\u064A\u0631" ? COLORS.danger : COLORS.teal) : COLORS.muted;
-              const achBg = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "#E8F0E4" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "#FBEAE6" : "#EAF1F1") : COLORS.bg;
-              const achEmoji = a ? (a.type === "\u0625\u0646\u062C\u0627\u0632" ? "\u2705" : a.type === "\u062A\u0623\u062E\u064A\u0631" ? "\u23F0" : "\u{1F3AF}") : null;
-              return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
-                h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
-                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
-                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
-                h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount),
-                h("td", { style: { padding: "9px 10px", maxWidth: 150, whiteSpace: "normal" } }, p.description || "\u2014"),
-                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
-                h("td", { style: { padding: "9px 10px" } }, p.image && p.image.dataUrl ? h("img", { src: p.image.dataUrl, style: { width: 38, height: 38, borderRadius: 7, objectFit: "cover" } }) : "\u2014"),
-                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
-                h("td", { style: { padding: "9px 10px" } }, h("select", { value: p.deliveryConfirmed || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, deliveryConfirmed: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
-                  h("option", { value: "" }, "\u0641\u0627\u0631\u063A"),
-                  h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
-                  h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
-                )),
-                h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
-                h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: achColor, background: achBg, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" } }, h(Emoji, { size: 12 }, achEmoji), a.type + (a.days > 0 ? " (" + a.days + " \u064A\u0648\u0645)" : "")) : h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u2014"))
-              );
-            }))
+      view === "list" ? (
+        ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+          h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
+              h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+              h("tbody", null, ready.map((p) => renderRow(p, false)))
+            )
           )
-        )
+      ) : (
+        delivered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0627\u062A\u0633\u0644\u0645\u062A \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
+          h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
+              h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+              h("tbody", null, delivered.map((p) => renderRow(p, true)))
+            )
+          )
+      )
     )
   );
 }
