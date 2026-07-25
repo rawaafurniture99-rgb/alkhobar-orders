@@ -2612,7 +2612,7 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser, 
         isAdminUser && order.approved ? h("button", {
           onClick: () => {
             if (!window.confirm("\u0647\u062A\u0631\u062C\u0639\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629\u061F \u0647\u064A\u062E\u0631\u062C \u0645\u0646 \u0637\u0648\u0627\u0628\u064A\u0631 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0648\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0644\u062D\u062F \u0645\u0627 \u064A\u062A\u0639\u062A\u0645\u062F \u062A\u0627\u0646\u064A.")) return;
-            onUpdate({ approved: false, reviewStatus: "", distributionHandled: false, materialsHandled: false });
+            onUpdate({ approved: false, reviewStatus: "", reviewDate: "", distributionHandled: false, materialsHandled: false });
           },
           style: { width: "100%", marginTop: 12, background: COLORS.bg, color: COLORS.gold, border: `1px solid ${COLORS.gold}`, borderRadius: 12, padding: "11px 0", fontSize: 13.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
         }, h(Emoji, { size: 15 }, "\u21A9\uFE0F"), "\u0625\u0631\u062C\u0627\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629") : null
@@ -3405,6 +3405,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
   const scoped = pieces.filter((p) => {
     if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
     if (scope.type === "none") return !p.customerDeliveryDate;
+    if (scope.type === "produced") return p.status && p.status !== "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621" && p.status !== "\u062C\u0627\u0631\u0649";
     return true;
   });
   const statusOptions = Array.from(new Set(scoped.map((p) => p.status).filter(Boolean)));
@@ -3421,7 +3422,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     if (fSupplier && p.supplierName !== fSupplier) return false;
     return true;
   });
-  const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : monthLabelAr(scope.key);
+  const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : scope.type === "produced" ? "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" : monthLabelAr(scope.key);
   const sortedForExport = filtered.slice().sort((a, b) => {
     const dateA = a.customerDeliveryDate || "9999-99-99", dateB = b.customerDeliveryDate || "9999-99-99";
     if (dateA !== dateB) return dateA.localeCompare(dateB);
@@ -3494,6 +3495,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
     else noDateCount += 1;
   });
   const monthKeys = Object.keys(monthCounts).sort();
+  const producedCount = pieces.filter((p) => p.status && p.status !== "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621" && p.status !== "\u062C\u0627\u0631\u0649").length;
 
   const rowBtn = (onClick, label, count) => h("div", {
     onClick,
@@ -3522,6 +3524,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { marginTop: 8 } },
       rowBtn(() => setScope({ type: "all" }), "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639", pieces.length),
+      rowBtn(() => setScope({ type: "produced" }), "\u2705 \u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", producedCount),
       monthKeys.map((k) => rowBtn(() => setScope({ type: "month", key: k }), monthLabelAr(k), monthCounts[k])),
       noDateCount > 0 ? rowBtn(() => setScope({ type: "none" }), "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E", noDateCount) : null
     )
