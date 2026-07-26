@@ -3273,7 +3273,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   );
 }
 
-function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
+function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser }) {
   const [editingDates, setEditingDates] = useState(false);
   const [editingCore, setEditingCore] = useState(false);
   const handleStatusChange = (newStatus) => {
@@ -3299,6 +3299,15 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
   };
   const updateField = (field, value) => { if (canEdit) onUpdate({ ...piece, [field]: value }); };
   const updateStageDate = (stage, which, value) => { if (!canEdit) return; onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stage]: { ...((piece.stages || {})[stage] || {}), [which]: value } } }); };
+  const currentStageKeyNow = LOCATION_TO_STAGE_KEY[piece.currentLocation] || piece.baseStage || "\u0646\u062C\u0627\u0631\u0629";
+  const receivedFrom = piece.stages && piece.stages[currentStageKeyNow] && piece.stages[currentStageKeyNow].receivedFrom;
+  const revertStage = () => {
+    if (!receivedFrom) return;
+    if (!window.confirm("\u0647\u062A\u0631\u062C\u0651\u0639\u064A \u0627\u0644\u0642\u0637\u0639\u0629 \u0644ـ\"" + receivedFrom + "\"\u061F")) return;
+    const newStages = { ...(piece.stages || {}) };
+    delete newStages[currentStageKeyNow];
+    onUpdate({ ...piece, currentLocation: receivedFrom, status: "\u062C\u0627\u0631\u0649", stages: newStages });
+  };
   const dl = daysUntil(piece.agreedDeadline);
   const overdue = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl < 0;
   const nearDeadline = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl >= 0 && dl <= 2;
@@ -3370,6 +3379,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit }) {
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الحالة"), h("select", { style: fieldStyle, disabled: !canEdit, value: piece.status, onChange: (e) => handleStatusChange(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s)))),
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الموعد المتفق عليه"), h("input", { style: fieldStyle, type: "date", disabled: !canEdit, value: piece.agreedDeadline || "", onChange: (e) => updateField("agreedDeadline", e.target.value) }))
     ),
+    isAdminUser && receivedFrom ? h("button", { onClick: revertStage, style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, background: COLORS.bg, border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "8px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 } }, h(Emoji, { size: 13 }, "\u21A9\uFE0F"), "\u0625\u0631\u062C\u0627\u0639 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644ـ\"" + receivedFrom + "\"") : null,
     canEdit ? h("button", { onClick: () => setEditingDates((v) => !v), style: { fontSize: 12, color: COLORS.teal, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, editingDates ? "إخفاء تواريخ المراحل" : "تعديل تواريخ المراحل يدويًا") : null,
     editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10, background: COLORS.bg, borderRadius: 8, padding: 8 } },
       Array.from(new Set(Object.keys(piece.stages || {}).concat([LOCATION_TO_STAGE_KEY[piece.currentLocation] || piece.baseStage || "\u0646\u062C\u0627\u0631\u0629"]))).map((stage) => h("div", { key: stage, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 } },
@@ -3456,7 +3466,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
     })
   );
 }
-function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack }) {
+function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack, isAdminUser }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -3541,11 +3551,11 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     ) : null,
     renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
-      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece) })
+      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn }) {
+function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn, isAdminUser }) {
   const [scope, setScope] = useState(null);
   const [query, setQuery] = useState("");
   const [openPiece, setOpenPiece] = useState(null);
@@ -3574,13 +3584,13 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn 
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
       renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
-        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece) })
+        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser })
       ) : null
     );
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null) });
+    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null), isAdminUser });
   }
 
   return h("div", null,
@@ -3605,11 +3615,6 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F", emoji: "\u{1F9F5}", locations: ["\u0627\u0644\u062A\u0646\u062C\u064A\u062F"], allowAdd: false }
   ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false } ])
     .concat([{ key: "delays", label: "\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A", emoji: "\u23F0", locations: [], allowAdd: false, special: true }]);
-  const delayed = entityPieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
-    const d = daysUntil(p.agreedDeadline);
-    return d !== null && d <= 2;
-  });
   const trueDelays = entityPieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
     const d = daysUntil(p.agreedDeadline);
@@ -3621,9 +3626,9 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
         h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u062A\u0635\u0646\u064A\u0639 " + entity)
       ),
-      delayed.length > 0 ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 10, padding: 10, marginBottom: 14 } },
-        h("div", { style: { color: COLORS.danger, fontWeight: 700, fontSize: 13, marginBottom: 6 } }, "\u23F0 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0627\u062A (" + delayed.length + ")"),
-        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, delayed.map((p) => h("span", { key: p.id, style: { fontSize: 11.5, background: "#fff", border: `1px solid ${COLORS.danger}`, borderRadius: 999, padding: "3px 8px", color: COLORS.danger } }, p.customerName + " \u00B7 " + p.currentLocation)))
+      trueDelays.length > 0 ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 10, padding: 10, marginBottom: 14 } },
+        h("div", { style: { color: COLORS.danger, fontWeight: 700, fontSize: 13, marginBottom: 6 } }, "\u23F0 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0627\u062A (" + trueDelays.length + ")"),
+        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, trueDelays.map((p) => h("span", { key: p.id, style: { fontSize: 11.5, background: "#fff", border: `1px solid ${COLORS.danger}`, borderRadius: 999, padding: "3px 8px", color: COLORS.danger } }, p.customerName + " \u00B7 " + p.currentLocation)))
       ) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
         STAGE_GROUPS.map((g) => {
@@ -3715,7 +3720,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, activeLoc)
     ),
     locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-      h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece })
+      h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin") })
   );
 }
 
