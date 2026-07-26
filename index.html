@@ -677,7 +677,7 @@ function App() {
     };
     productionPieces.forEach((p) => {
       if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineNotified) return;
-      const d = daysUntil(p.agreedDeadline);
+      const d = pieceDeadlineDiff(p);
       if (d === null || d > 2) return;
       const late = d < 0;
       notify({
@@ -736,6 +736,11 @@ function App() {
     (access && access.members || []).forEach((m) => { if (memberHasRole(m, "admin")) emails.add(m.email); });
     return Array.from(emails);
   };
+  const allNotificationsEmails = () => {
+    const emails = new Set(adminEmails());
+    (access && access.members || []).forEach((m) => { if (m.receivesAllNotifications) emails.add(m.email); });
+    return Array.from(emails);
+  };
   const reviewTeamEmails = () => {
     const emails = new Set(adminEmails());
     (access && access.members || []).forEach((m) => { if (memberHasRole(m, "engineers-manager")) emails.add(m.email); });
@@ -751,7 +756,7 @@ function App() {
     return Array.from(emails);
   };
   const notify = ({ toEmails, title, body, orderId, kind }) => {
-    const recipients = Array.from(new Set([...(toEmails || []), ...adminEmails()].filter((e) => e && e !== (user && user.email))));
+    const recipients = Array.from(new Set([...(toEmails || []), ...allNotificationsEmails()].filter((e) => e && e !== (user && user.email))));
     if (recipients.length === 0) return;
     const id = uid();
     notificationsColRef().doc(id).set({ id, toEmails: recipients, title, body: body || "", orderId: orderId || "", kind: kind || "", createdAt: (/* @__PURE__ */ new Date()).toISOString(), readBy: [] }).catch((e) => console.error("notification failed", e));
@@ -954,17 +959,25 @@ function App() {
       (() => {
         const upcoming = productionPieces.filter((p) => {
           if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
-          const d = daysUntil(p.agreedDeadline);
-          return d !== null && d >= 0 && d <= 3;
+          const d = pieceDeadlineDiff(p);
+          return d !== null && d >= 0 && d <= 2;
         });
-        return upcoming.length > 0 ? h("div", { style: { background: "#FBF2E2", color: COLORS.gold, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F3"), upcoming.length, " \u0642\u0637\u0639\u0629 \u0645\u0648\u0639\u062F\u0647\u0627 \u0642\u0631\u064A\u0628 (\u062E\u0644\u0627\u0644 3 \u0623\u064A\u0627\u0645) \u2014 \u062A\u0633\u062A\u0627\u0647\u0644 \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627") : null;
+        const upcomingOrderIds = Array.from(new Set(upcoming.map((p) => {
+          const match = orders.find((o) => o.clientName === p.customerName && (!p.customerDeliveryDate || o.deliveryDate === p.customerDeliveryDate));
+          return match ? match.id : null;
+        }).filter(Boolean)));
+        const count = upcomingOrderIds.length || upcoming.length;
+        return upcoming.length > 0 ? h("div", {
+          onClick: () => { if (upcomingOrderIds[0]) openOrder(upcomingOrderIds[0]); },
+          style: { background: "#FBF2E2", color: COLORS.gold, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: upcomingOrderIds[0] ? "pointer" : "default" }
+        }, h(Emoji, { size: 15 }, "\u23F3"), count, " \u0623\u0648\u0631\u062F\u0631 \u0645\u0648\u0639\u062F\u0647 \u0642\u0631\u064A\u0628 (\u062E\u0644\u0627\u0644 \u064A\u0648\u0645\u064A\u0646) \u2014 \u062A\u0633\u062A\u0627\u0647\u0644 \u0645\u062A\u0627\u0628\u0639\u062A\u0647") : null;
       })(),
       (() => {
         const reviewCount = orders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
         const atRiskCount = orders.filter((o) => {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
-          return d !== null && d >= 1 && d <= 7;
+          return d !== null && d >= 1 && d <= 5;
         }).length;
         const readyCount = productionPieces.filter((p) => (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate) && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
         const items = [
@@ -1974,8 +1987,8 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
 function TodayQueuePage({ pieces }) {
   const todayPieces = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
-    const d = daysUntil(p.agreedDeadline);
-    return d !== null && d <= 0;
+    const d = pieceDeadlineDiff(p);
+    return d === 0;
   });
   const byLocation = {};
   todayPieces.forEach((p) => {
@@ -1986,24 +1999,22 @@ function TodayQueuePage({ pieces }) {
   const locations = Object.keys(byLocation).sort((a, b) => byLocation[b].length - byLocation[a].length);
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4CB}", title: "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629" }),
-    todayPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062D\u0627\u062C\u0629 \u0645\u062A\u0623\u062E\u0631\u0629 \u0623\u0648 \u0645\u0633\u062A\u062D\u0642\u0629 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629 \u{1F389}" }) :
+    todayPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0648\u0639\u062F\u0647\u0627 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629 \u{1F389}" }) :
       h("div", null,
-        h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 14px" } }, todayPieces.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062A\u0627\u062C\u0629 \u0627\u0647\u062A\u0645\u0627\u0645 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629\u060C \u0645\u0642\u0633\u0651\u0645\u0629 \u062D\u0633\u0628 \u0627\u0644\u0645\u0643\u0627\u0646"),
+        h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 14px" } }, todayPieces.length + " \u0642\u0637\u0639\u0629 \u0645\u0648\u0639\u062F\u0647\u0627 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629\u060C \u0645\u0642\u0633\u0651\u0645\u0629 \u062D\u0633\u0628 \u0627\u0644\u0645\u0643\u0627\u0646"),
         h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, locations.map((loc) => h("div", { key: loc, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
           h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } },
             h("span", null, loc), h("span", null, byLocation[loc].length)
           ),
-          h("div", { style: { padding: 10, display: "flex", flexDirection: "column", gap: 8 } }, byLocation[loc].map((p, idx) => {
-            const d = daysUntil(p.agreedDeadline);
-            const overdue = d < 0;
-            return h("div", { key: p.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: idx === 0 ? "none" : `1px dashed ${COLORS.border}` } },
+          h("div", { style: { padding: 10, display: "flex", flexDirection: "column", gap: 8 } }, byLocation[loc].map((p, idx) =>
+            h("div", { key: p.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: idx === 0 ? "none" : `1px dashed ${COLORS.border}` } },
               h("div", null,
                 h("div", { style: { fontWeight: 600, fontSize: 13.5 } }, p.customerName),
                 h("div", { style: { fontSize: 11.5, color: COLORS.muted } }, p.pieceType)
               ),
-              h("span", { style: { fontSize: 11.5, fontWeight: 700, color: overdue ? COLORS.danger : COLORS.gold } }, overdue ? "\u0645\u062A\u0623\u062E\u0631 " + Math.abs(d) + " \u064A\u0648\u0645" : "\u0645\u0633\u062A\u062D\u0642 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629")
-            );
-          }))
+              h("span", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.gold } }, "\u0627\u0644\u064A\u0648\u0645")
+            )
+          ))
         )))
       )
   );
@@ -2022,7 +2033,7 @@ function DashboardPage({ orders, pieces, emailToName, isAdminUser }) {
   Object.keys(locCounts).forEach((s) => { if (locCounts[s] > heaviestCount) { heaviestCount = locCounts[s]; heaviestSupplier = s; } });
   const overdueCount = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
-    const d = daysUntil(p.agreedDeadline);
+    const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).length;
   const categoryCounts = {};
@@ -2501,7 +2512,10 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
           return h("div", { key: dateKey, style: { marginBottom: 16 } },
             h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } },
               h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
-              matchingOrder && onOpenOrder ? h("button", { onClick: () => onOpenOrder(matchingOrder.id), style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 11 }, "\u{1F4C2}"), "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+              h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                matchingOrder && matchingOrder.manufacturingOrderFile ? h("a", { href: matchingOrder.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), "\u0627\u0644\u0645\u0644\u0641") : null,
+                matchingOrder && onOpenOrder ? h("button", { onClick: () => onOpenOrder(matchingOrder.id), style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 11 }, "\u{1F4C2}"), "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+              )
             ),
             h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, dateGroups[dateKey].map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "6px 14px" } },
               detailRow("\u{1F464}", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", name),
@@ -3150,6 +3164,13 @@ const ALL_TABS = [
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function daysUntil(d) { if (!d) return null; return Math.round((new Date(d) - new Date(todayStr())) / 86400000); }
 function dayDiff(a, b) { if (!a || !b) return null; const d1 = new Date(a), d2 = new Date(b); if (isNaN(d1) || isNaN(d2)) return null; const n = Math.round((d2 - d1) / 86400000); return n >= 0 ? n : null; }
+function pieceDeadlineDiff(p) {
+  if (!p.agreedDeadline) return null;
+  const stageKey = LOCATION_TO_STAGE_KEY[p.currentLocation] || p.baseStage || "\u0646\u062C\u0627\u0631\u0629";
+  const completedDate = p.stages && p.stages[stageKey] && p.stages[stageKey].end;
+  const compareDate = completedDate || todayStr();
+  return Math.round((new Date(p.agreedDeadline) - new Date(compareDate)) / 86400000);
+}
 function isSofaType(t) { return (t || "").includes("كنب"); }
 function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
@@ -3308,7 +3329,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser }) {
     delete newStages[currentStageKeyNow];
     onUpdate({ ...piece, currentLocation: receivedFrom, status: "\u062C\u0627\u0631\u0649", stages: newStages });
   };
-  const dl = daysUntil(piece.agreedDeadline);
+  const dl = pieceDeadlineDiff(piece);
   const overdue = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl < 0;
   const nearDeadline = piece.agreedDeadline && piece.status !== "إلى الشحن" && dl !== null && dl >= 0 && dl <= 2;
   const custDays = daysUntil(piece.customerDeliveryDate);
@@ -3617,7 +3638,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     .concat([{ key: "delays", label: "\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A", emoji: "\u23F0", locations: [], allowAdd: false, special: true }]);
   const trueDelays = entityPieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
-    const d = daysUntil(p.agreedDeadline);
+    const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
   if (!stageKey) {
@@ -3650,7 +3671,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
           h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 820 } },
             h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
             h("tbody", null, trueDelays.map((p) => {
-              const d = daysUntil(p.agreedDeadline);
+              const d = pieceDeadlineDiff(p);
               return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
                 h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
@@ -3945,6 +3966,10 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
           h("label", { key: r, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${roles.includes(r) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "4px 9px", cursor: isOwnerRow ? "default" : "pointer", background: roles.includes(r) ? COLORS.goldSoft : "#fff", opacity: isOwnerRow ? 0.6 : 1 } },
             h("input", { type: "checkbox", checked: roles.includes(r), disabled: isOwnerRow, onChange: () => toggleRole(m.email, r), style: { display: "none" } }), ROLE_LABELS[r])
         )),
+        !roles.includes("admin") ? h("label", { style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 6, border: `1px solid ${m.receivesAllNotifications ? COLORS.teal : COLORS.border}`, borderRadius: 8, padding: "7px 10px", cursor: "pointer", background: m.receivesAllNotifications ? "#EAF1F1" : "#fff", marginBottom: 10 } },
+          h("input", { type: "checkbox", checked: !!m.receivesAllNotifications, onChange: () => updateMember(m.email, { receivesAllNotifications: !m.receivesAllNotifications }), style: { display: "none" } }),
+          h(Emoji, { size: 13 }, "\u{1F514}"), "\u064A\u0633\u062A\u0642\u0628\u0644 \u0643\u0644 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0632\u064A \u0627\u0644\u0645\u062F\u064A\u0631)"
+        ) : null,
         roles.includes("production") ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((s) =>
           h("label", { key: s, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(s) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(s) ? COLORS.goldSoft : "#fff" } },
             h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(s), onChange: () => toggleScope(m.email, s), style: { display: "none" } }), s)
