@@ -3500,6 +3500,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
     if (scope.type === "none") return !p.customerDeliveryDate;
     if (scope.type === "produced") return p.status && p.status !== "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621" && p.status !== "\u062C\u0627\u0631\u0649";
+    if (scope.type === "inprogress") return !p.status || p.status === "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621" || p.status === "\u062C\u0627\u0631\u0649";
     return true;
   });
   const statusOptions = Array.from(new Set(scoped.map((p) => p.status).filter(Boolean)));
@@ -3516,7 +3517,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     if (fSupplier && p.supplierName !== fSupplier) return false;
     return true;
   });
-  const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : scope.type === "produced" ? "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" : monthLabelAr(scope.key);
+  const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : scope.type === "produced" ? "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" : scope.type === "inprogress" ? "\u0644\u0633\u0647 \u062C\u0627\u0631\u064A \u0625\u0646\u062A\u0627\u062C" : monthLabelAr(scope.key);
   const sortedForExport = filtered.slice().sort((a, b) => {
     const dateA = a.customerDeliveryDate || "9999-99-99", dateB = b.customerDeliveryDate || "9999-99-99";
     if (dateA !== dateB) return dateA.localeCompare(dateB);
@@ -3617,8 +3618,9 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
   return h("div", null,
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { marginTop: 8 } },
-      rowBtn(() => setScope({ type: "all" }), "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639", pieces.length),
+      rowBtn(() => setScope({ type: "inprogress" }), "\u{1F528} \u0644\u0633\u0647 \u062C\u0627\u0631\u064A \u0625\u0646\u062A\u0627\u062C", pieces.length - producedCount),
       rowBtn(() => setScope({ type: "produced" }), "\u2705 \u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", producedCount),
+      rowBtn(() => setScope({ type: "all" }), "\u{1F4CB} \u0643\u0644 \u0627\u0644\u0642\u0637\u0639", pieces.length),
       monthKeys.map((k) => rowBtn(() => setScope({ type: "month", key: k }), monthLabelAr(k), monthCounts[k])),
       noDateCount > 0 ? rowBtn(() => setScope({ type: "none" }), "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E", noDateCount) : null
     )
