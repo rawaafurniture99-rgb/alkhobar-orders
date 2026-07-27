@@ -1603,7 +1603,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
     o.revisionNote ? h("div", { style: { fontSize: 12.5, color: COLORS.ink, marginTop: 8, background: COLORS.bg, borderRadius: 8, padding: 8 } }, o.revisionNote) : null,
     o.revisionFile ? h("a", { href: o.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.revisionFile.name || "\u0645\u0644\u0641 \u0645\u0631\u0641\u0642")) : null,
     o.inRevisionAt ? h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 6 } }, "\u0637\u0644\u0628 \u0627\u0644\u062A\u0639\u062F\u064A\u0644: " + o.inRevisionAt) : null,
-    !isAdminUser ? h("button", { onClick: () => setEditingOrder(o), style: { ...addLinkStyle, marginTop: 8 } }, "\u270F\uFE0F \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+    h("button", { onClick: () => setEditingOrder(o), style: { ...addLinkStyle, marginTop: 8 } }, "\u270F\uFE0F \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
   );
   const doneCard = (o) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
     h("div", { style: { fontWeight: 700, fontSize: 14.5, marginBottom: 6 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
@@ -1658,6 +1658,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
 }
 function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
   const [view, setView] = useState("byCustomer");
+  const [byCustomerMode, setByCustomerMode] = useState("summary");
   const [missingSearch, setMissingSearch] = useState("");
   const customerGroups = {};
   orders.forEach((o) => {
@@ -1732,6 +1733,14 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
       toggleBtn("missing", "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628", "\u26A0\uFE0F")
     ),
     view === "byCustomer" ? h(React.Fragment, null,
+      h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+        h("button", { onClick: () => setByCustomerMode("summary"), style: { flex: 1, padding: "8px 0", borderRadius: 10, border: `1px solid ${byCustomerMode === "summary" ? COLORS.gold : COLORS.border}`, background: byCustomerMode === "summary" ? COLORS.goldSoft : COLORS.surface, color: byCustomerMode === "summary" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u{1F4CA} \u0639\u0631\u0636 \u0634\u0627\u0645\u0644"),
+        h("button", { onClick: () => setByCustomerMode("orders"), style: { flex: 1, padding: "8px 0", borderRadius: 10, border: `1px solid ${byCustomerMode === "orders" ? COLORS.gold : COLORS.border}`, background: byCustomerMode === "orders" ? COLORS.goldSoft : COLORS.surface, color: byCustomerMode === "orders" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u{1F4C2} \u062D\u0633\u0628 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0644\u0644\u062A\u0642\u0627\u0631\u064A\u0631)")
+      ),
+      byCustomerMode === "orders" ? h(React.Fragment, null,
+        h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0639\u0645\u064A\u0644 \u0648\u0627\u062E\u062A\u0627\u0631\u064A \u0623\u0648\u0631\u062F\u0631\u0647 \u2014 \u0647\u062A\u0648\u0635\u0644\u064A \u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0635\u0641\u062D\u0629 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0643\u0644 \u062A\u0641\u0627\u0635\u064A\u0644\u0647\u0627 (\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628\u060C \u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F\u060C \u0627\u0644\u0635\u0648\u0631\u0629\u060C \u0627\u0644\u0645\u0644\u0641\u0627\u062A)"),
+        h(CustomersList, { orders, onOpen: onOpenOrder })
+      ) :
       Object.keys(customerGroups).filter((name) => customerGroups[name].length > 0).length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u0645\u0633\u062C\u0644\u0629 \u0641\u064A \u0623\u064A \u0623\u0648\u0631\u062F\u0631" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, Object.keys(customerGroups).filter((name) => customerGroups[name].length > 0).sort((a, b) => a.localeCompare(b, "ar")).map((name) => h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
         h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700 } }, name),
@@ -2783,11 +2792,13 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser, 
     ) : null
   );
   const editOrderModal = showEditOrder && h(NewOrderModal, { existing: order, onClose: () => setShowEditOrder(false), onSave: (patch) => {
-    if (isAdminUser) {
-      onUpdate(patch);
-    } else {
+    if (order.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") {
       onUpdate({ ...patch, reviewStatus: "", editCount: (order.editCount || 0) + 1 });
       if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (order.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((order.editCount || 0) + 1), orderId: order.id, kind: "resubmit" });
+    } else if (isAdminUser) {
+      onUpdate(patch);
+    } else {
+      onUpdate({ ...patch, editCount: (order.editCount || 0) + 1 });
     }
     setShowEditOrder(false);
   } });
