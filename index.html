@@ -512,6 +512,7 @@ function App() {
   const [showRoles, setShowRoles] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [deadlinePieceModal, setDeadlinePieceModal] = useState(null);
   const [showBranding, setShowBranding] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [productionPieces, setProductionPieces] = useState([]);
@@ -654,27 +655,30 @@ function App() {
     })();
     return () => { unsubDoc(); unsubOrders(); unsubPieces(); unsubActivity(); unsubNotif(); };
   }, [user, isAllowed]);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
   const notifiedRef = useRef(false);
   useEffect(() => {
-    if (!dataLoaded || notifiedRef.current) return;
-    notifiedRef.current = true;
+    if (!dataLoaded) return;
     const overdueCount = orders.filter(orderIsOverdue).length;
     if (overdueCount === 0) return;
     if (typeof Notification === "undefined") return;
     if (Notification.permission === "granted") {
-      new Notification("Al Khobar Orders", { body: `\u0639\u0646\u062F\u0643 ${overdueCount} \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639` });
-    } else if (Notification.permission !== "denied") {
+      if (!notifiedRef.current) { notifiedRef.current = true; new Notification("Al Khobar Orders", { body: `\u0639\u0646\u062F\u0643 ${overdueCount} \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639` }); }
+    } else if (Notification.permission !== "denied" && !notifiedRef.current) {
+      notifiedRef.current = true;
       Notification.requestPermission().then((perm) => {
         if (perm === "granted") {
           new Notification("Al Khobar Orders", { body: `\u0639\u0646\u062F\u0643 ${overdueCount} \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639` });
         }
       });
     }
-  }, [dataLoaded, orders]);
-  const deadlineNotifiedRef = useRef(false);
+  }, [dataLoaded, orders, tick]);
   useEffect(() => {
-    if (!dataLoaded || deadlineNotifiedRef.current || !access) return;
-    deadlineNotifiedRef.current = true;
+    if (!dataLoaded || !access) return;
     const productionEmailsForLocation = (location) => {
       const emails = new Set();
       (access.members || []).forEach((m) => {
@@ -697,11 +701,9 @@ function App() {
       });
       piecesColRef().doc(p.id).update({ deadlineNotified: true }).catch((e) => console.error("deadline flag failed", e));
     });
-  }, [dataLoaded, productionPieces, access]);
-  const queueDeadlineNotifiedRef = useRef(false);
+  }, [dataLoaded, productionPieces, access, tick]);
   useEffect(() => {
-    if (!dataLoaded || queueDeadlineNotifiedRef.current) return;
-    queueDeadlineNotifiedRef.current = true;
+    if (!dataLoaded) return;
     orders.forEach((o) => {
       if (!o.approved || !o.reviewDate) return;
       const daysSinceApproval = dayDiff(o.reviewDate, todayStr());
@@ -727,7 +729,48 @@ function App() {
         updateOrder(o.id, { materialsDeadlineNotified: true });
       }
     });
-  }, [dataLoaded, orders]);
+  }, [dataLoaded, orders, tick]);
+  useEffect(() => {
+    if (!dataLoaded || !access) return;
+    const productionEmailsForLocations = (locations) => {
+      const emails = new Set();
+      (access.members || []).forEach((m) => {
+        if (!memberHasRole(m, "production")) return;
+        const scope = m.supplierScope || [];
+        if (scope.length === 0 || scope.some((s) => locations.includes(s))) emails.add(m.email);
+      });
+      return Array.from(emails);
+    };
+    orders.forEach((o) => {
+      if (!o.deliveryDate || o.nearDeliveryNotified) return;
+      const d = daysUntil(o.deliveryDate);
+      if (d === null || d < 1 || d > 5) return;
+      const orderPieces = productionPieces.filter((p) => p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
+      const locations = Array.from(new Set(orderPieces.map((p) => p.currentLocation).filter(Boolean)));
+      notify({
+        toEmails: [o.createdBy, ...productionEmailsForLocations(locations)].filter(Boolean),
+        title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (\u0628\u0627\u0642\u064A " + d + " \u064A\u0648\u0645)",
+        body: (o.clientName || "\u2014") + " - " + (o.category || "\u2014"),
+        orderId: o.id,
+        kind: "near-delivery"
+      });
+      updateOrder(o.id, { nearDeliveryNotified: true });
+    });
+  }, [dataLoaded, orders, productionPieces, access, tick]);
+  useEffect(() => {
+    if (!dataLoaded) return;
+    productionPieces.forEach((p) => {
+      const ready = (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.arrivalDate) && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
+      if (!ready || p.readyNotified) return;
+      notify({
+        toEmails: emailsWithTabAccess("deliveries"),
+        title: "\u{1F69A} \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645",
+        body: (p.customerName || "\u2014") + " - " + (p.pieceType || "\u2014"),
+        kind: "ready-for-delivery"
+      });
+      piecesColRef().doc(p.id).update({ readyNotified: true }).catch((e) => console.error("ready flag failed", e));
+    });
+  }, [dataLoaded, productionPieces, tick]);
   const persistField = useCallback((field, value) => {
     if (!user) return;
     workspaceDocRef().update({ [field]: value }).then(() => {
@@ -1002,15 +1045,10 @@ function App() {
           const d = pieceDeadlineDiff(p);
           return d !== null && d >= 0 && d <= 2;
         });
-        const upcomingOrderIds = Array.from(new Set(upcoming.map((p) => {
-          const match = orders.find((o) => o.clientName === p.customerName && (!p.customerDeliveryDate || o.deliveryDate === p.customerDeliveryDate));
-          return match ? match.id : null;
-        }).filter(Boolean)));
-        const count = upcomingOrderIds.length || upcoming.length;
         return upcoming.length > 0 ? h("div", {
-          onClick: () => { if (upcomingOrderIds[0]) openOrder(upcomingOrderIds[0]); },
-          style: { background: "#FBF2E2", color: COLORS.gold, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: upcomingOrderIds[0] ? "pointer" : "default" }
-        }, h(Emoji, { size: 15 }, "\u23F3"), count, " \u0623\u0648\u0631\u062F\u0631 \u0645\u0648\u0639\u062F\u0647 \u0642\u0631\u064A\u0628 (\u062E\u0644\u0627\u0644 \u064A\u0648\u0645\u064A\u0646) \u2014 \u062A\u0633\u062A\u0627\u0647\u0644 \u0645\u062A\u0627\u0628\u0639\u062A\u0647") : null;
+          onClick: () => setDeadlinePieceModal(upcoming[0]),
+          style: { background: "#FBF2E2", color: COLORS.gold, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }
+        }, h(Emoji, { size: 15 }, "\u23F3"), upcoming.length, " \u0642\u0637\u0639\u0629 \u0645\u0648\u0639\u062F\u0647\u0627 \u0642\u0631\u064A\u0628 (\u062E\u0644\u0627\u0644 \u064A\u0648\u0645\u064A\u0646) \u2014 \u062A\u0633\u062A\u0627\u0647\u0644 \u0645\u062A\u0627\u0628\u0639\u062A\u0647\u0627") : null;
       })(),
       (() => {
         const reviewCount = orders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
@@ -1072,6 +1110,15 @@ function App() {
       addOrder(o);
       setShowNewOrder(false);
     } }),
+    deadlinePieceModal && h(Modal, { title: deadlinePieceModal.customerName, onClose: () => setDeadlinePieceModal(null) },
+      h(PieceBoardCard, {
+        piece: deadlinePieceModal,
+        onUpdate: (p) => { updateProductionPiece(p); setDeadlinePieceModal(p); },
+        onDelete: (id) => { deleteProductionPiece(id); setDeadlinePieceModal(null); },
+        canEdit: hasRole("admin") || (hasRole("production") && mySupplierScope.includes(deadlinePieceModal.currentLocation)),
+        isAdminUser: hasRole("admin")
+      })
+    ),
     showBranding && h(BrandingModal, { branding, onClose: () => setShowBranding(false), onSave: (b) => {
       persistBranding(b);
       setShowBranding(false);
@@ -1543,14 +1590,25 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const setReview = (o, val) => {
     const patch = { reviewStatus: val };
     if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") {
-      patch.inRevisionAt = todayStr(); patch.approved = false;
+      patch.inRevisionAt = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = false;
       if (onNotify) onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644", orderId: o.id, kind: "revision" });
     } else if (val === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629") {
-      patch.reviewDate = todayStr(); patch.approved = true; patch.distributionHandled = false; patch.materialsHandled = false;
+      patch.reviewDate = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = true; patch.distributionHandled = false; patch.materialsHandled = false;
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "\u0623\u0648\u0631\u062F\u0631 \u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0648\u0632\u064A\u0639 \u0648\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0627\u062A\u0639\u062A\u0645\u062F", orderId: o.id, kind: "approved" });
     } else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
     if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") setRevisingOrder(o);
+  };
+  const setReviewDateManually = (o, localDateTime) => {
+    if (!localDateTime) return;
+    onUpdateOrder(o.id, { reviewDate: new Date(localDateTime).toISOString() });
+  };
+  const toLocalDateTimeInput = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
   };
   const cols = ["", "\u062A\u0627\u0631\u064A\u062E \u062F\u062E\u0648\u0644 \u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"];
   return h("div", null,
@@ -1566,8 +1624,8 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
           h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, o.clientName || "\u2014"),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.category || "\u2014"),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.inRevisionAt || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.reviewDate || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, fmtDateTime(o.inRevisionAt)),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, isAdminUser ? h("input", { type: "datetime-local", value: toLocalDateTimeInput(o.reviewDate), onChange: (e) => setReviewDateManually(o, e.target.value), style: { fontSize: 11.5, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } }) : fmtDateTime(o.reviewDate)),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (o.revisionNote || o.revisionFile) ? h("button", { onClick: () => setRevisingOrder(o), style: { ...iconBtnStyle, color: COLORS.gold } }, h(Emoji, { size: 15 }, "\u{1F4DD}")) : (isAdminUser ? h("button", { onClick: () => setRevisingOrder(o), style: { fontSize: 11, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer" } }, "+ \u0625\u0636\u0627\u0641\u0629") : "\u2014")),
           h("td", { style: { padding: "9px 10px" } }, h("select", { value: o.reviewStatus || "", disabled: !isAdminUser, onChange: (e) => setReview(o, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
             h("option", { value: "" }, "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"),
@@ -3369,11 +3427,12 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLa
       h("div", null,
         h("div", { style: { fontWeight: 700, fontSize: 13 } }, o.clientName || "\u2014"),
         h("div", { style: { fontSize: 11, color: COLORS.muted } }, o.category || "\u2014"),
-        o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
+        o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null,
+        tab === "done" && o[flagKey + "At"] ? h("div", { style: { fontSize: 10.5, color: COLORS.muted, marginTop: 3 } }, "\u062A\u0645 \u0641\u064A: " + o[flagKey + "At"].replace("T", " ").slice(0, 16)) : null
       ),
       h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
         onOpenOrder ? h("button", { onClick: () => onOpenOrder(o.id), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u062D\u0635\u0631") : null,
-        tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
+        tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true, [flagKey + "At"]: (/* @__PURE__ */ new Date()).toISOString() }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
       )
     )))
   );
@@ -3490,7 +3549,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser }) {
       const stageKey = STATUS_STAGE_KEY[target];
       p.currentLocation = target;
       p.status = "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621";
-      p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "" };
+      p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "", receivedAt: (/* @__PURE__ */ new Date()).toISOString() };
       p.agreedDeadline = "";
       p.deadlineNotified = false;
     }
@@ -3584,6 +3643,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser }) {
     editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10, background: COLORS.bg, borderRadius: 8, padding: 8 } },
       Array.from(new Set(Object.keys(piece.stages || {}).concat([LOCATION_TO_STAGE_KEY[piece.currentLocation] || piece.baseStage || "\u0646\u062C\u0627\u0631\u0629"]))).map((stage) => h("div", { key: stage, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 } },
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 6 } }, stage),
+        (piece.stages[stage] && piece.stages[stage].receivedAt) ? h("div", { style: { fontSize: 11, color: COLORS.teal, marginBottom: 6 } }, "\u{1F4E5} \u062F\u062E\u0644\u062A \u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u062F\u064A \u0641\u064A: " + piece.stages[stage].receivedAt.replace("T", " ").slice(0, 16)) : null,
         h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 \u0645\u0646 " + ((piece.stages[stage] && piece.stages[stage].receivedFrom) || "\u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u0633\u0627\u0628\u0642\u0629")),
         h("input", { type: "date", style: { ...fieldStyle, marginBottom: 6, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].receivedDate) || "", onChange: (e) => updateStageDate(stage, "receivedDate", e.target.value) }),
         h("div", { style: { display: "flex", gap: 6 } },
