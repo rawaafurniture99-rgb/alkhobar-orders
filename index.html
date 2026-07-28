@@ -3560,6 +3560,7 @@ function GlobalSuppliersPage({ orders }) {
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, suppliers.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 18, fontWeight: 700 } }, s.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u0639\u0646\u062F\u0647\u0627 \u0634\u063A\u0644")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 6 } }, s.orders.map((o, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { fontSize: 13, color: COLORS.muted, borderTop: idx > 0 ? `1px dashed ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: COLORS.ink } }, o.title), " \u2014 ", o.clientName, o.pieceCount > 0 && ` \xB7 ${o.pieceCount} \u0642\u0637\u0639\u0629`, o.stages.length > 0 && ` \xB7 ${o.stages.join("\u060C ")}`))))));
 }
 const DEFAULT_ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u062A\u0646\u062C\u064A\u062F", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
+const DEFAULT_FABRIC_COMPANIES = ["\u064A\u0648\u0631\u0643", "D3", "\u0627\u0644\u0643\u064A\u0644\u0627\u0646\u064A \u062C\u0646\u0648\u0628 \u0627\u0644\u0628\u0644\u0627\u062F", "\u0627\u0644\u0646\u0633\u0627\u062C", "\u0631\u0648\u0639\u0629 \u0627\u0644\u0645\u062C\u0627\u0644\u0633", "\u0645\u062F\u0631\u064A\u062F \u0633\u064A\u062A\u064A", "level one", "finesse", "fiberguard"];
 function NewOrderModal({ onClose, onSave, existing, existingCategories, engineerName }) {
   const [clientName, setClientName] = useState((existing && existing.clientName) || "");
   const [category, setCategory] = useState((existing && existing.category) || "");
@@ -3944,7 +3945,8 @@ function AddMaterialModal({ onClose, onSave, existing }) {
         h("label", { style: labelStyle }, "\u0643\u0648\u062F \u0627\u0644\u0635\u0646\u0641"),
         h("input", { style: fieldStyle, value: itemCode, onChange: (e) => setItemCode(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: F-204" }),
         h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629"),
-        h("input", { style: fieldStyle, value: companyName, onChange: (e) => setCompanyName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0627\u0644\u0645\u0648\u0631\u062F\u0629" })
+        h("input", { style: fieldStyle, value: companyName, onChange: (e) => setCompanyName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0627\u0644\u0645\u0648\u0631\u062F\u0629 \u0623\u0648 \u0627\u0643\u062A\u0628\u064A \u0627\u0633\u0645 \u062C\u062F\u064A\u062F", list: "fabric-company-list" }),
+        h("datalist", { id: "fabric-company-list" }, DEFAULT_FABRIC_COMPANIES.map((c) => h("option", { key: c, value: c })))
       ) : h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0635\u0641"),
         h("input", { style: fieldStyle, value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u0648\u0635\u0641 \u0627\u0644\u062E\u0627\u0645\u0629" })
@@ -4385,7 +4387,7 @@ const ALL_TABS = [
   { key: "review", label: "المراجعة", emoji: "\u{1F9FE}" },
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
   { key: "materials-hub", label: "الخامات", emoji: "🧵" },
-  { key: "distribution", label: "التوزيع", emoji: "📦" },
+  { key: "distribution", label: "التوزيع", emoji: "🧭" },
   { key: "customers", label: "العملاء", emoji: "👥" },
   { key: "egypt-upholstery", label: "تنجيد مصر", emoji: "🛋️" },
   { key: "production-board", label: "أقسام الإنتاج", emoji: "🏭" },
@@ -4425,7 +4427,7 @@ function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
 function isSoftGoodType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("مخدات") || s.includes("سجاد"); }
 
-function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji }) {
+function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer }) {
   const [tab, setTab] = useState("new");
   const approved = orders.filter((o) => o.approved);
   const fresh = approved.filter((o) => !o[flagKey]);
@@ -4438,16 +4440,16 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLa
       h("button", { onClick: () => setTab("done"), style: { flex: 1, padding: "7px 0", borderRadius: 8, border: `1px solid ${tab === "done" ? COLORS.gold : COLORS.border}`, background: tab === "done" ? COLORS.goldSoft : COLORS.bg, color: tab === "done" ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u2705 " + doneLabel + " (" + done.length + ")")
     ),
     list.length === 0 ? h("p", { style: { fontSize: 12, color: COLORS.muted, textAlign: "center", padding: "10px 0", margin: 0 } }, "\u0644\u0627 \u064A\u0648\u062C\u062F") :
-    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((o) => h("div", { key: o.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.bg, borderRadius: 8, padding: "8px 10px" } },
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, list.map((o) => h("div", { key: o.id, onClick: tab === "done" && onOpenCustomer ? () => onOpenCustomer(o.clientName) : void 0, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.bg, borderRadius: 8, padding: "8px 10px", cursor: tab === "done" && onOpenCustomer ? "pointer" : "default" } },
       h("div", null,
         h("div", { style: { fontWeight: 700, fontSize: 13 } }, o.clientName || "\u2014"),
         h("div", { style: { fontSize: 11, color: COLORS.muted } }, o.category || "\u2014"),
-        o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null,
+        o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null,
         tab === "done" && o[flagKey + "At"] ? h("div", { style: { fontSize: 10.5, color: COLORS.muted, marginTop: 3 } }, "\u062A\u0645 \u0641\u064A: " + o[flagKey + "At"].replace("T", " ").slice(0, 16)) : null
       ),
       h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-        onOpenOrder ? h("button", { onClick: () => onOpenOrder(o.id), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u062D\u0635\u0631") : null,
-        tab === "new" ? h("button", { onClick: () => onUpdateOrder(o.id, { [flagKey]: true, [flagKey + "At"]: (/* @__PURE__ */ new Date()).toISOString() }), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645")
+        onOpenOrder ? h("button", { onClick: (e) => { e.stopPropagation(); onOpenOrder(o.id); }, style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u062D\u0635\u0631") : null,
+        tab === "new" ? h("button", { onClick: (e) => { e.stopPropagation(); onUpdateOrder(o.id, { [flagKey]: true, [flagKey + "At"]: (/* @__PURE__ */ new Date()).toISOString() }); }, style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h(React.Fragment, null, h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645"), onOpenCustomer ? h(Emoji, { size: 13, color: COLORS.muted }, "\u2039") : null)
       )
     )))
   );
@@ -4504,9 +4506,28 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
     return rows;
   };
   const distExportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629"];
+  if (selectedDistCustomer) {
+    return h("div", null,
+      h("button", { onClick: () => setSelectedDistCustomer(null), style: { background: "transparent", border: "none", color: COLORS.teal, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 12, display: "flex", alignItems: "center", gap: 4 } }, "\u203A \u0631\u062C\u0648\u0639"),
+      h(SectionHeader, { emoji: "\u{1F5C2}\uFE0F", title: selectedDistCustomer }),
+      (byCustomer[selectedDistCustomer] || []).length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0648\u0632\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0639\u0645\u064A\u0644" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (byCustomer[selectedDistCustomer] || []).map((p) =>
+        h("div", { key: p.id, onClick: () => setEditingPiece(p), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
+          h("div", null,
+            h("div", { style: { fontWeight: 700 } }, p.pieceType),
+            h("div", { style: { fontSize: 12, color: COLORS.muted } }, p.manufacturingEntity + " \u00B7 " + p.supplierName + " \u00B7 " + p.pieceCount + " \u0642\u0637\u0639\u0629 \u00B7 " + (p.status || "\u2014"))
+          ),
+          h("button", { onClick: (e) => { e.stopPropagation(); if (window.confirm("\u0647\u062A\u062D\u0630\u0641\u064A \u0627\u0644\u0642\u0637\u0639\u0629 \u062F\u064A\u061F \u0645\u064A\u0646\u0641\u0639\u0634 \u062A\u0631\u062C\u0639\u064A\u0647\u0627 \u062A\u0627\u0646\u064A.")) onDelete(p.id); }, style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
+        )
+      )),
+      editingPiece ? h(Modal, { title: editingPiece.customerName, onClose: () => setEditingPiece(null) },
+        h(PieceBoardCard, { piece: editingPiece, onUpdate: (p) => { onUpdate(p); setEditingPiece(p); }, onDelete: (id) => { onDelete(id); setEditingPiece(null); }, canEdit })
+      ) : null
+    );
+  }
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
-    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
+    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", onOpenCustomer: setSelectedDistCustomer }) : null,
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
       h("label", { style: labelStyle }, "اسم العميل"),
       h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
@@ -4555,26 +4576,12 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
       )
     ) : null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0648\u0632\u0639\u0629 \u0628\u0639\u062F" }) : null,
-    selectedDistCustomer ? h("div", null,
-      h("button", { onClick: () => setSelectedDistCustomer(null), style: { background: "transparent", border: "none", color: COLORS.teal, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 10 } }, "\u203A \u0631\u062C\u0648\u0639 \u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0639\u0645\u0644\u0627\u0621"),
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (byCustomer[selectedDistCustomer] || []).map((p) =>
-        h("div", { key: p.id, onClick: () => setEditingPiece(p), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
-          h("div", null,
-            h("div", { style: { fontWeight: 700 } }, p.pieceType),
-            h("div", { style: { fontSize: 12, color: COLORS.muted } }, p.manufacturingEntity + " \u00B7 " + p.supplierName + " \u00B7 " + p.pieceCount + " \u0642\u0637\u0639\u0629 \u00B7 " + (p.status || "\u2014"))
-          ),
-          h("button", { onClick: (e) => { e.stopPropagation(); if (window.confirm("\u0647\u062A\u062D\u0630\u0641\u064A \u0627\u0644\u0642\u0637\u0639\u0629 \u062F\u064A\u061F \u0645\u064A\u0646\u0641\u0639\u0634 \u062A\u0631\u062C\u0639\u064A\u0647\u0627 \u062A\u0627\u0646\u064A.")) onDelete(p.id); }, style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
-        )
-      ))
-    ) : h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, customerNames.map((name) =>
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, customerNames.map((name) =>
       h("div", { key: name, onClick: () => setSelectedDistCustomer(name), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
         h("span", { style: { fontWeight: 700 } }, name),
         h("span", { style: { display: "flex", alignItems: "center", gap: 6, color: COLORS.muted, fontSize: 13 } }, byCustomer[name].length + " \u0642\u0637\u0639\u0629", h(Emoji, { size: 13 }, "\u2039"))
       )
-    )),
-    editingPiece ? h(Modal, { title: editingPiece.customerName, onClose: () => setEditingPiece(null) },
-      h(PieceBoardCard, { piece: editingPiece, onUpdate: (p) => { onUpdate(p); setEditingPiece(p); }, onDelete: (id) => { onDelete(id); setEditingPiece(null); }, canEdit })
-    ) : null
+    ))
   );
 }
 
