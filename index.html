@@ -2992,12 +2992,12 @@ function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
       const isMeasured = MEASURED_TYPES.includes(typeTab);
       const isCoded = CODED_TYPES.includes(typeTab);
       if (isMeasured) {
-        const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"]];
+        const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"]];
         itemsForTab.forEach((m) => {
           if ((m.pieces || []).length > 0) {
-            m.pieces.forEach((p) => rows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", m.orderDate || "", m.leadTimeDays || "", m.availability || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "", p.drawingFile ? "\u0645\u0631\u0641\u0642" : ""]));
+            m.pieces.forEach((p) => rows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", p.edgeFinish || "", m.orderDate || "", m.leadTimeDays || "", m.availability || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "", p.drawingFile ? "\u0645\u0631\u0641\u0642" : ""]));
           } else {
-            rows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "", "", "", m.orderDate || "", m.leadTimeDays || "", m.availability || "", "", ""]);
+            rows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "", "", "", "", m.orderDate || "", m.leadTimeDays || "", m.availability || "", "", ""]);
           }
         });
         exportToExcel(`${typeTab}-${order.title || "\u0623\u0648\u0631\u062F\u0631"}`, [{ name: typeTab, rows }]);
@@ -3012,15 +3012,15 @@ function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
       }
       return;
     }
-    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"]];
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"]];
     (order.materials || []).forEach((m) => {
       const isMeasured = MEASURED_TYPES.includes(m.type);
       if (isMeasured && (m.pieces || []).length > 0) {
         m.pieces.forEach((p) => {
-          rows.push([order.clientName || "", order.deliveryDate || "", m.type, m.materialName || "", m.description || "", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", "", "", m.availability || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "", p.drawingFile ? "\u0645\u0631\u0641\u0642" : ""]);
+          rows.push([order.clientName || "", order.deliveryDate || "", m.type, m.materialName || "", m.description || "", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", p.edgeFinish || "", "", "", m.availability || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "", p.drawingFile ? "\u0645\u0631\u0641\u0642" : ""]);
         });
       } else {
-        rows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "", m.description || "", "", "", isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit, m.availability || "", "", ""]);
+        rows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "", m.description || "", "", "", "", isMeasured ? "" : m.quantity, isMeasured ? "" : m.unit, m.availability || "", "", ""]);
       }
     });
     exportToExcel(`\u062E\u0627\u0645\u0627\u062A-${order.title || "\u0623\u0648\u0631\u062F\u0631"}`, [{ name: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A", rows }]);
@@ -3032,13 +3032,13 @@ function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
       const imgCell = (url) => url ? '<img src="' + url + '" style="width:60px;height:60px;object-fit:cover;border-radius:6px">' : "\u2014";
       const drawingCell = (f) => f ? '<a href="' + f.dataUrl + '" target="_blank" style="color:#4F7C82;text-decoration:none">\u{1F4CE} ' + (f.name || "\u0645\u0644\u0641") + '</a>' : "\u2014";
       if (isMeasured) {
-        const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"];
+        const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0645\u0644\u0641 \u0627\u0644\u0631\u0633\u0645"];
         const dataRows = [];
         itemsForTab.forEach((m) => {
           if ((m.pieces || []).length > 0) {
-            m.pieces.forEach((p) => dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", imgCell(p.image), drawingCell(p.drawingFile)]));
+            m.pieces.forEach((p) => dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", p.edgeFinish || "\u2014", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", imgCell(p.image), drawingCell(p.drawingFile)]));
           } else {
-            dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", "\u2014", "\u2014", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", "\u2014", "\u2014"]);
+            dataRows.push([order.clientName || "", order.deliveryDate || "", m.materialName || "", m.description || "\u2014", "\u2014", "\u2014", "\u2014", m.orderDate || "\u2014", m.leadTimeDays || "\u2014", m.availability || "", "\u2014", "\u2014"]);
           }
         });
         printAsPdf((order.clientName || "\u0627\u0644\u0639\u0645\u064A\u0644") + " - " + typeTab, headers, dataRows);
@@ -3053,17 +3053,17 @@ function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
       }
       return;
     }
-    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629"];
     const dataRows = [];
     (order.materials || []).forEach((m) => {
       const isMeasured = MEASURED_TYPES.includes(m.type);
       const imgCell = (url) => url ? '<img src="' + url + '" style="width:60px;height:60px;object-fit:cover;border-radius:6px">' : "\u2014";
       if (isMeasured && (m.pieces || []).length > 0) {
         m.pieces.forEach((p) => {
-          dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", "\u2014", "\u2014", m.availability || "", imgCell(p.image)]);
+          dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, m.materialName || "", m.description || "\u2014", (p.length || "") + " \u00D7 " + (p.width || "") + " " + (p.unit || ""), p.pieceCount || "", p.edgeFinish || "\u2014", "\u2014", "\u2014", m.availability || "", imgCell(p.image)]);
         });
       } else {
-        dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "\u2014", m.description || "\u2014", "\u2014", "\u2014", isMeasured ? "\u2014" : m.quantity, isMeasured ? "\u2014" : m.unit, m.availability || "", "\u2014"]);
+        dataRows.push([order.clientName || "", order.deliveryDate || "", m.type, isMeasured ? (m.materialName || "") : "\u2014", m.description || "\u2014", "\u2014", "\u2014", "\u2014", isMeasured ? "\u2014" : m.quantity, isMeasured ? "\u2014" : m.unit, m.availability || "", "\u2014"]);
       }
     });
     printAsPdf((order.clientName || "\u0627\u0644\u0639\u0645\u064A\u0644") + " - \u062C\u0645\u064A\u0639 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", headers, dataRows);
@@ -3103,8 +3103,6 @@ function AddMaterialModal({ onClose, onSave, existing }) {
   const [itemCode, setItemCode] = useState((existing && existing.itemCode) || "");
   const [companyName, setCompanyName] = useState((existing && existing.companyName) || "");
   const [materialName, setMaterialName] = useState((existing && existing.materialName) || "");
-  const [marbleType, setMarbleType] = useState((existing && existing.marbleType) || "");
-  const [glassType, setGlassType] = useState((existing && existing.glassType) || "");
   const [pieceCount, setPieceCount] = useState((firstPiece && firstPiece.pieceCount) || "");
   const [pieceLength, setPieceLength] = useState((firstPiece && firstPiece.length) || "");
   const [pieceWidth, setPieceWidth] = useState((firstPiece && firstPiece.width) || "");
@@ -3209,8 +3207,6 @@ function AddMaterialModal({ onClose, onSave, existing }) {
     itemCode: isCoded ? normalizeDigits(itemCode.trim()) : "",
     companyName: isCoded ? companyName.trim() : "",
     materialName: isMeasured ? materialName.trim() : "",
-    marbleType: type === "رخام" ? marbleType.trim() : "",
-    glassType: type === "زجاج" ? glassType.trim() : "",
     pieces: isMeasured ? [{ id: (firstPiece && firstPiece.id) || uid(), pieceCount, length: pieceLength, width: pieceWidth, unit: pieceUnit, image: pieceImage, drawingFile, edgeFinish: EDGE_FINISH_TYPES.includes(type) ? edgeFinish.trim() : "" }] : null
   }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u062E\u0627\u0645\u0629"));
 }
