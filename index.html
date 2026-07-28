@@ -1022,7 +1022,7 @@ function App() {
         homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders, pieces: productionPieces, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); } }) :
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders, pieces: productionPieces, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); } }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
-        homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
@@ -1680,13 +1680,52 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
   };
   const cols = ["", "\u062A\u0627\u0631\u064A\u062E \u062F\u062E\u0648\u0644 \u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"];
+  const [query, setQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [fCategory, setFCategory] = useState("");
+  const [fEngineer, setFEngineer] = useState("");
+  const categoryOptions = Array.from(new Set(sorted.map((o) => o.category).filter(Boolean)));
+  const engineerOptions = Array.from(new Set(sorted.map((o) => (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy).filter(Boolean)));
+  const filtered = sorted.filter((o) => {
+    if (query.trim() && !(o.clientName || "").includes(query.trim())) return false;
+    if (fCategory && o.category !== fCategory) return false;
+    if (fEngineer && ((emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy) !== fEngineer) return false;
+    return true;
+  });
+  const exportRows = () => filtered.map((o) => [fmtDateTime(o.enteredAt), statusLabel(o), o.clientName || "\u2014", o.category || "\u2014", (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u2014", fmtDateTime(o.inRevisionAt), fmtDateTime(o.reviewDate), o.reviewStatus || "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"]);
+  const exportExcel = () => {
+    const rows = [["\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062F\u062E\u0648\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"]].concat(exportRows());
+    exportToExcel("\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", [{ name: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", rows }]);
+  };
+  const exportPdf = () => {
+    printAsPdf("\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", ["\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062F\u062E\u0648\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"], exportRows());
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F9FE}", title: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" }),
-    sorted.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u062F\u0644\u0648\u0642\u062A\u064A" }) :
+    sorted.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+    sorted.length > 0 ? h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+      h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631"),
+      h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf })
+    ) : null,
+    showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
+      h("div", null,
+        h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
+        )
+      ),
+      h("div", null,
+        h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0647\u0646\u062F\u0633"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fEngineer, onChange: (e) => setFEngineer(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), engineerOptions.map((e2) => h("option", { key: e2, value: e2 }, e2))
+        )
+      )
+    ) : null,
+    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0637\u0627\u0628\u0642\u0629" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1130 } },
         h("thead", null, h("tr", null, cols.map((c, idx) => h("th", { key: idx, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-        h("tbody", null, sorted.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+        h("tbody", null, filtered.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           h("td", { style: { padding: "9px 10px" } }, o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641") : h("span", { style: { fontSize: 11, color: COLORS.muted, whiteSpace: "nowrap" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0644\u0641")),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", cursor: "pointer", color: COLORS.teal, fontWeight: 600 }, onClick: () => onOpen(o.id) }, fmtDateTime(o.enteredAt)),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)),
@@ -1712,13 +1751,38 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
   const [selectedEngineer, setSelectedEngineer] = useState(null);
   const [monthFilter, setMonthFilter] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
+  const [query, setQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
   const resolveName = (o) => (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641";
   const byDeliveryDate = (a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99");
   const scoped = isAdminUser ? orders.filter((o) => o.createdBy) : orders.filter((o) => o.createdBy && myEmail && o.createdBy === myEmail);
-  const needsRevision = scoped.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644").sort(byDeliveryDate);
-  const reviewed = scoped.filter((o) => o.reviewStatus === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").sort(byDeliveryDate);
-  const pendingReview = scoped.filter((o) => o.reviewStatus !== "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").sort(byDeliveryDate);
+  const categoryOptions = Array.from(new Set(scoped.map((o) => o.category).filter(Boolean)));
+  const applyFilters = (list) => list.filter((o) => {
+    if (query.trim() && !(o.clientName || "").includes(query.trim())) return false;
+    if (categoryFilter && o.category !== categoryFilter) return false;
+    return true;
+  });
+  const needsRevision = applyFilters(scoped.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644")).sort(byDeliveryDate);
+  const reviewed = applyFilters(scoped.filter((o) => o.reviewStatus === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")).sort(byDeliveryDate);
+  const pendingReview = applyFilters(scoped.filter((o) => o.reviewStatus !== "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")).sort(byDeliveryDate);
   const currentList = tab === "revisions" ? needsRevision : tab === "pending" ? pendingReview : reviewed;
+  const exportRows = (list) => list.map((o) => [o.clientName || "\u2014", o.category || "\u2014", o.deliveryDate || "\u2014", resolveName(o), tab === "revisions" ? "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" : tab === "pending" ? "\u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" : "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"]);
+  const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0627\u0644\u062D\u0627\u0644\u0629"];
+  const exportExcel = (list) => exportToExcel("\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A", [{ name: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A", rows: [exportHeaders].concat(exportRows(list)) }]);
+  const exportPdf = (list) => printAsPdf("\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A", exportHeaders, exportRows(list));
+  const searchFilterBar = h(React.Fragment, null,
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+      h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631")
+    ),
+    showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+      h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: categoryFilter, onChange: (e) => setCategoryFilter(e.target.value) },
+        h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
+      )
+    ) : null
+  );
   const MONTHS = ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"];
   const revisionCard = (o) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.gold}`, borderRadius: 12, padding: 12 } },
     h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }, onClick: () => onOpen(o.id) },
@@ -1766,6 +1830,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
       return h("div", null,
         h(SectionHeader, { emoji: "\u{1F4C1}", title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A" }),
         tabsRow,
+        searchFilterBar,
         names.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
         h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, names.map((name) => h("button", { key: name, onClick: () => setSelectedEngineer(name), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 14px", cursor: "pointer", textAlign: "start" } },
           h("span", { style: { fontWeight: 700, fontSize: 14.5 } }, "\u{1F464} " + name),
@@ -1779,10 +1844,12 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
       h("button", { onClick: () => setSelectedEngineer(null), style: { background: "transparent", border: "none", color: COLORS.teal, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 10 } }, "\u203A \u0631\u062C\u0648\u0639 \u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646"),
       h(SectionHeader, { emoji: "\u{1F464}", title: selectedEngineer }),
       tabsRow,
+      searchFilterBar,
       h("select", { style: { ...fieldStyle }, value: monthFilter, onChange: (e) => setMonthFilter(e.target.value) },
         h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631"),
         MONTHS.map((mn, idx) => h("option", { key: idx, value: String(idx + 1).padStart(2, "0") }, (idx + 1) + " - " + mn))
       ),
+      list.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(list), onPdf: () => exportPdf(list) }) : null,
       list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard))
     );
@@ -1790,6 +1857,8 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4C1}", title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A" }),
     tabsRow,
+    searchFilterBar,
+    currentList.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(currentList), onPdf: () => exportPdf(currentList) }) : null,
     currentList.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, currentList.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
     editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", editCount: (editingOrder.editCount || 0) + 1 }); if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
@@ -2026,6 +2095,11 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
 }
 function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
   const [subTab, setSubTab] = useState("list");
+  const [expandedShipDate, setExpandedShipDate] = useState(null);
+  const [query, setQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [fAvailability, setFAvailability] = useState("");
+  const [fShipStatus, setFShipStatus] = useState("");
   const egyptCustomers = new Set(pieces.filter((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && isSofaType(p.pieceType)).map((p) => p.customerName));
   const rows = [];
   orders.forEach((o) => {
@@ -2036,6 +2110,12 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
     });
   });
   rows.sort((a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99"));
+  const filteredRows = rows.filter((r) => {
+    if (query.trim() && !r.clientName.includes(query.trim())) return false;
+    if (fAvailability && r.availability !== fAvailability) return false;
+    if (fShipStatus && r.fabricShippingStatus !== fShipStatus) return false;
+    return true;
+  });
   const updateMaterialField = (orderId, materialId, patch) => {
     if (readOnly) return;
     const order = orders.find((o) => o.id === orderId);
@@ -2054,7 +2134,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
     updateMaterialField(row.orderId, row.materialId, patch);
   };
   const byShipDate = {};
-  rows.forEach((r) => { if (r.fabricShippingDate) (byShipDate[r.fabricShippingDate] = byShipDate[r.fabricShippingDate] || []).push(r); });
+  filteredRows.forEach((r) => { if (r.fabricShippingDate) (byShipDate[r.fabricShippingDate] = byShipDate[r.fabricShippingDate] || []).push(r); });
   const shipDates = Object.keys(byShipDate).sort((a, b) => b.localeCompare(a));
   const shipmentTitle = (dateStr) => {
     const d = new Date(dateStr);
@@ -2062,6 +2142,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
     return d.getDate() + " " + (AR_MONTHS[d.getMonth()] || "");
   };
   const listCols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0643\u0648\u062F", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0623\u0645\u062A\u0627\u0631", "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
+  const listExportRows = () => filteredRows.map((r) => [r.clientName, r.deliveryDate || "", normalizeDigits(r.itemCode || ""), r.companyName || "", (r.quantity || "") + " " + (r.unit || ""), r.availability || "", r.fabricShippingStatus || "", r.fabricShippingDate || "", r.fabricArrivalStatus || "", r.fabricArrivalDate || ""]);
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F6CB}\uFE0F", title: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
@@ -2069,11 +2150,32 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
       h(TabButton, { active: subTab === "shipments", onClick: () => setSubTab("shipments"), emoji: "\u{1F69A}", label: "\u0634\u062D\u0646\u0627\u062A \u0627\u0644\u0623\u0642\u0645\u0634\u0629" })
     ),
     subTab === "list" ? (
-      rows.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0639\u0645\u0644\u0627\u0621 \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631 \u0628\u062E\u0627\u0645\u0629 \u0642\u0645\u0627\u0634 \u0645\u0633\u062C\u0644\u0629 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+      h("div", null,
+        h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+        h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+          h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631"),
+          filteredRows.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0646\u062C\u064A\u062F-\u0645\u0635\u0631", [{ name: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631", rows: [listCols].concat(listExportRows()) }]), onPdf: () => printAsPdf("\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631", listCols, listExportRows()) }) : null
+        ),
+        showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
+          h("div", null,
+            h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631"),
+            h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fAvailability, onChange: (e) => setFAvailability(e.target.value) },
+              h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), Array.from(new Set(rows.map((r) => r.availability).filter(Boolean))).map((a) => h("option", { key: a, value: a }, a))
+            )
+          ),
+          h("div", null,
+            h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"),
+            h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fShipStatus, onChange: (e) => setFShipStatus(e.target.value) },
+              h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))
+            )
+          )
+        ) : null
+      ),
+      filteredRows.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0646\u062A\u0627\u0626\u062C" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
         h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1200 } },
           h("thead", null, h("tr", null, listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-          h("tbody", null, rows.map((row) => h("tr", { key: row.orderId + row.materialId, style: { borderBottom: `1px solid ${COLORS.border}` } },
+          h("tbody", null, filteredRows.map((row) => h("tr", { key: row.orderId + row.materialId, style: { borderBottom: `1px solid ${COLORS.border}` } },
             h("td", { style: { padding: "10px", fontWeight: 700, whiteSpace: "nowrap" } }, row.clientName),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, row.deliveryDate || "\u2014"),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, normalizeDigits(row.itemCode || "\u2014")),
@@ -2088,12 +2190,26 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
         )
       )
     ) : (
+      h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      filteredRows.filter((r) => r.fabricShippingDate).length > 0 ? h(ExportButtons, {
+        onExcel: () => {
+          const rows2 = [["\u0634\u062D\u0646\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0643\u0648\u062F", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"]];
+          shipDates.forEach((date) => byShipDate[date].forEach((row) => rows2.push([shipmentTitle(date), row.clientName, normalizeDigits(row.itemCode || ""), row.companyName || "", (row.quantity || "") + " " + (row.unit || "")])));
+          exportToExcel("\u0634\u062D\u0646\u0627\u062A-\u0627\u0644\u0623\u0642\u0645\u0634\u0629", [{ name: "\u0627\u0644\u0634\u062D\u0646\u0627\u062A", rows: rows2 }]);
+        },
+        onPdf: () => {
+          const headers = ["\u0634\u062D\u0646\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0643\u0648\u062F", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"];
+          const dataRows = [];
+          shipDates.forEach((date) => byShipDate[date].forEach((row) => dataRows.push([shipmentTitle(date), row.clientName, normalizeDigits(row.itemCode || ""), row.companyName || "", (row.quantity || "") + " " + (row.unit || "")])));
+          printAsPdf("\u0634\u062D\u0646\u0627\u062A \u0627\u0644\u0623\u0642\u0645\u0634\u0629", headers, dataRows);
+        }
+      }) : null,
       shipDates.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0634\u062D\u0646\u0627\u062A \u0645\u0633\u062C\u0644\u0629 \u0628\u0639\u062F" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.map((date) => h("div", { key: date, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
-        h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } },
-          h("span", null, "\u0634\u062D\u0646\u0629 " + shipmentTitle(date)), h("span", { style: { fontSize: 12, opacity: 0.75 } }, byShipDate[date].length + " \u0639\u0645\u064A\u0644")
+        h("div", { onClick: () => setExpandedShipDate(expandedShipDate === date ? null : date), style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between", cursor: "pointer" } },
+          h("span", null, "\u0634\u062D\u0646\u0629 " + shipmentTitle(date)), h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.75 } }, byShipDate[date].length + " \u0642\u0637\u0639\u0629", h(Emoji, { size: 11 }, expandedShipDate === date ? "\u25B2" : "\u25BC"))
         ),
-        h("div", { style: { overflowX: "auto" } },
+        expandedShipDate === date ? h("div", { style: { overflowX: "auto" } },
           h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 520 } },
             h("thead", null, h("tr", null, ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0643\u0648\u062F", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"].map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
             h("tbody", null, byShipDate[date].map((row) => h("tr", { key: row.orderId + row.materialId, style: { borderBottom: `1px solid ${COLORS.border}` } },
@@ -2103,7 +2219,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly }) {
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (row.quantity || "\u2014") + " " + (row.unit || ""))
             )))
           )
-        )
+        ) : null
       )))
     )
   );
@@ -2190,8 +2306,12 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState("list");
   const [selectedDay, setSelectedDay] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [fType, setFType] = useState("");
+  const typeOptions = Array.from(new Set(pieces.map((p) => p.pieceType).filter(Boolean)));
   const ready = pieces.filter(pieceIsReady)
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
+    .filter((p) => !fType || p.pieceType === fType)
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
   const dayPieces = selectedDay ? pieces.filter((p) => p.customerDeliveryDate === selectedDay) : [];
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0627\u0644\u0625\u0646\u062C\u0627\u0632/\u0627\u0644\u062A\u0623\u062E\u064A\u0631"];
@@ -2204,6 +2324,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
   };
   const delivered = pieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
+    .filter((p) => !fType || p.pieceType === fType)
     .sort((a, b) => (b.actualDeliveryDate || "").localeCompare(a.actualDeliveryDate || ""));
   const delayed = pieces.filter((p) => {
     if (!p.customerDeliveryDate || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") return false;
@@ -2213,6 +2334,17 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
   const countOrders = (list) => new Set(list.map((p) => p.customerName || "\u2014")).size;
+  const exportRows = (list, withAchievement) => list.map((p) => {
+    const a = withAchievement ? achievement(p) : null;
+    return [p.customerName || "\u2014", p.customerDeliveryDate || "\u2014", p.pieceType || "\u2014", p.pieceCount || "", p.description || "", p.size || "", p.manufacturingEntity || "\u2014", p.deliveryConfirmed || "\u0641\u0627\u0631\u063A", p.actualDeliveryDate || "", a ? a.type + (a.days ? " " + a.days + " \u064A\u0648\u0645" : "") : ""];
+  });
+  const exportExcel = (list, withAchievement, name) => {
+    const rows = [["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0627\u0644\u0625\u0646\u062C\u0627\u0632/\u0627\u0644\u062A\u0623\u062E\u064A\u0631"]].concat(exportRows(list, withAchievement));
+    exportToExcel(name, [{ name: name.slice(0, 28), rows }]);
+  };
+  const exportPdf = (list, withAchievement, title) => {
+    printAsPdf(title, ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0627\u0644\u0625\u0646\u062C\u0627\u0632/\u0627\u0644\u062A\u0623\u062E\u064A\u0631"], exportRows(list, withAchievement));
+  };
   const customerAchievement = {};
   delivered.forEach((p) => {
     const a = achievement(p);
@@ -2286,6 +2418,16 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
       ) : h(EmptyHint, { text: "\u0627\u0636\u063A\u0637\u064A \u0639\u0644\u0649 \u0623\u064A \u064A\u0648\u0645 \u0641\u064A\u0647 \u0645\u0648\u0627\u0639\u064A\u062F \u062A\u0633\u0644\u064A\u0645 (\u0645\u0644\u0648\u0651\u0646) \u0639\u0634\u0627\u0646 \u062A\u0634\u0648\u0641\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644" })
     ) : h(React.Fragment, null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+        typeOptions.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null,
+        h(ExportButtons, { onExcel: () => exportExcel(view === "list" ? ready : delivered, view === "delivered", view === "list" ? "\u062C\u0627\u0647\u0632\u0629-\u0644\u0644\u062A\u0633\u0644\u064A\u0645" : "\u062A\u0645-\u0627\u0644\u062A\u0633\u0644\u064A\u0645"), onPdf: () => exportPdf(view === "list" ? ready : delivered, view === "delivered", view === "list" ? "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" : "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") })
+      ),
+      showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+        h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
+          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
+        )
+      ) : null,
       view === "list" ? (
         ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
@@ -2316,11 +2458,14 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
 }
 function TodayQueuePage({ pieces, orders }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [query, setQuery] = useState("");
+  const [locFilter, setLocFilter] = useState("");
   const todayPieces = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d === 0;
-  });
+  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!locFilter || p.currentLocation === locFilter));
+  const allLocationOptions = Array.from(new Set(pieces.filter((p) => { if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false; return pieceDeadlineDiff(p) === 0; }).map((p) => p.currentLocation).filter(Boolean)));
   const byLocation = {};
   todayPieces.forEach((p) => {
     const loc = p.currentLocation || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0642\u0639";
@@ -2332,8 +2477,15 @@ function TodayQueuePage({ pieces, orders }) {
   if (selectedCustomer) {
     return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null) });
   }
+  const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0643\u0627\u0646"];
+  const exportRows = () => todayPieces.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014"]);
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4CB}", title: "\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629" }),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    allLocationOptions.length > 0 ? h("select", { style: fieldStyle, value: locFilter, onChange: (e) => setLocFilter(e.target.value) },
+      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646"), allLocationOptions.map((l) => h("option", { key: l, value: l }, l))
+    ) : null,
+    todayPieces.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0637\u0627\u0628\u0648\u0631-\u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629", [{ name: "\u0627\u0644\u064A\u0648\u0645", rows: [exportHeaders].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0637\u0627\u0628\u0648\u0631 \u0634\u063A\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629", exportHeaders, exportRows()) }) : null,
     todayPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0648\u0639\u062F\u0647\u0627 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629 \u{1F389}" }) :
       h("div", null,
         h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 14px" } }, distinctCustomers + " \u0623\u0648\u0631\u062F\u0631 (" + todayPieces.length + " \u0642\u0637\u0639\u0629) \u0645\u0648\u0639\u062F\u0647\u0627 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629\u060C \u0645\u0642\u0633\u0651\u0645\u0629 \u062D\u0633\u0628 \u0627\u0644\u0645\u0643\u0627\u0646 \u2014 \u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0623\u064A \u0639\u0645\u064A\u0644 \u0644\u062A\u0641\u0627\u0635\u064A\u0644 \u0623\u0648\u0631\u062F\u0631\u0647 \u0627\u0644\u0643\u0627\u0645\u0644\u0629"),
@@ -2526,9 +2678,27 @@ function SupplierPerformancePage({ pieces }) {
     else if (shipStart === p.agreedDeadline) rec.onTime += qty;
     else rec.late += qty;
   });
-  const names = Object.keys(bySupplier).sort((a, b) => a.localeCompare(b, "ar"));
+  const names0 = Object.keys(bySupplier).sort((a, b) => a.localeCompare(b, "ar"));
+  const [query, setQuery] = useState("");
+  const names = query.trim() ? names0.filter((n) => n.includes(query.trim())) : names0;
+  const exportRows = () => names.map((name) => {
+    const r = bySupplier[name];
+    const evaluated = r.early + r.onTime + r.late;
+    const pct = evaluated > 0 ? Math.round(((r.early + r.onTime) / evaluated) * 100) : "";
+    const totalPieceCount = r.pieces.reduce((s, p) => s + (Number(p.pieceCount) || 1), 0);
+    return [name, totalPieceCount, r.early, r.onTime, r.late, r.inProgress, pct];
+  });
+  const exportExcel = () => {
+    const rows = [["\u0627\u0644\u0645\u0648\u0631\u062F", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0642\u0637\u0639", "\u0642\u0628\u0644 \u0627\u0644\u0645\u064A\u0639\u0627\u062F", "\u0641\u064A \u0627\u0644\u0645\u064A\u0639\u0627\u062F", "\u0645\u062A\u0623\u062E\u0631", "\u0644\u0633\u0629 \u062A\u062D\u062A \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0627\u0644\u062A\u0632\u0627\u0645 %"]].concat(exportRows());
+    exportToExcel("\u062A\u0642\u064A\u064A\u0645-\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646", [{ name: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646", rows }]);
+  };
+  const exportPdf = () => {
+    printAsPdf("\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646", ["\u0627\u0644\u0645\u0648\u0631\u062F", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0642\u0637\u0639", "\u0642\u0628\u0644 \u0627\u0644\u0645\u064A\u0639\u0627\u062F", "\u0641\u064A \u0627\u0644\u0645\u064A\u0639\u0627\u062F", "\u0645\u062A\u0623\u062E\u0631", "\u0644\u0633\u0629 \u062A\u062D\u062A \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0627\u0644\u062A\u0632\u0627\u0645 %"], exportRows());
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "\u2B50", title: "\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646" }),
+    names0.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+    names.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
     names.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, names.map((name) => {
         const r = bySupplier[name];
@@ -2561,10 +2731,22 @@ function ActivityLogPage({ log, emailToName }) {
     if (fUser && e.userEmail !== fUser) return false;
     return true;
   });
+  const exportExcel = () => {
+    const rows = [["\u0627\u0644\u0646\u0634\u0627\u0637", "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645", "\u0627\u0644\u062A\u0627\u0631\u064A\u062E"]];
+    filtered.forEach((e) => rows.push([e.text, (emailToName && emailToName[e.userEmail]) || e.userEmail, new Date(e.timestamp).toLocaleString("en-US")]));
+    exportToExcel("\u0633\u062C\u0644-\u0627\u0644\u0646\u0634\u0627\u0637", [{ name: "\u0627\u0644\u0646\u0634\u0627\u0637", rows }]);
+  };
+  const exportPdf = () => {
+    const dataRows = filtered.map((e) => [e.text, (emailToName && emailToName[e.userEmail]) || e.userEmail, new Date(e.timestamp).toLocaleString("en-US")]);
+    printAsPdf("\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637", ["\u0627\u0644\u0646\u0634\u0627\u0637", "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645", "\u0627\u0644\u062A\u0627\u0631\u064A\u062E"], dataRows);
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4DC}", title: "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637" }),
     log.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0641\u064A \u0627\u0644\u0646\u0634\u0627\u0637...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
-    log.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null,
+    h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+      log.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null,
+      filtered.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null
+    ),
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
       h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645"),
       h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fUser, onChange: (e) => setFUser(e.target.value) },
@@ -2758,16 +2940,23 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
 }
 function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder }) {
   const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState("");
   if (selected) {
     return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder });
   }
+  const filtered = names.filter((n) => !query.trim() || n.includes(query.trim()));
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, (emoji ? emoji + " " : "") + title)
     ),
-    names.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
-    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, names.map((name) => h("div", {
+    names.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+    filtered.length > 0 ? h(ExportButtons, {
+      onExcel: () => exportToExcel(title, [{ name: title.slice(0, 28), rows: [["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"]].concat(filtered.map((n) => [n])) }]),
+      onPdf: () => printAsPdf(title, ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"], filtered.map((n) => [n]))
+    }) : null,
+    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, filtered.map((name) => h("div", {
       key: name,
       onClick: () => setSelected(name),
       style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "13px 16px", cursor: "pointer" }
@@ -2778,7 +2967,11 @@ function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onO
   );
 }
 function ProductShipmentsPage({ pieces, onBack }) {
-  const relevant = pieces.filter((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && p.shippingDate);
+  const [query, setQuery] = useState("");
+  const [fReadiness, setFReadiness] = useState("");
+  const [expandedShipDate, setExpandedShipDate] = useState(null);
+  const relevant = pieces.filter((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && p.shippingDate)
+    .filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fReadiness || p.readinessStatus === fReadiness));
   const byShipDate = {};
   relevant.forEach((p) => { (byShipDate[p.shippingDate] = byShipDate[p.shippingDate] || []).push(p); });
   const shipDates = Object.keys(byShipDate).sort((a, b) => b.localeCompare(a));
@@ -2787,17 +2980,24 @@ function ProductShipmentsPage({ pieces, onBack }) {
     if (isNaN(d)) return dateStr;
     return d.getDate() + " " + (AR_MONTHS[d.getMonth()] || "");
   };
+  const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u062D\u0627\u0644\u0629"];
+  const exportRows = () => relevant.map((p) => [p.customerName || "\u2014", p.shippingDate || "\u2014", p.customerDeliveryDate || "\u2014", p.pieceCount || "\u2014", p.description || "\u2014", p.readinessStatus || "\u2014"]);
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F69A} \u0634\u062D\u0646 \u0627\u0644\u0645\u0646\u062A\u062C")
     ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    h("select", { style: fieldStyle, value: fReadiness, onChange: (e) => setFReadiness(e.target.value) },
+      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u062D\u0627\u0644\u0627\u062A"), h("option", { value: "\u0645\u0646\u062A\u062C \u062A\u0627\u0645" }, "\u0645\u0646\u062A\u062C \u062A\u0627\u0645"), h("option", { value: "\u062E\u0634\u0628 \u0645\u0635\u0628\u0648\u063A" }, "\u062E\u0634\u0628 \u0645\u0635\u0628\u0648\u063A")
+    ),
+    relevant.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0634\u062D\u0646-\u0627\u0644\u0645\u0646\u062A\u062C", [{ name: "\u0634\u062D\u0646 \u0627\u0644\u0645\u0646\u062A\u062C", rows: [exportHeaders].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0634\u062D\u0646 \u0627\u0644\u0645\u0646\u062A\u062C", exportHeaders, exportRows()) }) : null,
     shipDates.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0634\u062D\u0646\u0627\u062A \u0645\u0633\u062C\u0644\u0629 \u0628\u0639\u062F" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.map((date) => h("div", { key: date, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
-      h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } },
-        h("span", null, "\u0634\u062D\u0646\u0629 \u0627\u0644\u0645\u0646\u062A\u062C " + shipmentTitle(date)), h("span", { style: { fontSize: 12, opacity: 0.75 } }, byShipDate[date].length + " \u0642\u0637\u0639\u0629")
+      h("div", { onClick: () => setExpandedShipDate(expandedShipDate === date ? null : date), style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between", cursor: "pointer" } },
+        h("span", null, "\u0634\u062D\u0646\u0629 \u0627\u0644\u0645\u0646\u062A\u062C " + shipmentTitle(date)), h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.75 } }, byShipDate[date].length + " \u0642\u0637\u0639\u0629", h(Emoji, { size: 11 }, expandedShipDate === date ? "\u25B2" : "\u25BC"))
       ),
-      h("div", { style: { overflowX: "auto" } },
+      expandedShipDate === date ? h("div", { style: { overflowX: "auto" } },
         h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 650 } },
           h("thead", null, h("tr", null, ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u062D\u0627\u0644\u0629"].map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
           h("tbody", null, byShipDate[date].map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
@@ -2808,17 +3008,22 @@ function ProductShipmentsPage({ pieces, onBack }) {
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.readinessStatus || "\u2014")
           )))
         )
-      )
+      ) : null
     )))
   );
 }
 function FinishingPage({ pieces, onUpdate, onBack, canEdit }) {
-  const needFinishing = pieces.filter(pieceNeedsFinishing).sort((a, b) => (a.arrivalDate || "").localeCompare(b.arrivalDate || ""));
+  const [query, setQuery] = useState("");
+  const needFinishing = pieces.filter(pieceNeedsFinishing).filter((p) => !query.trim() || (p.customerName || "").includes(query.trim())).sort((a, b) => (a.arrivalDate || "").localeCompare(b.arrivalDate || ""));
+  const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
+  const exportRows = () => needFinishing.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.arrivalDate || "\u2014"]);
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1FA9A} \u062A\u0634\u0637\u064A\u0628")
     ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    needFinishing.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0634\u0637\u064A\u0628", [{ name: "\u062A\u0634\u0637\u064A\u0628", rows: [exportHeaders].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0634\u0637\u064A\u0628", exportHeaders, exportRows()) }) : null,
     needFinishing.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062D\u062A\u0627\u062C\u0629 \u062A\u0634\u0637\u064A\u0628 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, needFinishing.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
       h("div", null,
@@ -2830,17 +3035,26 @@ function FinishingPage({ pieces, onUpdate, onBack, canEdit }) {
   );
 }
 function ProductionDelaysPage({ pieces, onBack }) {
+  const [query, setQuery] = useState("");
+  const [fLocation, setFLocation] = useState("");
   const delayed = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
-  }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
+  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fLocation || p.currentLocation === fLocation)).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
+  const locationOptions = Array.from(new Set(pieces.map((p) => p.currentLocation).filter(Boolean)));
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0631\u062D\u0644\u0629/\u0627\u0644\u0645\u0643\u0627\u0646", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0623\u062E\u064A\u0631"];
+  const exportRows = () => delayed.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014", p.manufacturingEntity || "\u2014", p.agreedDeadline || "\u2014", Math.abs(pieceDeadlineDiff(p)) + " \u064A\u0648\u0645"]);
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u23F0 \u0645\u062A\u0623\u062E\u0631\u0627\u062A \u062A\u0635\u0646\u064A\u0639")
     ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    locationOptions.length > 0 ? h("select", { style: fieldStyle, value: fLocation, onChange: (e) => setFLocation(e.target.value) },
+      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646"), locationOptions.map((l) => h("option", { key: l, value: l }, l))
+    ) : null,
+    delayed.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0645\u062A\u0623\u062E\u0631\u0627\u062A-\u062A\u0635\u0646\u064A\u0639", [{ name: "\u0645\u062A\u0623\u062E\u0631\u0627\u062A", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0645\u062A\u0623\u062E\u0631\u0627\u062A \u062A\u0635\u0646\u064A\u0639", cols, exportRows()) }) : null,
     delayed.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646 \u0645\u0648\u0627\u0639\u064A\u062F\u0647\u0627 \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647\u0627" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 700 } },
@@ -2860,32 +3074,73 @@ function ProductionDelaysPage({ pieces, onBack }) {
     )
   );
 }
-function DeliveryDelaysPage({ pieces, onBack }) {
-  const delayed = pieces.filter((p) => {
+function DeliveryDelaysPage({ pieces, onBack, onUpdate, canEdit, isAdminUser }) {
+  const [query, setQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [openPiece, setOpenPiece] = useState(null);
+  const delayedPieces = pieces.filter((p) => {
     if (!p.customerDeliveryDate || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") return false;
     const d = daysUntil(p.customerDeliveryDate);
     return d !== null && d <= 0;
-  }).sort((a, b) => (a.customerDeliveryDate || "").localeCompare(b.customerDeliveryDate || ""));
+  });
+  const groups = {};
+  delayedPieces.forEach((p) => {
+    const key = (p.customerName || "\u2014") + "|" + (p.customerDeliveryDate || "");
+    (groups[key] = groups[key] || []).push(p);
+  });
+  const allGroups = Object.keys(groups).map((key) => {
+    const groupPieces = groups[key];
+    const first = groupPieces[0];
+    const types = Array.from(new Set(groupPieces.map((p) => p.pieceType).filter(Boolean)));
+    const statuses = Array.from(new Set(groupPieces.map((p) => p.status).filter(Boolean)));
+    const d = daysUntil(first.customerDeliveryDate);
+    return { key, customerName: first.customerName || "\u2014", deliveryDate: first.customerDeliveryDate, typeLabel: types.join("\u060C ") || "\u2014", statusLabel: statuses.join("\u060C ") || "\u2014", daysLate: Math.abs(d), pieces: groupPieces };
+  }).sort((a, b) => (a.deliveryDate || "").localeCompare(b.deliveryDate || ""));
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0623\u062E\u064A\u0631"];
+  const exportRows = () => allGroups.map((g) => [g.customerName, g.typeLabel, g.deliveryDate || "\u2014", g.statusLabel, g.daysLate + " \u064A\u0648\u0645"]);
+  if (selectedKey) {
+    const g = allGroups.find((x) => x.key === selectedKey);
+    if (!g) { setSelectedKey(null); return null; }
+    return h("div", null,
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+        h("button", { onClick: () => setSelectedKey(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+        h("div", null,
+          h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, g.customerName),
+          h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, "\u062A\u0633\u0644\u064A\u0645: " + (g.deliveryDate || "\u2014") + " \u00B7 \u0645\u062A\u0623\u062E\u0631 " + g.daysLate + " \u064A\u0648\u0645")
+        )
+      ),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, g.pieces.map((p) => h("div", {
+        key: p.id,
+        onClick: () => setOpenPiece(p),
+        style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" }
+      },
+        h("div", { style: { fontWeight: 700 } }, p.pieceType || "\u2014"),
+        h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, (p.description || "") + (p.description ? " \u00B7 " : "") + (p.currentLocation || "\u2014") + " \u00B7 " + (p.status || "\u2014"))
+      ))),
+      openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
+        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: () => setOpenPiece(null), canEdit, isAdminUser })
+      ) : null
+    );
+  }
+  const filteredGroups = allGroups.filter((g) => !query.trim() || g.customerName.includes(query.trim()));
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u23F0 \u0645\u062A\u0623\u062E\u0631\u0627\u062A \u062A\u0633\u0644\u064A\u0645")
     ),
-    delayed.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    allGroups.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0645\u062A\u0623\u062E\u0631\u0627\u062A-\u062A\u0633\u0644\u064A\u0645", [{ name: "\u0645\u062A\u0623\u062E\u0631\u0627\u062A", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0645\u062A\u0623\u062E\u0631\u0627\u062A \u062A\u0633\u0644\u064A\u0645", cols, exportRows()) }) : null,
+    filteredGroups.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 600 } },
         h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-        h("tbody", null, delayed.map((p) => {
-          const d = daysUntil(p.customerDeliveryDate);
-          return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
-            h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
-            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
-            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
-            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (p.currentLocation || "\u2014") + (p.status ? " \u00B7 " + p.status : "")),
-            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, Math.abs(d) + " \u064A\u0648\u0645")
-          );
-        }))
+        h("tbody", null, filteredGroups.map((g) => h("tr", { key: g.key, onClick: () => setSelectedKey(g.key), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" } },
+          h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, g.customerName),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, g.typeLabel),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, g.deliveryDate || "\u2014"),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, g.statusLabel),
+          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, g.daysLate + " \u064A\u0648\u0645")
+        )))
       )
     )
   );
@@ -3709,6 +3964,7 @@ function CustomerGalleryPage({ order, onUpdateOrder, onBack }) {
 function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
   const [viewMode, setViewMode] = useState("all");
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [query, setQuery] = useState("");
   if (selectedOrderId) {
     const order = orders.find((o) => o.id === selectedOrderId);
     if (!order) { setSelectedOrderId(null); return null; }
@@ -3725,12 +3981,13 @@ function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
     ),
     h(Emoji, { size: 13 }, "\u2039")
   );
-  const sorted = orders.slice().sort((a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99"));
+  const sorted = orders.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).slice().sort((a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99"));
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F5BC}\uFE0F Gallery")
     ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       h(TabButton, { active: viewMode === "all", onClick: () => setViewMode("all"), emoji: "\u{1F465}", label: "\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
       h(TabButton, { active: viewMode === "months", onClick: () => setViewMode("months"), emoji: "\u{1F4C5}", label: "\u0628\u0627\u0644\u0634\u0647\u0648\u0631" })
@@ -3790,6 +4047,18 @@ function PricingHubPage({ orders, onBack, onOpenOrder }) {
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F4B0} \u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A")
     ),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    names.length > 0 ? h(ExportButtons, {
+      onExcel: () => {
+        const rows = [["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629", "\u0635\u0627\u0641\u064A \u0627\u0644\u0631\u0628\u062D"]];
+        orders.forEach((o) => { const c = computeOrderCost(o); rows.push([o.clientName || "\u2014", o.category || "\u2014", o.deliveryDate || "\u2014", c.sellingPrice, c.totalCost.toFixed(1), c.margin.toFixed(1)]); });
+        exportToExcel("\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", [{ name: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", rows }]);
+      },
+      onPdf: () => {
+        const headers = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629", "\u0635\u0627\u0641\u064A \u0627\u0644\u0631\u0628\u062D"];
+        const dataRows = orders.map((o) => { const c = computeOrderCost(o); return [o.clientName || "\u2014", o.category || "\u2014", c.sellingPrice, c.totalCost.toFixed(1), c.margin.toFixed(1)]; });
+        printAsPdf("\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", headers, dataRows);
+      }
+    }) : null,
     names.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, names.map((name) => {
       const custOrders = byName[name];
@@ -4040,8 +4309,10 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   };
   const [recentQuery, setRecentQuery] = useState("");
   const [selectedDistCustomer, setSelectedDistCustomer] = useState(null);
+  const [showDistFilters, setShowDistFilters] = useState(false);
+  const [distEntityFilter, setDistEntityFilter] = useState("");
   const byCustomer = {};
-  pieces.forEach((p) => { const key = p.customerName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"; (byCustomer[key] = byCustomer[key] || []).push(p); });
+  pieces.filter((p) => !distEntityFilter || p.manufacturingEntity === distEntityFilter).forEach((p) => { const key = p.customerName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"; (byCustomer[key] = byCustomer[key] || []).push(p); });
   const customerNames = Object.keys(byCustomer)
     .filter((n) => !recentQuery.trim() || n.includes(recentQuery.trim()))
     .sort((a, b) => {
@@ -4049,6 +4320,12 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
       const dateB = byCustomer[b].map((p) => p.createdAt || "").sort().slice(-1)[0] || "";
       return dateA < dateB ? 1 : -1;
     });
+  const distExportRows = () => {
+    const rows = [];
+    customerNames.forEach((name) => (byCustomer[name] || []).forEach((p) => rows.push([name, p.pieceType || "\u2014", p.manufacturingEntity || "\u2014", p.supplierName || "\u2014", p.pieceCount || "\u2014", p.status || "\u2014"])));
+    return rows;
+  };
+  const distExportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629"];
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
     orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }) : null,
@@ -4089,6 +4366,16 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
     ),
     h(SectionHeader, { emoji: "\u{1F5C2}\uFE0F", title: "\u0642\u0637\u0639 \u062A\u0645 \u062A\u0648\u0632\u064A\u0639\u0647\u0627" }),
     pieces.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: recentQuery, onChange: (e) => setRecentQuery(e.target.value) }) : null,
+    pieces.length > 0 ? h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+      h("button", { onClick: () => setShowDistFilters(!showDistFilters), style: { ...addLinkStyle, marginBottom: showDistFilters ? 10 : 16 } }, (showDistFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631"),
+      h(ExportButtons, { onExcel: () => exportToExcel("\u0642\u0637\u0639-\u0645\u0648\u0632\u0639\u0629", [{ name: "\u0627\u0644\u062A\u0648\u0632\u064A\u0639", rows: [distExportHeaders].concat(distExportRows()) }]), onPdf: () => printAsPdf("\u0642\u0637\u0639 \u0645\u0648\u0632\u0639\u0629", distExportHeaders, distExportRows()) })
+    ) : null,
+    showDistFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+      h("label", { style: labelStyle }, "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: distEntityFilter, onChange: (e) => setDistEntityFilter(e.target.value) },
+        h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), ENTITIES.map((en) => h("option", { key: en, value: en }, en))
+      )
+    ) : null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0648\u0632\u0639\u0629 \u0628\u0639\u062F" }) : null,
     selectedDistCustomer ? h("div", null,
       h("button", { onClick: () => setSelectedDistCustomer(null), style: { background: "transparent", border: "none", color: COLORS.teal, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 10 } }, "\u203A \u0631\u062C\u0648\u0639 \u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0639\u0645\u0644\u0627\u0621"),
@@ -4241,6 +4528,10 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
         h("option", { value: "\u062E\u0634\u0628 \u0645\u0635\u0628\u0648\u063A" }, "\u062E\u0634\u0628 \u0645\u0635\u0628\u0648\u063A")
       )
     ) : null,
+    h("div", null,
+      h("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"),
+      h("textarea", { style: { ...fieldStyle, minHeight: 60 }, disabled: !canEdit, value: piece.notes || "", onChange: (e) => updateField("notes", e.target.value), placeholder: "\u0623\u064A \u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0639\u0644\u0649 \u0627\u0644\u0642\u0637\u0639\u0629..." })
+    ),
     isAdminUser && receivedFrom ? h("button", { onClick: revertStage, style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, background: COLORS.bg, border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "8px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 } }, h(Emoji, { size: 13 }, "\u21A9\uFE0F"), "\u0625\u0631\u062C\u0627\u0639 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644ـ\"" + receivedFrom + "\"") : null,
     (canEdit && !statusOnly) ? h("button", { onClick: () => setEditingDates((v) => !v), style: { fontSize: 12, color: COLORS.teal, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, editingDates ? "إخفاء تواريخ المراحل" : "تعديل تواريخ المراحل يدويًا") : null,
     editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10, background: COLORS.bg, borderRadius: 8, padding: 8 } },
