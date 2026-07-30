@@ -1319,7 +1319,7 @@ function App() {
             regularTile("today-queue"),
             h(NavTile, { key: "gallery-tile", active: false, onClick: () => setHomeDrilldown({ type: "gallery" }), emoji: "\u{1F5BC}\uFE0F", label: "Gallery" }),
             h(NavTile, { key: "product-shipments-tile", active: false, onClick: () => setHomeDrilldown({ type: "product-shipments" }), emoji: "\u{1F69A}", label: "\u0634\u062D\u0646 \u0627\u0644\u0645\u0646\u062A\u062C" }),
-            h(NavTile, { key: "finishing-tile", active: false, onClick: () => setHomeDrilldown({ type: "finishing" }), emoji: "\u{1FA9A}", label: "\u062A\u0634\u0637\u064A\u0628" }),
+            h(NavTile, { key: "finishing-tile", active: false, onClick: () => setHomeDrilldown({ type: "finishing" }), emoji: "\u{1FA84}", label: "\u062A\u0634\u0637\u064A\u0628" }),
             regularTile("deliveries"),
             regularTile("supplier-performance"),
             regularTile("dashboard"),
@@ -3393,7 +3393,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
           h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 15.5 } }, h(Emoji, { size: 15 }, "\u{1F464}"), name),
           h("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 8, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, custOrders.map((o) => h("div", { key: o.id, onClick: () => onOpenOrder && onOpenOrder(o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: onOpenOrder ? "pointer" : "default" } },
             h("div", null,
-              h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, o.category || "\u2014"),
+              h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, (o.orderCode ? "[" + o.orderCode + "] " : "") + (o.category || "\u2014")),
               h("div", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, h(Emoji, { size: 11 }, "\u{1F4C5}"), o.deliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E")
             ),
             h("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, orderStatusLabel(o))
@@ -3484,7 +3484,7 @@ function FinishingPage({ pieces, onUpdate, onBack, canEdit }) {
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
-      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1FA9A} \u062A\u0634\u0637\u064A\u0628")
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1FA84} \u062A\u0634\u0637\u064A\u0628")
     ),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     needFinishing.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0634\u0637\u064A\u0628", [{ name: "\u062A\u0634\u0637\u064A\u0628", rows: [exportHeaders].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0634\u0637\u064A\u0628", exportHeaders, exportRows()) }) : null,
@@ -3692,6 +3692,7 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder }) {
         h("div", { style: { padding: "10px 14px", display: "flex", flexDirection: "column", gap: 14 } }, custPieces.map((p) => {
           const matchingOrder = custOrders.find((o) => o.deliveryDate === p.customerDeliveryDate) || null;
           return h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "4px 12px" } },
+            detailRow("\u{1F3F7}\uFE0F", "\u0643\u0648\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", matchingOrder && matchingOrder.orderCode),
             detailRow("\u{1F69A}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerDeliveryDate),
             detailRow("\u{1FA91}", "\u0627\u0644\u0635\u0646\u0641", p.pieceType),
             detailRow("\u{1F4C4}", "\u0627\u0644\u0628\u064A\u0627\u0646", (p.description || "") + (p.description ? " \u00B7 " : "") + "\u0627\u0644\u0639\u062F\u062F: " + p.pieceCount),
@@ -3822,6 +3823,7 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder }) {
             ),
             h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, dateGroups[dateKey].map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "6px 14px" } },
               detailRow("\u{1F464}", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", name),
+              detailRow("\u{1F3F7}\uFE0F", "\u0643\u0648\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", matchingOrder && matchingOrder.orderCode),
               detailRow("\u{1F4C5}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)", receivedDate),
               detailRow("\u{1F69A}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerDeliveryDate),
               detailRow("\u{1FA91}", "\u0627\u0644\u0635\u0646\u0641", p.pieceType),
