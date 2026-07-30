@@ -406,6 +406,9 @@ function activityLogColRef() {
 function notificationsColRef() {
   return workspaceDocRef().collection("notifications");
 }
+function publicTrackingColRef() {
+  return workspaceDocRef().collection("publicTracking");
+}
 async function migrateLegacyArraysToSubcollections(existingData) {
   const legacyOrders = Array.isArray(existingData.orders) ? existingData.orders : [];
   const legacyPieces = Array.isArray(existingData.productionPieces) ? existingData.productionPieces : [];
@@ -702,6 +705,10 @@ function App() {
     return () => clearInterval(id);
   }, []);
   const notifiedRef = useRef(false);
+  const dailyReminderSentRef = useRef(/* @__PURE__ */ new Set());
+  const deadlineNotifiedSessionRef = useRef(/* @__PURE__ */ new Set());
+  const nearDeliveryNotifiedSessionRef = useRef(/* @__PURE__ */ new Set());
+  const readyNotifiedSessionRef = useRef(/* @__PURE__ */ new Set());
   useEffect(() => {
     if (!dataLoaded) return;
     const overdueCount = orders.filter(orderIsOverdue).length;
@@ -730,10 +737,11 @@ function App() {
       return Array.from(emails);
     };
     productionPieces.forEach((p) => {
-      if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineNotified || pieceStageEndRecorded(p)) return;
+      if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineNotified || pieceStageEndRecorded(p) || deadlineNotifiedSessionRef.current.has(p.id)) return;
       const d = pieceDeadlineDiff(p);
       if (d === null || d > 3) return;
       const late = d < 0;
+      deadlineNotifiedSessionRef.current.add(p.id);
       notify({
         toEmails: productionEmailsForLocation(p.currentLocation),
         title: late ? "⚠️ قطعة متأخرة عن الموعد المتفق عليه" : "⏰ قطعة قريبة من الموعد المتفق عليه",
@@ -745,11 +753,15 @@ function App() {
   }, [dataLoaded, productionPieces, access, tick]);
   useEffect(() => {
     if (!dataLoaded) return;
+    if ((/* @__PURE__ */ new Date()).getHours() < 9) return;
+    const today = todayStr();
     orders.forEach((o) => {
       if (!o.approved || !o.reviewDate) return;
       const daysSinceApproval = dayDiff(o.reviewDate, todayStr());
       if (daysSinceApproval === null || daysSinceApproval < 1) return;
-      if (!o.distributionHandled && !o.distributionDeadlineNotified) {
+      const distKey = o.id + "-dist-" + today;
+      if (!o.distributionHandled && o.distributionLastReminderDate !== today && !dailyReminderSentRef.current.has(distKey)) {
+        dailyReminderSentRef.current.add(distKey);
         notify({
           toEmails: emailsWithTabAccess("distribution"),
           title: "\u23F0 \u0623\u0648\u0631\u062F\u0631 \u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0648\u0632\u0651\u0639 \u0645\u0646 \u064A\u0648\u0645 \u0623\u0648 \u0623\u0643\u062A\u0631",
@@ -757,9 +769,11 @@ function App() {
           orderId: o.id,
           kind: "distribution-deadline"
         });
-        updateOrder(o.id, { distributionDeadlineNotified: true });
+        updateOrder(o.id, { distributionLastReminderDate: today });
       }
-      if (!o.materialsHandled && !o.materialsDeadlineNotified) {
+      const matKey = o.id + "-mat-" + today;
+      if (!o.materialsHandled && o.materialsLastReminderDate !== today && !dailyReminderSentRef.current.has(matKey)) {
+        dailyReminderSentRef.current.add(matKey);
         notify({
           toEmails: emailsWithTabAccess("materials-hub"),
           title: "\u23F0 \u0623\u0648\u0631\u062F\u0631 \u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A \u062E\u0627\u0645\u0627\u062A\u0647 \u0645\u0646 \u064A\u0648\u0645 \u0623\u0648 \u0623\u0643\u062A\u0631",
@@ -767,7 +781,7 @@ function App() {
           orderId: o.id,
           kind: "materials-deadline"
         });
-        updateOrder(o.id, { materialsDeadlineNotified: true });
+        updateOrder(o.id, { materialsLastReminderDate: today });
       }
     });
   }, [dataLoaded, orders, tick]);
@@ -783,11 +797,12 @@ function App() {
       return Array.from(emails);
     };
     orders.forEach((o) => {
-      if (!o.deliveryDate || o.nearDeliveryNotified) return;
+      if (!o.deliveryDate || o.nearDeliveryNotified || nearDeliveryNotifiedSessionRef.current.has(o.id)) return;
       const d = daysUntil(o.deliveryDate);
       if (d === null || d < 1 || d > 5) return;
       const orderPieces = productionPieces.filter((p) => p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
       const locations = Array.from(new Set(orderPieces.map((p) => p.currentLocation).filter(Boolean)));
+      nearDeliveryNotifiedSessionRef.current.add(o.id);
       notify({
         toEmails: [o.createdBy, ...productionEmailsForLocations(locations)].filter(Boolean),
         title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (\u0628\u0627\u0642\u064A " + d + " \u064A\u0648\u0645)",
@@ -802,7 +817,8 @@ function App() {
     if (!dataLoaded) return;
     productionPieces.forEach((p) => {
       const ready = pieceIsReady(p);
-      if (!ready || p.readyNotified) return;
+      if (!ready || p.readyNotified || readyNotifiedSessionRef.current.has(p.id)) return;
+      readyNotifiedSessionRef.current.add(p.id);
       notify({
         toEmails: emailsWithTabAccess("deliveries"),
         title: "\u{1F69A} \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645",
@@ -926,18 +942,40 @@ function App() {
     setShowNotifPanel(true);
     if (typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission();
   };
+  const syncPublicTracking = (order, piecesSnapshot) => {
+    if (!order || !order.id || !order.clientName) return;
+    const matching = (piecesSnapshot || productionPieces).filter((p) => p.customerName === order.clientName && (!p.customerDeliveryDate || !order.deliveryDate || p.customerDeliveryDate === order.deliveryDate));
+    const payload = {
+      clientName: order.clientName || "",
+      category: order.category || "",
+      deliveryDate: order.deliveryDate || "",
+      status: computeCustomerFriendlyStatus(order, matching),
+      gallery: order.gallery || {},
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    publicTrackingColRef().doc(order.id).set(payload).catch((e) => console.error("public tracking sync failed", e));
+  };
+  const syncPublicTrackingForCustomer = (customerName, piecesSnapshot) => {
+    if (!customerName) return;
+    orders.filter((o) => o.clientName === customerName).forEach((o) => syncPublicTracking(o, piecesSnapshot));
+  };
   const addProductionPiece = (piece) => {
     persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
     logActivity("\u0623\u0636\u0627\u0641 \u0642\u0637\u0639\u0629 \u062C\u062F\u064A\u062F\u0629 \u0644ـ" + piece.customerName);
+    syncPublicTrackingForCustomer(piece.customerName, [...productionPieces, piece]);
   };
   const deleteProductionPiece = (id) => {
     const piece = productionPieces.find((p) => p.id === id);
     persistRecordWrite(piecesColRef().doc(id).delete());
-    if (piece) logActivity("\u062D\u0630\u0641 \u0642\u0637\u0639\u0629 \u0644\u0640" + piece.customerName);
+    if (piece) {
+      logActivity("\u062D\u0630\u0641 \u0642\u0637\u0639\u0629 \u0644\u0640" + piece.customerName);
+      syncPublicTrackingForCustomer(piece.customerName, productionPieces.filter((p) => p.id !== id));
+    }
   };
   const updateProductionPiece = (piece) => {
     persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
     logActivity("\u0639\u062F\u0651\u0644 \u0642\u0637\u0639\u0629 \u0644\u0640" + piece.customerName + " (\u0627\u0644\u062D\u0627\u0644\u0629: " + piece.status + ")");
+    syncPublicTrackingForCustomer(piece.customerName, productionPieces.map((p) => p.id === piece.id ? piece : p));
   };
   const addProductionSupplier = (entity, name) => persistRecordWrite(
     workspaceDocRef().update({ [`productionSuppliers.${entity}`]: firebase.firestore.FieldValue.arrayUnion(name) })
@@ -968,18 +1006,24 @@ function App() {
     const ord = orders.find((o) => o.id === id);
     persistRecordWrite(ordersColRef().doc(id).update(patch));
     logActivity("\u0639\u062F\u0651\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0623\u0648\u0631\u062F\u0631: " + (ord ? ord.title : id));
+    if (ord) syncPublicTracking({ ...ord, ...patch });
   };
   const addOrder = (o) => {
     const withOwner = { ...o, createdBy: (user && user.email) || "", engineerName: myDisplayName, approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "" };
     persistRecordWrite(ordersColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F: " + o.title);
     notify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F \u064A\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", body: (myDisplayName || "") + " \u0623\u0636\u0627\u0641 \u0623\u0648\u0631\u062F\u0631 \u0644ـ" + (o.clientName || ""), orderId: withOwner.id, kind: "new-order" });
+    syncPublicTracking(withOwner);
   };
   const deleteOrder = (id) => {
     const ord = orders.find((o) => o.id === id);
     persistRecordWrite(ordersColRef().doc(id).delete());
     if (ord) logActivity("\u062D\u0630\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + ord.title);
   };
+  const trackingOrderId = (() => { try { return new URLSearchParams(window.location.search).get("track"); } catch (e) { return null; } })();
+  if (trackingOrderId) {
+    return h(CustomerTrackingPage, { orderId: trackingOrderId });
+  }
   if (!authChecked) {
     return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644..." });
   }
@@ -1279,6 +1323,75 @@ function GlobalStyle() {
       ::placeholder { color: #B7A88F; }
       body { direction: rtl; }
     `);
+}
+function CustomerTrackingPage({ orderId }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    if (!firebaseReady || !orderId) { setLoading(false); setError(true); return; }
+    (async () => {
+      try {
+        if (!auth.currentUser) {
+          try { await auth.signInAnonymously(); } catch (e) { console.warn("anon sign-in failed", e); }
+        }
+        const snap = await publicTrackingColRef().doc(orderId).get();
+        if (!snap.exists) setError(true);
+        else setData(snap.data());
+      } catch (e) {
+        console.error(e);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [orderId]);
+  const statusStyle = (status) => {
+    if (status === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2705") return { bg: "#E8F0E4", color: "#5C7A54" };
+    if (status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u{1F69A}") return { bg: "#EAF1F1", color: "#4F7C82" };
+    return { bg: "#F1E3C8", color: "#B8873D" };
+  };
+  return h("div", { dir: "rtl", style: { ...body, background: "#F6F1E7", minHeight: "100vh", color: "#2A211B" } },
+    h("div", { style: { padding: "28px 20px 34px", textAlign: "center", background: "#3E2417" } },
+      h("img", { src: DEFAULT_LOGO_IMG, alt: "logo", style: { width: 56, height: 56, borderRadius: 14, objectFit: "cover", marginBottom: 10 } }),
+      h("div", { style: { ...display, fontSize: 22, fontWeight: 700, color: "#FBEFDD" } }, "Rawaa Furniture"),
+      h("div", { style: { fontSize: 12.5, color: "rgba(251,239,221,0.8)", marginTop: 4 } }, "\u0645\u062A\u0627\u0628\u0639\u0629 \u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
+    ),
+    h("div", { style: { padding: "22px 18px 40px", maxWidth: 480, margin: "0 auto" } },
+      loading ? h("p", { style: { textAlign: "center", color: "#8A7B6C", fontSize: 14, marginTop: 30 } }, "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0645\u064A\u0644...") :
+      error || !data ? h("div", { style: { textAlign: "center", padding: "40px 16px" } },
+        h("div", { style: { fontSize: 32, marginBottom: 10 } }, "\u{1F614}"),
+        h("p", { style: { fontSize: 15, fontWeight: 700, margin: "0 0 4px" } }, "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631 \u0628\u0627\u0644\u0631\u0627\u0628\u0637 \u062F\u0647"),
+        h("p", { style: { fontSize: 13, color: "#8A7B6C" } }, "\u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0631\u0627\u0628\u0637 \u0623\u0648 \u062A\u0648\u0627\u0635\u0644\u064A \u0645\u0639 \u0627\u0644\u0634\u0631\u0643\u0629")
+      ) : (() => {
+        const st = statusStyle(data.status);
+        const finished = (data.gallery && data.gallery.finished) || [];
+        return h("div", null,
+          h("div", { style: { background: "#fff", border: "1px solid #E4DACB", borderRadius: 16, padding: 18, marginBottom: 16 } },
+            h("div", { style: { fontSize: 13, color: "#8A7B6C", marginBottom: 2 } }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
+            h("div", { style: { fontSize: 17, fontWeight: 700, marginBottom: 12 } }, data.clientName || "\u2014"),
+            h("div", { style: { fontSize: 13, color: "#8A7B6C", marginBottom: 2 } }, "\u0627\u0644\u0642\u0633\u0645"),
+            h("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 12 } }, data.category || "\u2014"),
+            data.deliveryDate ? h(React.Fragment, null,
+              h("div", { style: { fontSize: 13, color: "#8A7B6C", marginBottom: 2 } }, "\u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u062A\u0648\u0642\u0639"),
+              h("div", { style: { fontSize: 15, fontWeight: 600 } }, data.deliveryDate)
+            ) : null
+          ),
+          h("div", { style: { background: st.bg, borderRadius: 16, padding: "18px 16px", textAlign: "center", marginBottom: 20 } },
+            h("div", { style: { fontSize: 12, color: st.color, fontWeight: 700, marginBottom: 4 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
+            h("div", { style: { fontSize: 18, fontWeight: 700, color: st.color } }, data.status || "\u2014")
+          ),
+          finished.length > 0 ? h("div", null,
+            h("div", { style: { fontSize: 14, fontWeight: 700, marginBottom: 10 } }, "\u2705 \u0635\u0648\u0631 \u0627\u0644\u0645\u0646\u062A\u062C \u0627\u0644\u062A\u0627\u0645"),
+            h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 } }, finished.map((m, idx) => h("div", { key: idx, style: { borderRadius: 12, overflow: "hidden", border: "1px solid #E4DACB", aspectRatio: "1" } },
+              m.kind === "video" ? h("video", { src: m.dataUrl, controls: true, style: { width: "100%", height: "100%", objectFit: "cover" } }) : h("img", { src: m.dataUrl, onClick: () => openImageLightbox(m.dataUrl), style: { width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" } })
+            )))
+          ) : null,
+          h("p", { style: { textAlign: "center", fontSize: 12, color: "#B7A88F", marginTop: 28 } }, "\u0644\u0644\u0627\u0633\u062A\u0641\u0633\u0627\u0631 \u062A\u0648\u0627\u0635\u0644\u064A \u0645\u0639\u0646\u0627 \u0645\u0628\u0627\u0634\u0631\u0629")
+        );
+      })()
+    )
+  );
 }
 function CenteredMessage({ text }) {
   return /* @__PURE__ */ React.createElement("div", {
@@ -3686,6 +3799,14 @@ function OrderDetail({ order, onBack, onUpdate, onDelete, canEdit, isAdminUser, 
           h("span", { style: { fontSize: 13, color: COLORS.muted } }, "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
           order.manufacturingOrderFile ? h("a", { href: order.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 13, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none" } }, h(Emoji, { size: 13 }, "\u{1F4CE}"), "\u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641") : h("span", { style: { fontSize: 13, color: COLORS.muted } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0644\u0641")
         ),
+        order.approved ? h("button", {
+          onClick: () => {
+            const link = "https://rawaafurniture99-rgb.github.io/alkhobar-orders/?track=" + order.id;
+            const msg = "\u0645\u0631\u062D\u0628\u064B\u0627 " + (order.clientName || "") + "\u060C \u062A\u0642\u062F\u0631/\u064A \u062A\u062A\u0627\u0628\u0639/\u064A \u062D\u0627\u0644\u0629 \u0623\u0648\u0631\u062F\u0631\u0643 \u0645\u0646 \u0647\u0646\u0627:\n" + link;
+            window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+          },
+          style: { width: "100%", marginTop: 12, background: "#25D366", color: "#fff", border: "none", borderRadius: 12, padding: "11px 0", fontSize: 13.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
+        }, h(Emoji, { size: 15 }, "\u{1F4E4}"), "\u0625\u0631\u0633\u0627\u0644 \u0631\u0627\u0628\u0637 \u0645\u062A\u0627\u0628\u0639\u0629 \u0644\u0644\u0639\u0645\u064A\u0644") : null,
         isAdminUser && order.approved ? h("button", {
           onClick: () => {
             if (!window.confirm("\u0647\u062A\u0631\u062C\u0639\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629\u061F \u0647\u064A\u062E\u0631\u062C \u0645\u0646 \u0637\u0648\u0627\u0628\u064A\u0631 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0648\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0644\u062D\u062F \u0645\u0627 \u064A\u062A\u0639\u062A\u0645\u062F \u062A\u0627\u0646\u064A.")) return;
@@ -4426,6 +4547,21 @@ function isSofaType(t) { return (t || "").includes("كنب"); }
 function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
 function isSoftGoodType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("مخدات") || s.includes("سجاد"); }
+const FRIENDLY_STAGE_LABELS = {
+  "\u0627\u0644\u062F\u0647\u0627\u0646": "\u0642\u064A\u062F \u0627\u0644\u062F\u0647\u0627\u0646",
+  "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u0642\u064A\u062F \u0627\u0644\u062A\u0646\u062C\u064A\u062F",
+  "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u0642\u064A\u062F \u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u062A\u062C\u0647\u064A\u0632 \u0644\u0644\u0634\u062D\u0646",
+  "\u0627\u0644\u0634\u062D\u0646": "\u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642 \u0644\u0644\u0634\u062D\u0646"
+};
+function computeCustomerFriendlyStatus(order, matchingPieces) {
+  if (!order.approved) return "\u062C\u0627\u0631\u064A \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631";
+  if (!matchingPieces || matchingPieces.length === 0) return "\u062C\u0627\u0631\u064A \u0627\u0644\u062A\u062C\u0647\u064A\u0632 \u0644\u0628\u062F\u0621 \u0627\u0644\u062A\u0635\u0646\u064A\u0639";
+  if (matchingPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2705";
+  if (matchingPieces.every((p) => pieceIsReady(p))) return "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u{1F69A}";
+  const inProgress = matchingPieces.find((p) => !pieceIsReady(p) && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
+  if (inProgress) return FRIENDLY_STAGE_LABELS[inProgress.currentLocation] || "\u0642\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639";
+  return "\u0642\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639";
+}
 
 function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer }) {
   const [tab, setTab] = useState("new");
