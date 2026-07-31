@@ -7,15 +7,8 @@
   <meta name="theme-color" content="#B8873D" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Markazi+Text:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" />
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js" crossorigin></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-app-compat.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-auth-compat.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Markazi+Text:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Markazi+Text:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" /></noscript>
 
   <style>
     html, body { margin: 0; padding: 0; background: #F6F1E7; }
@@ -54,6 +47,13 @@
     // \u0627\u0644\u0627\u0633\u0645 \u062F\u0647 \u0645\u0648\u0644\u0651\u062F \u0639\u0634\u0648\u0627\u0626\u064A\u064B\u0627 \u0648\u062E\u0627\u0635 \u0628\u064A\u0643\u0645 \u0628\u0627\u0644\u0641\u0639\u0644 \u2014 \u0645\u062D\u062A\u0627\u062C\u0629 \u062A\u0631\u0643\u064A\u0647 \u0632\u064A \u0645\u0627 \u0647\u0648\u060C \u0628\u0633 \u0644\u0648 \u0639\u0627\u0648\u0632\u0629 \u062A\u063A\u064A\u0631\u064A\u0647 \u0627\u062E\u062A\u0627\u0631\u064A \u0623\u064A \u0627\u0633\u0645 \u062A\u0627\u0646\u064A \u0637\u0648\u064A\u0644 \u0648\u0635\u0639\u0628 \u062D\u062F \u064A\u062E\u0645\u0651\u0646\u0647.
     window.NTFY_TOPIC = "alkhobar-orders-ah29n25r4p";
   </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-app-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-auth-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <script>
 const { useState, useEffect, useCallback, useRef } = React;
