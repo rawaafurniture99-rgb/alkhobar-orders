@@ -1127,6 +1127,10 @@ function App() {
   const updatePreApprovalRecord = (id, patch) => {
     persistRecordWrite(preApprovalColRef().doc(id).update(patch));
   };
+  const deletePreApprovalRecord = (id, clientName) => {
+    persistRecordWrite(preApprovalColRef().doc(id).delete());
+    logActivity("\u062D\u0630\u0641 \u0633\u062C\u0644 \u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F: " + (clientName || ""));
+  };
   const trackingOrderId = (() => { try { return new URLSearchParams(window.location.search).get("track"); } catch (e) { return null; } })();
   if (trackingOrderId) {
     return h(CustomerTrackingPage, { orderId: trackingOrderId });
@@ -1190,7 +1194,7 @@ function App() {
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "gallery" ? h(GalleryHubPage, { orders: activeOrders, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null) }) :
-        homeDrilldown.type === "pre-approval" ? h(PreApprovalHubPage, { records: preApprovalRecords, myEmail: user && user.email, myDisplayName, isReviewer: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("pre-approval-engineering") || hasRole("pre-approval-technical"), myRoles, isAdminUser: isOwner || hasRole("admin"), onUpdate: updatePreApprovalRecord, onAdd: addPreApprovalRecord, emailToName, onOpenOrder: (orderData, preApprovalId) => { addOrder(orderData); updatePreApprovalRecord(preApprovalId, { orderCreated: true, orderCreatedId: orderData.id }); setHomeDrilldown(null); openOrder(orderData.id); } }) :
+        homeDrilldown.type === "pre-approval" ? h(PreApprovalHubPage, { records: preApprovalRecords, myEmail: user && user.email, myDisplayName, isReviewer: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("pre-approval-engineering") || hasRole("pre-approval-technical"), myRoles, isAdminUser: isOwner || hasRole("admin"), onUpdate: updatePreApprovalRecord, onAdd: addPreApprovalRecord, onDelete: deletePreApprovalRecord, emailToName, onOpenOrder: (orderData, preApprovalId) => { addOrder(orderData); updatePreApprovalRecord(preApprovalId, { orderCreated: true, orderCreatedId: orderData.id }); setHomeDrilldown(null); openOrder(orderData.id); } }) :
         homeDrilldown.type === "trash" ? h(TrashPage, { orders: orders.filter((o) => o.archived), onBack: () => setHomeDrilldown(null), onRestore: restoreOrder, onDeleteForever: permanentlyDeleteOrder }) : null
       )
     ) : tab ? h(React.Fragment, null,
@@ -2090,7 +2094,7 @@ function AddPreApprovalModal({ onClose, onSave }) {
     h("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave({ clientName: clientName.trim(), category: category.trim(), showroomNotes: showroomNotes.trim() }) }, "\u062D\u0641\u0638")
   );
 }
-function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRoles, isAdminUser, onUpdate, onAdd, emailToName, onOpenOrder }) {
+function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRoles, isAdminUser, onUpdate, onAdd, onDelete, emailToName, onOpenOrder }) {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
@@ -2124,7 +2128,13 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
             h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, r.clientName),
             isReviewer ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u{1F477} " + ((emailToName && emailToName[r.createdBy]) || r.engineerName || r.createdBy)) : null
           ),
-          st.label ? h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label) : null
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+            st.label ? h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label) : null,
+            isAdminUser && onDelete ? h("button", {
+              onClick: (e) => { e.stopPropagation(); if (window.confirm("\u062D\u0630\u0641 \u0633\u062C\u0644 \"" + (r.clientName || "") + "\" \u0646\u0647\u0627\u0626\u064A\u064B\u0627\u061F")) onDelete(r.id, r.clientName); },
+              style: { border: "none", background: "transparent", cursor: "pointer", padding: 4, display: "flex", alignItems: "center" }
+            }, h(Emoji, { size: 15, color: COLORS.red || "#B3392C" }, "\u{1F5D1}\uFE0F")) : null
+          )
         )
       );
     })),
@@ -2196,7 +2206,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
           h(Emoji, { size: 16 }, "\u2795"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0636\u0627\u0641\u0629 \u0635\u0648\u0631/\u0641\u064A\u062F\u064A\u0648\u0647\u0627\u062A/\u0645\u0644\u0641\u0627\u062A",
           h("input", { type: "file", accept: "image/*,video/*,application/pdf", multiple: true, disabled: busy, style: { display: "none" }, onChange: (e) => addShowroomFiles(e.target.files) })
         ) : null,
-        canEditShowroom && !r.showroomDone ? h("button", { onClick: () => onUpdate({ showroomDone: true }), style: { width: "100%", background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 \u0631\u0641\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u0631\u0636") : r.showroomDone ? h("div", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645") : null
+        canEditShowroom && !r.showroomDone ? h("button", { onClick: () => onUpdate({ showroomDone: true }), style: { width: "100%", background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u0631\u0641\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644") : r.showroomDone ? h("div", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645") : null
       ) : null,
       activeStage === "engineering" ? h("div", null,
         !r.showroomDone ? h(EmptyHint, { text: "\u0645\u0633\u062A\u0646\u064A \u062E\u0644\u0627\u0635 \u0642\u0633\u0645 \u0627\u0644\u0645\u0639\u0631\u0636 \u0623\u0648\u0644\u0627\u064B" }) : h(React.Fragment, null,
