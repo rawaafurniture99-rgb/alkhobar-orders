@@ -2102,7 +2102,7 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
     if (r.technicalReviewStatus === "\u0645\u0639\u062A\u0645\u062F") return { label: "\u0641\u064A \u0627\u0646\u062A\u0638\u0627\u0631 \u0627\u062C\u062A\u0645\u0627\u0639 \u0627\u0644\u0639\u0645\u064A\u0644", color: COLORS.gold, bg: COLORS.goldSoft };
     if (r.engineeringDone) return { label: "\u0641\u064A \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", color: COLORS.teal, bg: "#EAF1F1" };
     if (r.showroomDone) return { label: "\u0641\u064A \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", color: COLORS.teal, bg: "#EAF1F1" };
-    return { label: "\u0641\u064A \u0627\u0644\u0645\u0639\u0631\u0636", color: COLORS.muted, bg: COLORS.bg };
+    return { label: "", color: COLORS.muted, bg: COLORS.bg };
   };
   const filtered = scoped.filter((r) => !query.trim() || (r.clientName || "").includes(query.trim())).sort((a, b) => (b.enteredAt || "").localeCompare(a.enteredAt || ""));
   if (selected) {
@@ -2124,7 +2124,7 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
             h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, r.clientName),
             isReviewer ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u{1F477} " + ((emailToName && emailToName[r.createdBy]) || r.engineerName || r.createdBy)) : null
           ),
-          h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label)
+          st.label ? h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label) : null
         )
       );
     })),
@@ -2172,7 +2172,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
     if (key === "approval") return r.technicalReviewStatus !== "\u0645\u0639\u062A\u0645\u062F" ? { label: "\u0641\u064A \u0627\u0644\u0627\u0646\u062A\u0638\u0627\u0631", color: COLORS.muted, bg: COLORS.bg } : r.clientApproved ? { label: "\u062A\u0645", color: COLORS.green, bg: "#E8F0E4" } : { label: "\u062C\u0627\u0631\u064A", color: COLORS.gold, bg: COLORS.goldSoft };
   };
   const stages = [
-    { key: "showroom", emoji: "\u{1F3EC}", label: "1\u200F. \u0627\u0644\u0645\u0639\u0631\u0636" },
+    { key: "showroom", emoji: "\u{1F3EC}", label: "1\u200F. \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u0648 \u0631\u0641\u0639 \u0627\u0644\u0645\u0642\u0627\u0633\u0627\u062A" },
     { key: "engineering", emoji: "\u{1F4D0}", label: "2\u200F. \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A" },
     { key: "technical", emoji: "\u{1F58A}\uFE0F", label: "3\u200F. \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A" },
     { key: "approval", emoji: "\u2705", label: "4\u200F. \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644" }
