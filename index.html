@@ -811,6 +811,8 @@ function App() {
   }, [dataLoaded, orders, tick]);
   useEffect(() => {
     if (!dataLoaded || !access) return;
+    if ((/* @__PURE__ */ new Date()).getHours() < 10) return;
+    const today = todayStr();
     const productionEmailsForLocation = (location) => {
       const emails = new Set();
       (access.members || []).forEach((m) => {
@@ -821,18 +823,19 @@ function App() {
       return Array.from(emails);
     };
     productionPieces.forEach((p) => {
-      if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineNotified || pieceStageEndRecorded(p) || deadlineNotifiedSessionRef.current.has(p.id)) return;
+      const key = p.id + "-deadline-" + today;
+      if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineLastReminderDate === today || pieceStageEndRecorded(p) || deadlineNotifiedSessionRef.current.has(key)) return;
       const d = pieceDeadlineDiff(p);
       if (d === null || d > 3) return;
       const late = d < 0;
-      deadlineNotifiedSessionRef.current.add(p.id);
+      deadlineNotifiedSessionRef.current.add(key);
       notify({
         toEmails: productionEmailsForLocation(p.currentLocation),
-        title: late ? "⚠️ قطعة متأخرة عن الموعد المتفق عليه" : "⏰ قطعة قريبة من الموعد المتفق عليه",
+        title: late ? "⚠️ قطعة متأخرة عن الموعد المتفق عليه بـ " + arabicDaysPhrase(Math.abs(d)) : d === 0 ? "⏰ قطعة موعدها المتفق عليه اليوم" : "⏰ قطعة قريبة من الموعد المتفق عليه — باقي " + arabicDaysPhrase(d),
         body: (p.customerName || "—") + " - " + (p.currentLocation || "—"),
         kind: "deadline"
       });
-      piecesColRef().doc(p.id).update({ deadlineNotified: true }).catch((e) => console.error("deadline flag failed", e));
+      piecesColRef().doc(p.id).update({ deadlineLastReminderDate: today }).catch((e) => console.error("deadline flag failed", e));
     });
   }, [dataLoaded, productionPieces, access, tick]);
   useEffect(() => {
@@ -889,7 +892,7 @@ function App() {
       nearDeliveryNotifiedSessionRef.current.add(o.id);
       notify({
         toEmails: [o.createdBy, ...productionEmailsForLocations(locations)].filter(Boolean),
-        title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (\u0628\u0627\u0642\u064A " + d + " \u064A\u0648\u0645)",
+        title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2014 \u0628\u0627\u0642\u064A " + arabicDaysPhrase(d),
         body: (o.clientName || "\u2014") + " - " + (o.category || "\u2014"),
         orderId: o.id,
         kind: "near-delivery"
@@ -2113,7 +2116,7 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
     if (r.technicalReviewStatus === "\u0645\u0639\u062A\u0645\u062F") return { label: "\u0641\u064A \u0627\u0646\u062A\u0638\u0627\u0631 \u0627\u062C\u062A\u0645\u0627\u0639 \u0627\u0644\u0639\u0645\u064A\u0644", color: COLORS.gold, bg: COLORS.goldSoft };
     if (r.engineeringDone) return { label: "\u0641\u064A \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", color: COLORS.teal, bg: "#EAF1F1" };
     if (r.showroomDone) return { label: "\u0641\u064A \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", color: COLORS.teal, bg: "#EAF1F1" };
-    return { label: "\u0641\u064A \u0627\u0644\u0645\u0639\u0631\u0636", color: COLORS.muted, bg: COLORS.bg };
+    return { label: "\u062C\u0627\u0631\u064A \u0627\u0644\u0627\u062E\u062A\u064A\u0627\u0631", color: COLORS.muted, bg: COLORS.bg };
   };
   const filtered = scoped.filter((r) => !query.trim() || (r.clientName || "").includes(query.trim())).sort((a, b) => (b.enteredAt || "").localeCompare(a.enteredAt || ""));
   if (selected) {
@@ -2123,7 +2126,7 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
   }
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F5D2}\uFE0F", title: "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" }),
-    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, "\u0631\u062D\u0644\u0629 \u0627\u0644\u0639\u0645\u064A\u0644 \u0645\u0646 \u0627\u0644\u0645\u0639\u0631\u0636 \u0644\u062D\u062F \u0627\u0639\u062A\u0645\u0627\u062F\u0647 \u0627\u0644\u0646\u0647\u0627\u0626\u064A: \u0627\u0644\u0645\u0639\u0631\u0636 \u2190 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u2190 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u2190 \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644"),
+    h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, "\u0631\u062D\u0644\u0629 \u0627\u0644\u0639\u0645\u064A\u0644 \u0645\u0646 \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A\u0647 \u0644\u062D\u062F \u0627\u0639\u062A\u0645\u0627\u062F\u0647 \u0627\u0644\u0646\u0647\u0627\u0626\u064A: \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u2190 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u2190 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u2190 \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644"),
     canAdd ? h("button", { onClick: () => setShowAdd(true), style: { ...primaryBtn(false), marginBottom: 14 } }, "\u2795 \u0633\u062C\u0644 \u062C\u062F\u064A\u062F") : null,
     scoped.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0633\u062C\u0644\u0627\u062A \u0628\u0639\u062F" }) :
@@ -2183,7 +2186,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
     if (key === "approval") return r.technicalReviewStatus !== "\u0645\u0639\u062A\u0645\u062F" ? { label: "\u0641\u064A \u0627\u0644\u0627\u0646\u062A\u0638\u0627\u0631", color: COLORS.muted, bg: COLORS.bg } : r.clientApproved ? { label: "\u062A\u0645", color: COLORS.green, bg: "#E8F0E4" } : { label: "\u062C\u0627\u0631\u064A", color: COLORS.gold, bg: COLORS.goldSoft };
   };
   const stages = [
-    { key: "showroom", emoji: "\u{1F3EC}", label: "1\u200F. \u0627\u0644\u0645\u0639\u0631\u0636" },
+    { key: "showroom", emoji: "\u{1F3EC}", label: "1\u200F. \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 - \u0631\u0641\u0639 \u0627\u0644\u0645\u0642\u0627\u0633\u0627\u062A" },
     { key: "engineering", emoji: "\u{1F4D0}", label: "2\u200F. \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A" },
     { key: "technical", emoji: "\u{1F58A}\uFE0F", label: "3\u200F. \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A" },
     { key: "approval", emoji: "\u2705", label: "4\u200F. \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644" }
@@ -2207,10 +2210,10 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
           h(Emoji, { size: 16 }, "\u2795"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0636\u0627\u0641\u0629 \u0635\u0648\u0631/\u0641\u064A\u062F\u064A\u0648\u0647\u0627\u062A/\u0645\u0644\u0641\u0627\u062A",
           h("input", { type: "file", accept: "image/*,video/*,application/pdf", multiple: true, disabled: busy, style: { display: "none" }, onChange: (e) => addShowroomFiles(e.target.files) })
         ) : null,
-        canEditShowroom && !r.showroomDone ? h("button", { onClick: () => onUpdate({ showroomDone: true }), style: { width: "100%", background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 \u0631\u0641\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u0631\u0636") : r.showroomDone ? h("div", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645") : null
+        canEditShowroom && !r.showroomDone ? h("button", { onClick: () => onUpdate({ showroomDone: true }), style: { width: "100%", background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 \u0631\u0641\u0639 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644") : r.showroomDone ? h("div", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645") : null
       ) : null,
       activeStage === "engineering" ? h("div", null,
-        !r.showroomDone ? h(EmptyHint, { text: "\u0645\u0633\u062A\u0646\u064A \u062E\u0644\u0627\u0635 \u0642\u0633\u0645 \u0627\u0644\u0645\u0639\u0631\u0636 \u0623\u0648\u0644\u0627\u064B" }) : h(React.Fragment, null,
+        !r.showroomDone ? h(EmptyHint, { text: "\u0645\u0633\u062A\u0646\u064A \u062E\u0644\u0627\u0635 \u0642\u0633\u0645 \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648\u0644\u0627\u064B" }) : h(React.Fragment, null,
           r.engineeringFile ? h("a", { href: r.engineeringFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 8, textDecoration: "none" } }, h(Emoji, { size: 13 }, "\u{1F4CE}"), r.engineeringFile.name) : null,
           h("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0647\u0646\u062F\u0633\u064A\u0629"),
           h("textarea", { style: { ...fieldStyle, minHeight: 50 }, disabled: !canEditEngineering, value: r.engineeringNotes || "", onChange: (e) => onUpdate({ engineeringNotes: e.target.value }) }),
@@ -5315,7 +5318,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
       p.status = "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621";
       p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "", receivedAt: (/* @__PURE__ */ new Date()).toISOString() };
       p.agreedDeadline = "";
-      p.deadlineNotified = false;
+      p.deadlineLastReminderDate = "";
     }
     onUpdate(p);
   };
