@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Al_khobar orders</title>
   <meta name="theme-color" content="#B8873D" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Markazi+Text:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" />
@@ -18,7 +20,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <style>
-    html, body { margin: 0; padding: 0; background: #F6F1E7; }
+    html, body { margin: 0; padding: 0; background: #3E2417; }
     #root { min-height: 100vh; }
     #pre-splash {
       position: fixed;
@@ -1141,6 +1143,11 @@ function App() {
   const updatePreApprovalRecord = (id, patch) => {
     persistRecordWrite(preApprovalColRef().doc(id).update(patch));
   };
+  const deletePreApprovalRecord = (id) => {
+    const r = preApprovalRecords.find((x) => x.id === id);
+    persistRecordWrite(preApprovalColRef().doc(id).delete());
+    if (r) logActivity("\u062D\u0630\u0641 \u0633\u062C\u0644 \u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F: " + (r.clientName || ""));
+  };
   const trackingOrderId = (() => { try { return new URLSearchParams(window.location.search).get("track"); } catch (e) { return null; } })();
   if (trackingOrderId) {
     return h(CustomerTrackingPage, { orderId: trackingOrderId });
@@ -1204,7 +1211,7 @@ function App() {
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "gallery" ? h(GalleryHubPage, { orders: activeOrders, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null) }) :
-        homeDrilldown.type === "pre-approval" ? h(PreApprovalHubPage, { records: preApprovalRecords, myEmail: user && user.email, myDisplayName, isReviewer: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("pre-approval-engineering") || hasRole("pre-approval-technical"), myRoles, isAdminUser: isOwner || hasRole("admin"), onUpdate: updatePreApprovalRecord, onAdd: addPreApprovalRecord, emailToName, onOpenOrder: (orderData, preApprovalId) => { addOrder(orderData); updatePreApprovalRecord(preApprovalId, { orderCreated: true, orderCreatedId: orderData.id }); setHomeDrilldown(null); openOrder(orderData.id); } }) :
+        homeDrilldown.type === "pre-approval" ? h(PreApprovalHubPage, { records: preApprovalRecords, myEmail: user && user.email, myDisplayName, isReviewer: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("pre-approval-engineering") || hasRole("pre-approval-technical"), myRoles, isAdminUser: isOwner || hasRole("admin"), onUpdate: updatePreApprovalRecord, onAdd: addPreApprovalRecord, onDelete: deletePreApprovalRecord, emailToName, onBack: () => setHomeDrilldown(null), onOpenOrder: (orderData, preApprovalId) => { addOrder(orderData); updatePreApprovalRecord(preApprovalId, { orderCreated: true, orderCreatedId: orderData.id }); setHomeDrilldown(null); openOrder(orderData.id); } }) :
         homeDrilldown.type === "trash" ? h(TrashPage, { orders: orders.filter((o) => o.archived), onBack: () => setHomeDrilldown(null), onRestore: restoreOrder, onDeleteForever: permanentlyDeleteOrder }) : null
       )
     ) : tab ? h(React.Fragment, null,
@@ -1566,7 +1573,6 @@ function CenteredMessage({ text }) {
       backgroundPosition: "center"
     }
   },
-    /* @__PURE__ */ React.createElement("img", { src: DEFAULT_LOGO_IMG, alt: "logo", style: { width: 84, height: 84, borderRadius: 18, objectFit: "cover", boxShadow: "0 8px 24px rgba(0,0,0,0.25)", marginBottom: 20 } }),
     /* @__PURE__ */ React.createElement("p", { style: { color: "#FBEFDD", fontSize: 14, fontWeight: 600 } }, text)
   );
 }
@@ -1617,7 +1623,7 @@ function AuthScreen({ auth: auth2 }) {
     }
   };
   const WARM = { deep: "#3E2417", mid: "#8B4F2A", amber: "#D68A42", glow: "#F0B368", cream: "#FBEFDD" };
-  return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", display: "flex", flexDirection: "column" } },
+  return h("div", { dir: "rtl", style: { ...body, background: WARM.deep, minHeight: "100vh", display: "flex", flexDirection: "column" } },
     h("div", {
       style: {
         position: "relative",
@@ -1627,6 +1633,7 @@ function AuthScreen({ auth: auth2 }) {
         flexDirection: "column",
         justifyContent: "center",
         padding: "46px 24px 66px",
+        paddingTop: "max(46px, env(safe-area-inset-top, 46px))",
         backgroundImage: `linear-gradient(180deg, rgba(62,36,23,0.55) 0%, rgba(62,36,23,0.72) 55%, rgba(62,36,23,0.92) 100%), radial-gradient(circle at 18% 18%, rgba(255,214,153,0.22), transparent 42%), url(${AUTH_HERO_IMG})`,
         backgroundSize: "cover, cover, cover",
         backgroundPosition: "center, center, center"
@@ -2108,10 +2115,11 @@ function AddPreApprovalModal({ onClose, onSave }) {
     h("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave({ clientName: clientName.trim(), category: category.trim(), showroomNotes: showroomNotes.trim() }) }, "\u062D\u0641\u0638")
   );
 }
-function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRoles, isAdminUser, onUpdate, onAdd, emailToName, onOpenOrder }) {
+function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRoles, isAdminUser, onUpdate, onAdd, onDelete, emailToName, onBack, onOpenOrder }) {
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const canAdd = !myRoles.every((r) => r === "viewer");
   const scoped = isReviewer ? records : records.filter((r) => r.createdBy === myEmail);
   const stageOf = (r) => {
@@ -2129,7 +2137,11 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
     return h(PreApprovalRecordPage, { record: r, myEmail, myDisplayName, myRoles, isAdminUser, onUpdate: (patch) => onUpdate(r.id, patch), onBack: () => setSelected(null), onOpenOrder });
   }
   return h("div", null,
-    h(SectionHeader, { emoji: "\u{1F5D2}\uFE0F", title: "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" }),
+    h("div", { style: { display: "flex", alignItems: "center", gap: 8, margin: "22px 0 10px" } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h(Emoji, { size: 17 }, "\u{1F5D2}\uFE0F"),
+      h("h3", { style: { ...display, fontSize: 19, margin: 0, fontWeight: 700 } }, "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F")
+    ),
     h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, "\u0631\u062D\u0644\u0629 \u0627\u0644\u0639\u0645\u064A\u0644 \u0645\u0646 \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A\u0647 \u0644\u062D\u062F \u0627\u0639\u062A\u0645\u0627\u062F\u0647 \u0627\u0644\u0646\u0647\u0627\u0626\u064A: \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u2190 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A \u2190 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u2190 \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644"),
     canAdd ? h("button", { onClick: () => setShowAdd(true), style: { ...primaryBtn(false), marginBottom: 14 } }, "\u2795 \u0633\u062C\u0644 \u062C\u062F\u064A\u062F") : null,
     scoped.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
@@ -2142,8 +2154,18 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
             h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, r.clientName),
             isReviewer ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u{1F477} " + ((emailToName && emailToName[r.createdBy]) || r.engineerName || r.createdBy)) : null
           ),
-          h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label)
-        )
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label),
+            isAdminUser ? h("button", { onClick: (e) => { e.stopPropagation(); setConfirmDeleteId(r.id); }, style: { background: "transparent", border: "none", cursor: "pointer", padding: 2, lineHeight: 1, flexShrink: 0 }, title: "\u062D\u0630\u0641 \u0627\u0644\u0639\u0645\u064A\u0644" }, h(Emoji, { size: 16 }, "\u{1F5D1}\uFE0F")) : null
+          )
+        ),
+        confirmDeleteId === r.id ? h("div", { onClick: (e) => e.stopPropagation(), style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 8 } },
+          h("div", { style: { fontSize: 12.5, color: COLORS.danger, fontWeight: 600 } }, "\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A \u2014 \u0645\u0634 \u0647\u062A\u0642\u062F\u0631\u064A \u062A\u0631\u062C\u0639\u064A. \u0645\u062A\u0623\u0643\u062F\u0629\u061F"),
+          h("div", { style: { display: "flex", gap: 8 } },
+            h("button", { onClick: () => { onDelete(r.id); setConfirmDeleteId(null); }, style: { flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: COLORS.danger, color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u0646\u0639\u0645\u060C \u0627\u062D\u0630\u0641 \u0646\u0647\u0627\u0626\u064A\u064B\u0627"),
+            h("button", { onClick: () => setConfirmDeleteId(null), style: { flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.ink, fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u0625\u0644\u063A\u0627\u0621")
+          )
+        ) : null
       );
     })),
     showAdd ? h(AddPreApprovalModal, { onClose: () => setShowAdd(false), onSave: (r) => { onAdd(r); setShowAdd(false); } }) : null
