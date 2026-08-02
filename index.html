@@ -778,8 +778,11 @@ function App() {
     return false;
   };
   const globalReadOnly = !hasRole("admin") && !hasRole("distributor") && !hasRole("production");
-  const myPermittedTabs = (isOwner || hasRole("admin")) ? null : (myMember && myMember.permittedTabs !== undefined ? myMember.permittedTabs : ALL_TABS.map((t) => t.key));
-  const canSeeTab = (key) => myPermittedTabs === null || myPermittedTabs.includes(key);
+  const myPermittedTabs = (isOwner || hasRole("admin")) ? null : (myMember && myMember.permittedTabs !== undefined ? myMember.permittedTabs : []);
+  const canSeeTab = (key) => {
+    if (key === "activity-log") return isOwner;
+    return myPermittedTabs === null || myPermittedTabs.includes(key);
+  };
   const defaultCanEditForTab = (key) => {
     if (key === "distribution") return canEditDistribution;
     if (key === "full-production") return canEditFullProduction;
@@ -1136,7 +1139,7 @@ function App() {
     const emails = new Set(adminEmails());
     (access && access.members || []).forEach((m) => {
       if (m.role === "admin") return;
-      const tabs = m.permittedTabs !== void 0 ? m.permittedTabs : ALL_TABS.map((t) => t.key);
+      const tabs = m.permittedTabs !== void 0 ? m.permittedTabs : [];
       if (tabs.includes(tabKey)) emails.add(m.email);
     });
     return Array.from(emails);
@@ -1422,8 +1425,8 @@ function App() {
       initialSection: selectedOrderSection
     }) : homeDrilldown ? h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null),
       h("div", { style: { padding: 16 } },
-        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); } }) :
-        homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); } }) :
+        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); }, onUpdateOrder: updateOrder }) :
+        homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); }, onUpdateOrder: updateOrder }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
@@ -1460,10 +1463,10 @@ function App() {
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null) }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production") }),
-        tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin") }),
+        tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
-        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders }),
+        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, onUpdateOrder: updateOrder }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries") }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), emailToName, onNotify: notify, emailsWithTabAccess }),
         tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
@@ -1626,15 +1629,13 @@ function App() {
             h(NavTile, { key: "technical-office-tile", active: false, onClick: () => setHomeDrilldown({ type: "technical-office" }), emoji: "\u{1F4D0}", label: "\u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A" }),
             FIXED_PREFIX.slice(1).map(regularTile),
             regularTile("today-queue"),
-            h(NavTile, { key: "gallery-tile", active: false, onClick: () => setHomeDrilldown({ type: "gallery" }), emoji: "\u{1F5BC}\uFE0F", label: "Gallery" }),
+            h(NavTile, { key: "gallery-tile", active: false, locked: !canSeeTab("gallery"), onClick: () => { if (canSeeTab("gallery")) setHomeDrilldown({ type: "gallery" }); }, emoji: "\u{1F5BC}\uFE0F", label: "Gallery" }),
             h(NavTile, { key: "product-shipments-tile", active: false, onClick: () => setHomeDrilldown({ type: "product-shipments" }), emoji: "\u{1F69A}", label: "\u0634\u062D\u0646 \u0627\u0644\u0645\u0646\u062A\u062C" }),
             h(NavTile, { key: "finishing-tile", active: false, onClick: () => setHomeDrilldown({ type: "finishing" }), emoji: "\u{1FA84}", label: "\u062A\u0634\u0637\u064A\u0628" }),
             regularTile("deliveries"),
             regularTile("supplier-performance"),
             regularTile("dashboard"),
-            regularTile("activity-log"),
             (isOwner || hasRole("admin")) ? h(NavTile, { key: "pricing-tile", active: false, onClick: () => setHomeDrilldown({ type: "pricing" }), emoji: "\u{1F4B0}", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A" }) : null,
-            (isOwner || hasRole("admin")) ? h(NavTile, { key: "trash-tile", active: false, onClick: () => setHomeDrilldown({ type: "trash" }), emoji: "\u{1F5D1}\uFE0F", label: "\u0627\u0644\u0645\u062D\u0630\u0648\u0641\u0627\u062A" }) : null,
             h(NavTile, { key: "warranty-tile", active: false, onClick: () => setHomeDrilldown({ type: "warranty" }), emoji: "\u{1F9F0}", label: "\u062E\u062F\u0645\u0629 \u0645\u0627 \u0628\u0639\u062F \u0627\u0644\u0628\u064A\u0639" }),
             h(NavTile, { key: "ratings-tile", active: false, onClick: () => setHomeDrilldown({ type: "ratings" }), emoji: "\u{1F60A}", label: "\u062A\u0642\u064A\u064A\u0645\u0627\u062A \u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
             h(NavTile, { key: "quick-tasks-tile", active: false, onClick: () => setHomeDrilldown({ type: "quick-tasks" }), emoji: "\u2705", label: "\u0645\u0647\u0627\u0645 \u0633\u0631\u064A\u0639\u0629" }),
@@ -1673,6 +1674,8 @@ function App() {
       onAutomation: () => { setShowSettingsMenu(false); setShowAutomation(true); },
       onLoginSessions: () => { setShowSettingsMenu(false); setHomeDrilldown({ type: "login-sessions" }); },
       onGuide: () => { setShowSettingsMenu(false); setHomeDrilldown({ type: "guide" }); },
+      onActivityLog: () => { setShowSettingsMenu(false); setTab("activity-log"); },
+      onTrash: () => { setShowSettingsMenu(false); setHomeDrilldown({ type: "trash" }); },
       darkMode,
       onToggleDarkMode: () => setDarkMode((v) => !v),
       onSignOut: () => { setShowSettingsMenu(false); try { localStorage.removeItem("rawaa_last_tab"); localStorage.removeItem("rawaa_last_order"); } catch (e) {} auth.signOut(); }
@@ -1708,7 +1711,7 @@ function App() {
     ) : null
   );
 }
-function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onAutomation, onLoginSessions, onGuide, onSignOut, darkMode, onToggleDarkMode }) {
+function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onAutomation, onLoginSessions, onGuide, onActivityLog, onTrash, onSignOut, darkMode, onToggleDarkMode }) {
   const rowStyle = { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "14px 4px", background: "transparent", border: "none", borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer", fontSize: 15, fontWeight: 600, color: COLORS.ink, textAlign: "right" };
   return h(Modal, { title: "\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A", onClose },
     h("div", { style: { display: "flex", flexDirection: "column" } },
@@ -1717,6 +1720,8 @@ function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, 
       h("button", { style: rowStyle, onClick: onBranding }, h(Emoji, { size: 19 }, "\u270F\uFE0F"), "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0634\u0639\u0627\u0631 \u0648\u0627\u0644\u0627\u0633\u0645"),
       isOwner && h("button", { style: rowStyle, onClick: onAutomation }, h(Emoji, { size: 19 }, "\u{1F517}"), "\u0627\u0644\u0623\u062A\u0645\u062A\u0629 \u0627\u0644\u062E\u0627\u0631\u062C\u064A\u0629"),
       isOwner && h("button", { style: rowStyle, onClick: onLoginSessions }, h(Emoji, { size: 19 }, "\u{1F510}"), "\u0627\u0644\u0623\u062C\u0647\u0632\u0629 \u0648\u0627\u0644\u062F\u062E\u0648\u0644"),
+      isOwner && h("button", { style: rowStyle, onClick: onActivityLog }, h(Emoji, { size: 19 }, "\u{1F4DC}"), "\u0633\u062C\u0644 \u0627\u0644\u0646\u0634\u0627\u0637"),
+      (isOwner || canManageRoles) && h("button", { style: rowStyle, onClick: onTrash }, h(Emoji, { size: 19 }, "\u{1F5D1}\uFE0F"), "\u0627\u0644\u0645\u062D\u0630\u0648\u0641\u0627\u062A"),
       h("button", { style: rowStyle, onClick: onGuide }, h(Emoji, { size: 19 }, "\u{1F4D7}"), "\u062F\u0644\u064A\u0644 \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645"),
       h("button", { style: rowStyle, onClick: onToggleDarkMode }, h(Emoji, { size: 19 }, darkMode ? "\u2600\uFE0F" : "\u{1F319}"), darkMode ? "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0641\u0627\u062A\u062D" : "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0644\u064A\u0644\u064A"),
       h("button", { style: { ...rowStyle, color: COLORS.danger, borderBottom: "none" }, onClick: onSignOut }, h(Emoji, { size: 19 }, "\u{1F6AA}"), "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062E\u0631\u0648\u062C")
@@ -3366,7 +3371,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
     editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }); if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
   );
 }
-function ByTypeMaterialsPage({ orders, onOpenOrder }) {
+function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
   const [selectedType, setSelectedType] = useState(null);
   const [query, setQuery] = useState("");
   const [fAvailability, setFAvailability] = useState("");
@@ -3374,7 +3379,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder }) {
   orders.forEach((o) => {
     (o.materials || []).forEach((m) => {
       const t = m.type || "\u0623\u062E\u0631\u0649";
-      (byType[t] = byType[t] || []).push({ ...m, orderId: o.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate || "" });
+      (byType[t] = byType[t] || []).push({ ...m, orderId: o.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate || "", manufacturingLocation: o.manufacturingLocation || "" });
     });
   });
   const types = Object.keys(byType).sort((a, b) => a.localeCompare(b, "ar"));
@@ -3437,7 +3442,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder }) {
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 620 } },
-        h("thead", null, h("tr", null, ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", ""].map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+        h("thead", null, h("tr", null, (selectedType === "\u0642\u0645\u0627\u0634" ? ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", ""] : ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", ""]).map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
         h("tbody", null, filtered.map((m, idx) => {
           const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold);
           return h("tr", { key: idx, style: { borderBottom: `1px solid ${COLORS.border}` } },
@@ -3445,6 +3450,11 @@ function ByTypeMaterialsPage({ orders, onOpenOrder }) {
             h("td", { style: { padding: "9px 10px", maxWidth: 180, whiteSpace: "normal" } }, normalizeDigits(m.materialName || m.description || (isCoded ? m.companyName : "") || "\u2014")),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, materialDetailStr(m)),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, m.availability ? h("span", { style: { fontSize: 10.5, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability) : "\u2014"),
+            selectedType === "\u0642\u0645\u0627\u0634" ? h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, onUpdateOrder && m.orderId ? h("button", {
+              onClick: () => onUpdateOrder(m.orderId, { manufacturingLocation: m.manufacturingLocation === "\u0645\u0635\u0631" ? "" : "\u0645\u0635\u0631" }),
+              title: "\u062D\u062F\u062F\u064A \u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0645\u0628\u062F\u0626\u064A\u064B\u0627 \u0639\u0634\u0627\u0646 \u062A\u0638\u0647\u0631 \u0627\u0644\u062E\u0627\u0645\u0629 \u0641\u064A \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631 \u0641\u0648\u0631\u064B\u0627 \u0628\u0639\u062F \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0629\u060C \u0645\u0646 \u063A\u064A\u0631 \u0645\u0627 \u062A\u0633\u062A\u0646\u064A \u0627\u0644\u062A\u0648\u0632\u064A\u0639. \u0644\u0645\u0627 \u064A\u062A\u0623\u0643\u062F \u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F \u0628\u0639\u062F \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0647\u064A\u062A\u062D\u062F\u062B \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627",
+              style: { fontSize: 10.5, fontWeight: 700, color: m.manufacturingLocation === "\u0645\u0635\u0631" ? "#fff" : COLORS.teal, background: m.manufacturingLocation === "\u0645\u0635\u0631" ? COLORS.teal : COLORS.bg, border: `1px solid ${COLORS.teal}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }
+            }, h(Emoji, { size: 10 }, "\u{1F3ED}"), m.manufacturingLocation === "\u0645\u0635\u0631" ? "\u0645\u0635\u0631" : "\u062A\u062D\u062F\u064A\u062F") : null) : null,
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, onOpenOrder && m.orderId ? h("button", { onClick: () => onOpenOrder(m.orderId), title: "\u0641\u062A\u062D \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644 \u0644\u0644\u0623\u0648\u0631\u062F\u0631 \u062F\u0647", style: { background: "transparent", border: "none", cursor: "pointer", padding: 4 } }, h(Emoji, { size: 16, color: COLORS.teal }, "\u2190")) : null)
           );
         }))
@@ -3602,7 +3612,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
     ) : view === "byOrder" ? h(React.Fragment, null,
       h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0639\u0645\u064A\u0644 \u0648\u0627\u062E\u062A\u0627\u0631\u064A \u0623\u0648\u0631\u062F\u0631\u0647 \u2014 \u0647\u062A\u0648\u0635\u0644\u064A \u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0635\u0641\u062D\u0629 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0643\u0644 \u062A\u0641\u0627\u0635\u064A\u0644\u0647\u0627 (\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628\u060C \u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F\u060C \u0627\u0644\u0635\u0648\u0631\u0629\u060C \u0627\u0644\u0645\u0644\u0641\u0627\u062A) \u2014 \u062A\u0642\u0631\u064A\u0631 \u0645\u0641\u0635\u0644 \u0644\u0643\u0644 \u0623\u0648\u0631\u062F\u0631 \u0644\u0648\u062D\u062F\u0647"),
       h(CustomersList, { orders, onOpen: onOpenOrder })
-    ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder }) : view === "missing" ? (
+    ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder }) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
       h("input", { style: fieldStyle, value: missingSearch, onChange: (e) => setMissingSearch(e.target.value), placeholder: "\u0628\u062D\u062B \u0628\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F..." }),
@@ -3664,10 +3674,20 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipment
   const [showFilters, setShowFilters] = useState(false);
   const [fAvailability, setFAvailability] = useState("");
   const [fShipStatus, setFShipStatus] = useState("");
-  const egyptCustomers = new Set([
-    ...pieces.filter((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && isSofaType(p.pieceType)).map((p) => p.customerName),
-    ...orders.filter((o) => o.manufacturingLocation === "\u0645\u0635\u0631").map((o) => o.clientName)
-  ]);
+  const sofaPiecesByCustomer = {};
+  pieces.forEach((p) => {
+    if (!isSofaType(p.pieceType) || !p.customerName) return;
+    (sofaPiecesByCustomer[p.customerName] = sofaPiecesByCustomer[p.customerName] || []).push(p);
+  });
+  const egyptCustomers = new Set();
+  Object.keys(sofaPiecesByCustomer).forEach((name) => {
+    if (sofaPiecesByCustomer[name].some((p) => p.manufacturingEntity === "\u0645\u0635\u0631")) egyptCustomers.add(name);
+  });
+  orders.forEach((o) => {
+    if (o.manufacturingLocation !== "\u0645\u0635\u0631" || !o.clientName) return;
+    if (sofaPiecesByCustomer[o.clientName] && sofaPiecesByCustomer[o.clientName].length > 0) return;
+    egyptCustomers.add(o.clientName);
+  });
   const rows = [];
   orders.forEach((o) => {
     if (!egyptCustomers.has(o.clientName)) return;
@@ -4084,7 +4104,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
     )
   );
 }
-function TodayQueuePage({ pieces, orders }) {
+function TodayQueuePage({ pieces, orders, onUpdateOrder }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [query, setQuery] = useState("");
   const [locFilter, setLocFilter] = useState("");
@@ -4103,7 +4123,7 @@ function TodayQueuePage({ pieces, orders }) {
   const locations = Object.keys(byLocation).sort((a, b) => byLocation[b].length - byLocation[a].length);
   const distinctCustomers = new Set(todayPieces.map((p) => p.customerName).filter(Boolean)).size;
   if (selectedCustomer) {
-    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null) });
+    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder });
   }
   const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0643\u0627\u0646"];
   const exportRows = () => todayPieces.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014"]);
@@ -4134,7 +4154,7 @@ function TodayQueuePage({ pieces, orders }) {
       )
   );
 }
-function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminUser }) {
+function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminUser, onUpdateOrder }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const now = /* @__PURE__ */ new Date();
   const thisMonthKey = now.toISOString().slice(0, 7);
@@ -4240,7 +4260,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
     return { order: o, remaining: c.sellingPrice - paid, daysLeft: o.paymentDueDate ? daysUntil(o.paymentDueDate) : null };
   }).filter((x) => x.remaining > 0 && x.daysLeft !== null && x.daysLeft <= 3).sort((a, b) => a.daysLeft - b.daysLeft);
   if (selectedCustomer) {
-    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null) });
+    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder });
   }
   const thisMonthPrefix = todayStr().slice(0, 7);
   const engineerOrders = {};
@@ -4570,7 +4590,7 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
     return h(CustomerProfilePage, { orders, pieces, name: filterKey.name, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder });
   }
   if (filterKey && filterKey.type === "full-detail") {
-    return h(AllCustomersDetailPage, { orders, pieces, onBack: () => setFilterKey(null), onOpenOrder: onOpen });
+    return h(AllCustomersDetailPage, { orders, pieces, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder });
   }
   if (filterKey) {
     return h(CustomerFilteredListPage, { orders, pieces, filterKey, onBack: () => setFilterKey(null), onOpenCustomer: (name) => setFilterKey({ type: "customer", name }), onOpenOrder: onOpen });
@@ -4715,11 +4735,11 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
       }))
   );
 }
-function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder }) {
+function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder, onUpdateOrder }) {
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
   if (selected) {
-    return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder });
+    return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder, onUpdateOrder });
   }
   const filtered = names.filter((n) => !query.trim() || n.includes(query.trim()));
   return h("div", null,
@@ -4928,7 +4948,7 @@ function DeliveryDelaysPage({ pieces, onBack, onUpdate, canEdit, isAdminUser }) 
     )
   );
 }
-function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder }) {
+function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateOrder }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState("");
@@ -5021,6 +5041,11 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder }) {
             ) : null,
             matchingOrder ? h("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 8 } },
               matchingOrder.manufacturingOrderFile ? h("a", { href: matchingOrder.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", textDecoration: "none" } }, "\u{1F4CE} \u0627\u0644\u0645\u0644\u0641") : null,
+              onUpdateOrder ? h("button", {
+                onClick: () => onUpdateOrder(matchingOrder.id, { manufacturingLocation: matchingOrder.manufacturingLocation === "\u0645\u0635\u0631" ? "" : "\u0645\u0635\u0631" }),
+                title: "\u062D\u062F\u062F\u064A \u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0639\u0634\u0627\u0646 \u062A\u0638\u0647\u0631 \u0627\u0644\u062E\u0627\u0645\u0629 \u0641\u064A \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631 \u0641\u0648\u0631\u064B\u0627 \u0628\u0639\u062F \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A\u060C \u0645\u0646 \u063A\u064A\u0631 \u0645\u0627 \u062A\u0633\u062A\u0646\u064A \u0627\u0644\u062A\u0648\u0632\u064A\u0639",
+                style: { fontSize: 11, fontWeight: 700, color: matchingOrder.manufacturingLocation === "\u0645\u0635\u0631" ? "#fff" : COLORS.teal, background: matchingOrder.manufacturingLocation === "\u0645\u0635\u0631" ? COLORS.teal : COLORS.bg, border: `1px solid ${COLORS.teal}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }
+              }, h(Emoji, { size: 11 }, "\u{1F3ED}"), matchingOrder.manufacturingLocation === "\u0645\u0635\u0631" ? "\u0627\u0644\u062A\u0635\u0646\u064A\u0639: \u0645\u0635\u0631" : "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639") : null,
               onOpenOrder ? h("button", { onClick: () => onOpenOrder(matchingOrder.id), style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer" } }, "\u{1F4C2} \u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
             ) : null
           );
@@ -6094,7 +6119,7 @@ const ALL_TABS = [
   { key: "production-board", label: "أقسام الإنتاج", emoji: "🏭" },
   { key: "full-production", label: "الإنتاج الكامل", emoji: "📇" },
   { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
-  { key: "activity-log", label: "سجل النشاط", emoji: "📜" },
+  { key: "gallery", label: "Gallery", emoji: "🖼️" },
   { key: "supplier-performance", label: "تقييم الموردين", emoji: "⭐" },
   { key: "today-queue", label: "طابور شغل النهاردة", emoji: "📋" },
   { key: "deliveries", label: "الجاهزية والتسليم", emoji: "🏁" }
@@ -7001,7 +7026,7 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
       return { ...m, supplierScope: has ? m.supplierScope.filter((s) => s !== supplier) : [...(m.supplierScope || []), supplier] };
     }));
   };
-  const memberTabs = (m) => m.permittedTabs !== undefined ? m.permittedTabs : ALL_TABS.map((t) => t.key);
+  const memberTabs = (m) => m.permittedTabs !== undefined ? m.permittedTabs : [];
   const toggleTab = (email, tabKey) => {
     setMembers(members.map((m) => {
       if (m.email !== email) return m;
