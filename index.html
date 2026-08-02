@@ -1475,6 +1475,10 @@ function App() {
         style: {
           position: "relative",
           overflow: "hidden",
+          minHeight: "220px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
           padding: "24px 20px 34px",
           backgroundImage: `linear-gradient(180deg, rgba(62,36,23,0.28) 0%, rgba(62,36,23,0.42) 55%, rgba(62,36,23,0.55) 100%), url(${AUTH_HERO_IMG})`,
           backgroundSize: "cover",
@@ -1609,7 +1613,7 @@ function App() {
               h("span", { style: { fontWeight: 700, fontSize: 14.5 } }, name),
               h(Emoji, { size: 13 }, "\u2039")
             )));
-        })() : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 20 } },
+        })() : h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginTop: 20 } },
         h(NavTile, { key: "pre-approval-tile", active: false, onClick: () => setHomeDrilldown({ type: "pre-approval" }), emoji: "\u{1F5D2}\uFE0F", label: "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" }),
         !myRoles.every((r) => r === "viewer") && h(NavTile, { active: false, accent: true, onClick: () => setShowNewOrder(true), emoji: "\u2795", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" }),
         (() => {
@@ -1631,12 +1635,10 @@ function App() {
             regularTile("activity-log"),
             (isOwner || hasRole("admin")) ? h(NavTile, { key: "pricing-tile", active: false, onClick: () => setHomeDrilldown({ type: "pricing" }), emoji: "\u{1F4B0}", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A" }) : null,
             (isOwner || hasRole("admin")) ? h(NavTile, { key: "trash-tile", active: false, onClick: () => setHomeDrilldown({ type: "trash" }), emoji: "\u{1F5D1}\uFE0F", label: "\u0627\u0644\u0645\u062D\u0630\u0648\u0641\u0627\u062A" }) : null,
-            (isOwner || hasRole("admin")) ? h(NavTile, { key: "login-sessions-tile", active: false, onClick: () => setHomeDrilldown({ type: "login-sessions" }), emoji: "\u{1F510}", label: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629 \u0648\u0627\u0644\u062F\u062E\u0648\u0644" }) : null,
             h(NavTile, { key: "warranty-tile", active: false, onClick: () => setHomeDrilldown({ type: "warranty" }), emoji: "\u{1F9F0}", label: "\u062E\u062F\u0645\u0629 \u0645\u0627 \u0628\u0639\u062F \u0627\u0644\u0628\u064A\u0639" }),
             h(NavTile, { key: "ratings-tile", active: false, onClick: () => setHomeDrilldown({ type: "ratings" }), emoji: "\u{1F60A}", label: "\u062A\u0642\u064A\u064A\u0645\u0627\u062A \u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
             h(NavTile, { key: "quick-tasks-tile", active: false, onClick: () => setHomeDrilldown({ type: "quick-tasks" }), emoji: "\u2705", label: "\u0645\u0647\u0627\u0645 \u0633\u0631\u064A\u0639\u0629" }),
-            h(NavTile, { key: "guide-tile", active: false, onClick: () => setHomeDrilldown({ type: "guide" }), emoji: "\u{1F4D7}", label: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645" }),
-            h(NavTile, { key: "quick-estimate-tile", active: false, onClick: () => setHomeDrilldown({ type: "quick-estimate" }), emoji: "\u{1F9EE}", label: "\u062D\u0627\u0633\u0628\u0629 \u062A\u0633\u0639\u064A\u0631 \u0633\u0631\u064A\u0639\u0629" }),
+            h(NavTile, { key: "quick-estimate-tile", active: false, onClick: () => setHomeDrilldown({ type: "quick-estimate" }), emoji: "\u{1F9EE}", label: "\u062D\u0627\u0633\u0628\u0629 \u062A\u0633\u0639\u064A\u0631" }),
             h(NavTile, { key: "team-calendar-tile", active: false, onClick: () => setHomeDrilldown({ type: "team-calendar" }), emoji: "\u{1F4C5}", label: "\u062A\u0642\u0648\u064A\u0645 \u0627\u0644\u0641\u0631\u064A\u0642" }),
             h(NavTile, { key: "appointments-tile", active: false, onClick: () => setHomeDrilldown({ type: "appointments" }), emoji: "\u{1F5D3}\uFE0F", label: "\u0645\u0648\u0627\u0639\u064A\u062F \u0627\u0644\u0632\u064A\u0627\u0631\u0629" })
           );
@@ -1669,6 +1671,8 @@ function App() {
       onRoles: () => { setShowSettingsMenu(false); setShowRoles(true); },
       onBranding: () => { setShowSettingsMenu(false); setShowBranding(true); },
       onAutomation: () => { setShowSettingsMenu(false); setShowAutomation(true); },
+      onLoginSessions: () => { setShowSettingsMenu(false); setHomeDrilldown({ type: "login-sessions" }); },
+      onGuide: () => { setShowSettingsMenu(false); setHomeDrilldown({ type: "guide" }); },
       darkMode,
       onToggleDarkMode: () => setDarkMode((v) => !v),
       onSignOut: () => { setShowSettingsMenu(false); try { localStorage.removeItem("rawaa_last_tab"); localStorage.removeItem("rawaa_last_order"); } catch (e) {} auth.signOut(); }
@@ -1704,7 +1708,7 @@ function App() {
     ) : null
   );
 }
-function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onAutomation, onSignOut, darkMode, onToggleDarkMode }) {
+function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onAutomation, onLoginSessions, onGuide, onSignOut, darkMode, onToggleDarkMode }) {
   const rowStyle = { display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "14px 4px", background: "transparent", border: "none", borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer", fontSize: 15, fontWeight: 600, color: COLORS.ink, textAlign: "right" };
   return h(Modal, { title: "\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A", onClose },
     h("div", { style: { display: "flex", flexDirection: "column" } },
@@ -1712,6 +1716,8 @@ function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, 
       canManageRoles && h("button", { style: rowStyle, onClick: onRoles }, h(Emoji, { size: 19 }, "\u{1F6E1}\uFE0F"), "\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0623\u062F\u0648\u0627\u0631"),
       h("button", { style: rowStyle, onClick: onBranding }, h(Emoji, { size: 19 }, "\u270F\uFE0F"), "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0634\u0639\u0627\u0631 \u0648\u0627\u0644\u0627\u0633\u0645"),
       isOwner && h("button", { style: rowStyle, onClick: onAutomation }, h(Emoji, { size: 19 }, "\u{1F517}"), "\u0627\u0644\u0623\u062A\u0645\u062A\u0629 \u0627\u0644\u062E\u0627\u0631\u062C\u064A\u0629"),
+      isOwner && h("button", { style: rowStyle, onClick: onLoginSessions }, h(Emoji, { size: 19 }, "\u{1F510}"), "\u0627\u0644\u0623\u062C\u0647\u0632\u0629 \u0648\u0627\u0644\u062F\u062E\u0648\u0644"),
+      h("button", { style: rowStyle, onClick: onGuide }, h(Emoji, { size: 19 }, "\u{1F4D7}"), "\u062F\u0644\u064A\u0644 \u0627\u0644\u0627\u0633\u062A\u062E\u062F\u0627\u0645"),
       h("button", { style: rowStyle, onClick: onToggleDarkMode }, h(Emoji, { size: 19 }, darkMode ? "\u2600\uFE0F" : "\u{1F319}"), darkMode ? "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0641\u0627\u062A\u062D" : "\u0627\u0644\u0648\u0636\u0639 \u0627\u0644\u0644\u064A\u0644\u064A"),
       h("button", { style: { ...rowStyle, color: COLORS.danger, borderBottom: "none" }, onClick: onSignOut }, h(Emoji, { size: 19 }, "\u{1F6AA}"), "\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062E\u0631\u0648\u062C")
     )
@@ -1948,12 +1954,12 @@ function AuthScreen({ auth: auth2 }) {
     }
   };
   const WARM = { deep: "#3E2417", mid: "#8B4F2A", amber: "#D68A42", glow: "#F0B368", cream: "#FBEFDD" };
-  return h("div", { dir: "rtl", style: { ...body, background: WARM.deep, minHeight: "100vh", display: "flex", flexDirection: "column" } },
+  return h("div", { dir: "rtl", style: { ...body, backgroundColor: WARM.deep, backgroundImage: `linear-gradient(180deg, rgba(62,36,23,0.75) 0%, rgba(62,36,23,0.88) 100%), url(${AUTH_HERO_IMG})`, backgroundSize: "cover", backgroundPosition: "top center", backgroundAttachment: "fixed", backgroundRepeat: "no-repeat", minHeight: "100vh", display: "flex", flexDirection: "column" } },
     h("div", {
       style: {
         position: "relative",
         overflow: "hidden",
-        minHeight: "44vh",
+        minHeight: "38vh",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -2018,8 +2024,8 @@ function AuthScreen({ auth: auth2 }) {
       )
     ),
     h("div", { style: { padding: "24px 20px 6px" } },
-      h("p", { style: { textAlign: "center", fontSize: 11.5, fontWeight: 700, color: COLORS.gold, letterSpacing: 0.5, margin: "0 0 4px" } }, "بنشتغل على"),
-      h("h2", { style: { ...display, fontSize: 22, textAlign: "center", margin: "0 0 12px", color: COLORS.ink } }, "أقسام تصنيعنا"),
+      h("p", { style: { textAlign: "center", fontSize: 11.5, fontWeight: 700, color: WARM.glow, letterSpacing: 0.5, margin: "0 0 4px" } }, "بنشتغل على"),
+      h("h2", { style: { ...display, fontSize: 22, textAlign: "center", margin: "0 0 12px", color: WARM.cream } }, "أقسام تصنيعنا"),
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(92px, 1fr))", gap: 10, maxWidth: 420, margin: "0 auto" } },
         ORDER_CATEGORIES.map((c) => h("div", { key: c, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "14px 6px", borderRadius: 14, background: COLORS.surface, border: `1px solid ${COLORS.border}` } },
           h("span", { style: { fontSize: 22 } }, CATEGORY_ICONS[c] || "🔧"),
@@ -2028,15 +2034,15 @@ function AuthScreen({ auth: auth2 }) {
       )
     ),
     h("div", { style: { padding: "22px 20px 28px" } },
-      h("p", { style: { textAlign: "center", fontSize: 11.5, fontWeight: 700, color: COLORS.gold, letterSpacing: 0.5, margin: "0 0 4px" } }, "من الطلب للتسليم"),
-      h("h2", { style: { ...display, fontSize: 22, textAlign: "center", margin: "0 0 12px", color: COLORS.ink } }, "مراحل التصنيع عندنا"),
+      h("p", { style: { textAlign: "center", fontSize: 11.5, fontWeight: 700, color: WARM.glow, letterSpacing: 0.5, margin: "0 0 4px" } }, "من الطلب للتسليم"),
+      h("h2", { style: { ...display, fontSize: 22, textAlign: "center", margin: "0 0 12px", color: WARM.cream } }, "مراحل التصنيع عندنا"),
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8, maxWidth: 420, margin: "0 auto" } },
         PRODUCTION_STAGE_DEFS.map((s, i) => h("div", { key: s.key, style: { display: "flex", alignItems: "center", gap: 12, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "10px 16px" } },
           h("span", { style: { width: 30, height: 30, borderRadius: "50%", background: COLORS.gold, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 } }, String(i + 1)),
           h("span", { style: { fontSize: 14.5, fontWeight: 700, color: COLORS.ink } }, s.label)
         ))
       ),
-      h("p", { style: { ...body, fontSize: 13, color: COLORS.muted, maxWidth: 340, margin: "16px auto 0", textAlign: "center" } }, "صناعة محلية بعناية، من أول تفصيلة لحد باب البيت")
+      h("p", { style: { ...body, fontSize: 13, color: "rgba(251,239,221,0.75)", maxWidth: 340, margin: "16px auto 0", textAlign: "center" } }, "صناعة محلية بعناية، من أول تفصيلة لحد باب البيت")
     )
   );
 }
@@ -2102,9 +2108,9 @@ function NavTile({ active, onClick, emoji, label, accent, locked }) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 8,
-        minHeight: 108,
-        padding: "16px 8px 12px",
+        gap: 5,
+        minHeight: 86,
+        padding: "12px 4px 10px",
         borderRadius: 14,
         border: `1px solid ${accent ? COLORS.gold : active ? COLORS.gold : COLORS.border}`,
         background: accent ? COLORS.gold : COLORS.surface,
@@ -2113,8 +2119,8 @@ function NavTile({ active, onClick, emoji, label, accent, locked }) {
         overflow: "hidden"
       }
     },
-    h("span", { style: { fontSize: "clamp(44px, 12vw, 62px)", lineHeight: 1 } }, emoji),
-    h("span", { style: { fontSize: 12.5, fontWeight: 700, color: accent ? "#fff" : active ? COLORS.gold : COLORS.ink, textAlign: "center" } }, label)
+    h("span", { style: { fontSize: "clamp(26px, 8vw, 34px)", lineHeight: 1 } }, emoji),
+    h("span", { style: { fontSize: 10, fontWeight: 700, color: accent ? "#fff" : active ? COLORS.gold : COLORS.ink, textAlign: "center", lineHeight: 1.2 } }, label)
   );
 }
 function TabButton({ active, onClick, emoji, label }) {
@@ -2602,7 +2608,7 @@ function QuickEstimatePage({ onBack }) {
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
-      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F9EE} \u062D\u0627\u0633\u0628\u0629 \u062A\u0633\u0639\u064A\u0631 \u0633\u0631\u064A\u0639\u0629")
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F9EE} \u062D\u0627\u0633\u0628\u0629 \u062A\u0633\u0639\u064A\u0631")
     ),
     h("div", { style: { padding: 16 } },
       h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 16, lineHeight: 1.6 } }, "\u0644\u062A\u0642\u062F\u064A\u0631 \u0633\u0639\u0631 \u0633\u0631\u064A\u0639 \u0642\u0628\u0644 \u0639\u0645\u0644 \u0623\u0648\u0631\u062F\u0631 \u0631\u0633\u0645\u064A \u2014 \u0645\u0634 \u0645\u0631\u062A\u0628\u0637 \u0628\u0623\u064A \u0623\u0648\u0631\u062F\u0631 \u0648\u0645\u0634 \u0628\u064A\u062A\u062D\u0641\u0638."),
