@@ -117,6 +117,7 @@ function monthLabelAr(key) {
   return (AR_MONTHS[idx] || key) + " " + parts[0];
 }
 const CODED_TYPES = ["\u0642\u0645\u0627\u0634"];
+const FABRIC_PIECE_CATEGORY_OPTIONS = ["", "\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u0623\u062E\u0631\u0649"];
 const AVAILABILITY_OPTIONS = ["\u0645\u062A\u0648\u0641\u0631", "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631", "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628"];
 const STONE_AVAILABILITY_OPTIONS = ["\u0645\u062A\u0648\u0641\u0631", "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0637\u0644\u0628", "\u062C\u0627\u0631\u064A \u062A\u0635\u0646\u064A\u0639\u0647"];
 const STONE_TYPES_WITH_CUSTOM_AVAILABILITY = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646"];
@@ -915,7 +916,7 @@ function App() {
   }, [user, isAllowed]);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30 * 60 * 1000);
+    const id = setInterval(() => setTick((t) => t + 1), 10 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
   const notifiedRef = useRef(false);
@@ -952,14 +953,23 @@ function App() {
       });
       return Array.from(emails);
     };
-    productionPieces.forEach((p) => {
-      const key = p.id + "-deadline-" + today;
-      if (!p.agreedDeadline || p.status === "إلى الشحن" || p.deadlineLastReminderDate === today || pieceStageEndRecorded(p) || deadlineNotifiedSessionRef.current.has(key)) return;
+    const eligible = productionPieces.filter((p) => p.agreedDeadline && p.status !== "إلى الشحن" && p.status !== "تم الإنتاج" && !pieceStageEndRecorded(p) && p.deadlineLastReminderDate !== today);
+    const groups = {};
+    eligible.forEach((p) => {
       const d = pieceDeadlineDiff(p);
       if (d === null || d > 3) return;
-      const late = d < 0;
-      deadlineNotifiedSessionRef.current.add(key);
-      const ref = piecesColRef().doc(p.id);
+      const gKey = (p.customerName || "—") + "|" + p.agreedDeadline;
+      if (!groups[gKey]) groups[gKey] = { pieces: [], d, customerName: p.customerName, locations: new Set() };
+      groups[gKey].pieces.push(p);
+      groups[gKey].locations.add(p.currentLocation);
+    });
+    Object.entries(groups).forEach(([gKey, g]) => {
+      const sessionKey = gKey + "-" + today;
+      if (deadlineNotifiedSessionRef.current.has(sessionKey)) return;
+      deadlineNotifiedSessionRef.current.add(sessionKey);
+      const late = g.d < 0;
+      const lockPiece = g.pieces[0];
+      const ref = piecesColRef().doc(lockPiece.id);
       db.runTransaction((tx) => tx.get(ref).then((snap) => {
         const data = snap.data() || {};
         if (data.deadlineLastReminderDate === today) return false;
@@ -967,10 +977,13 @@ function App() {
         return true;
       })).then((won) => {
         if (!won) return;
+        g.pieces.slice(1).forEach((p) => piecesColRef().doc(p.id).update({ deadlineLastReminderDate: today }).catch((e) => console.error("deadline flag sync failed", e)));
+        const emails = Array.from(new Set(g.pieces.flatMap((p) => productionEmailsForLocation(p.currentLocation))));
+        const pieceCountSuffix = g.pieces.length > 1 ? " (" + g.pieces.length + " قطعة)" : "";
         notify({
-          toEmails: productionEmailsForLocation(p.currentLocation),
-          title: late ? "⚠️ قطعة متأخرة عن الموعد المتفق عليه بـ " + arabicDaysPhrase(Math.abs(d)) : d === 0 ? "⏰ قطعة موعدها المتفق عليه اليوم" : "⏰ قطعة قريبة من الموعد المتفق عليه — باقي " + arabicDaysPhrase(d),
-          body: (p.customerName || "—") + " - " + (p.currentLocation || "—"),
+          toEmails: emails,
+          title: (late ? "⚠️ أوردر متأخر عن الموعد المتفق عليه بـ " + arabicDaysPhrase(Math.abs(g.d)) : g.d === 0 ? "⏰ أوردر موعده المتفق عليه اليوم" : "⏰ أوردر قريب من الموعد المتفق عليه — باقي " + arabicDaysPhrase(g.d)) + pieceCountSuffix,
+          body: (g.customerName || "—") + " - " + Array.from(g.locations).join("، "),
           kind: "deadline"
         });
       }).catch((e) => console.error("deadline reminder transaction failed", e));
@@ -1430,6 +1443,9 @@ function App() {
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
+        homeDrilldown.type === "production-quote-hub" ? h(ProductionQuoteHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
+        homeDrilldown.type === "assistant" ? h(AssistantPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "customer-value" ? h(CustomerValuePage, { orders: activeOrders, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "gallery" ? h(GalleryHubPage, { orders: activeOrders, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null) }) :
@@ -1512,7 +1528,7 @@ function App() {
       orders.some(orderIsOverdue) && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F0"), orders.filter(orderIsOverdue).length, " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u2014 \u0631\u0627\u062C\u0639\u064A \u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0628\u062A\u0627\u0639\u062A\u0647\u0645"),
       (() => {
         const upcoming = productionPieces.filter((p) => {
-          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
+          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
           const d = pieceDeadlineDiff(p);
           return d !== null && d >= 0 && d <= 3;
         });
@@ -1574,7 +1590,7 @@ function App() {
           return d !== null && d <= 0;
         }).map((p) => p.customerName || "\u2014")).size;
         const productionDelayCount = new Set(productionPieces.filter((p) => {
-          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
+          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
           const d = pieceDeadlineDiff(p);
           return d !== null && d < 0;
         }).map((p) => p.customerName || "\u2014")).size;
@@ -1636,6 +1652,9 @@ function App() {
             regularTile("supplier-performance"),
             regularTile("dashboard"),
             (isOwner || hasRole("admin")) ? h(NavTile, { key: "pricing-tile", active: false, onClick: () => setHomeDrilldown({ type: "pricing" }), emoji: "\u{1F4B0}", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A" }) : null,
+            h(NavTile, { key: "production-quote-hub-tile", active: false, locked: !canSeeTab("production-quote-hub"), onClick: () => { if (canSeeTab("production-quote-hub")) setHomeDrilldown({ type: "production-quote-hub" }); }, emoji: "\u{1F3ED}", label: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639" }),
+            h(NavTile, { key: "assistant-tile", active: false, locked: !canSeeTab("assistant"), onClick: () => { if (canSeeTab("assistant")) setHomeDrilldown({ type: "assistant" }); }, emoji: "\u{1F50D}", label: "\u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A" }),
+            h(NavTile, { key: "customer-value-tile", active: false, locked: !canSeeTab("customer-value"), onClick: () => { if (canSeeTab("customer-value")) setHomeDrilldown({ type: "customer-value" }); }, emoji: "\u{1F48E}", label: "\u0642\u064A\u0645\u0629 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
             h(NavTile, { key: "warranty-tile", active: false, onClick: () => setHomeDrilldown({ type: "warranty" }), emoji: "\u{1F9F0}", label: "\u062E\u062F\u0645\u0629 \u0645\u0627 \u0628\u0639\u062F \u0627\u0644\u0628\u064A\u0639" }),
             h(NavTile, { key: "ratings-tile", active: false, onClick: () => setHomeDrilldown({ type: "ratings" }), emoji: "\u{1F60A}", label: "\u062A\u0642\u064A\u064A\u0645\u0627\u062A \u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
             h(NavTile, { key: "quick-tasks-tile", active: false, onClick: () => setHomeDrilldown({ type: "quick-tasks" }), emoji: "\u2705", label: "\u0645\u0647\u0627\u0645 \u0633\u0631\u064A\u0639\u0629" }),
@@ -2639,6 +2658,139 @@ function QuickEstimatePage({ onBack }) {
     )
   );
 }
+function buildAssistantAnswer(q, ctx) {
+  const { orders, pieces, warrantyRequests, emailToName } = ctx;
+  const active = orders.filter((o) => !o.archived);
+  const has = (...words) => words.some((w) => q.includes(w));
+  if (has("متأخر") && has("تصنيع", "قطعة", "قطع", "إنتاج")) {
+    const late = pieces.filter((p) => p.agreedDeadline && p.status !== "إلى الشحن" && p.status !== "تم الإنتاج" && pieceDeadlineDiff(p) !== null && pieceDeadlineDiff(p) < 0);
+    const names = Array.from(new Set(late.map((p) => p.customerName))).slice(0, 5);
+    return late.length === 0 ? "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u062F\u0644\u0648\u0642\u062A\u064A \u2014 \u0645\u0645\u062A\u0627\u0632! \u{1F44F}" : "\u0641\u064A " + late.length + " \u0642\u0637\u0639\u0629 \u0645\u062A\u0623\u062E\u0631\u0629: " + names.join("\u060C ") + (late.length > 5 ? " \u0648\u063A\u064A\u0631\u0647\u0645" : "");
+  }
+  if (has("متأخر") && has("تسليم")) {
+    const late = active.filter((o) => o.deliveryDate && daysUntil(o.deliveryDate) !== null && daysUntil(o.deliveryDate) < 0 && !(pieces.filter((p) => p.customerName === o.clientName).every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")));
+    return late.length === 0 ? "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u062F\u0644\u0648\u0642\u062A\u064A." : "\u0641\u064A " + late.length + " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645.";
+  }
+  if (has("جاهز") && has("تسليم", "شحن")) {
+    const ready = pieces.filter((p) => pieceIsReady(p));
+    return "\u0641\u064A " + ready.length + " \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062F\u0644\u0648\u0642\u062A\u064A.";
+  }
+  if (has("محتاج", "لسه") && has("مراجعة")) {
+    const n = active.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
+    return "\u0641\u064A " + n + " \u0623\u0648\u0631\u062F\u0631 \u0645\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629 \u062F\u0644\u0648\u0642\u062A\u064A.";
+  }
+  if (has("أسرع", "أفضل") && has("مهندس")) {
+    const thisMonth = todayStr().slice(0, 7);
+    const byEng = {};
+    active.filter((o) => o.reviewDate && o.reviewDate.slice(0, 7) === thisMonth && o.enteredAt).forEach((o) => {
+      const d = dayDiff(o.enteredAt, o.reviewDate);
+      if (d === null) return;
+      const key = o.createdBy || "\u2014";
+      if (!byEng[key]) byEng[key] = { total: 0, count: 0 };
+      byEng[key].total += d;
+      byEng[key].count += 1;
+    });
+    const ranked = Object.entries(byEng).map(([email, s]) => ({ email, avg: s.total / s.count, count: s.count })).sort((a, b) => a.avg - b.avg);
+    if (!ranked.length) return "\u0645\u0641\u064A\u0634 \u0628\u064A\u0627\u0646\u0627\u062A \u0643\u0627\u0641\u064A\u0629 \u0627\u0644\u0634\u0647\u0631 \u062F\u0647 \u0644\u062D\u0633\u0627\u0628 \u0627\u0644\u0623\u0633\u0631\u0639.";
+    const top = ranked[0];
+    return "\u0623\u0633\u0631\u0639 \u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0634\u0647\u0631 \u062F\u0647: " + ((emailToName && emailToName[top.email]) || top.email) + " (\u0645\u062A\u0648\u0633\u0637 " + top.avg.toFixed(1) + " \u064A\u0648\u0645 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629)";
+  }
+  if (has("خامة", "خامات") && has("متوفر", "ناقص", "غير")) {
+    let count = 0;
+    active.forEach((o) => (o.materials || []).forEach((m) => { if (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631") count++; }));
+    return count === 0 ? "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u062D\u0627\u0644\u064A\u064B\u0627." : "\u0641\u064A " + count + " \u062E\u0627\u0645\u0629 \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629 \u0645\u0633\u062C\u0644\u0629 \u062D\u0627\u0644\u064A\u064B\u0627.";
+  }
+  if (has("جديد") && has("أوردر", "طلب")) {
+    const n = active.filter((o) => o.enteredAt && o.enteredAt.slice(0, 10) === todayStr()).length;
+    return "\u062F\u062E\u0644 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629 " + n + " \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F.";
+  }
+  if (has("مستحق", "متبقي") && has("دفع", "فلوس", "مبلغ")) {
+    let total = 0;
+    active.forEach((o) => { const s = Number(o.sellingPrice) || 0; const p = Number(o.amountPaid) || 0; if (s - p > 0) total += s - p; });
+    return "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u0628\u0627\u0644\u063A \u0627\u0644\u0645\u062A\u0628\u0642\u064A\u0629 \u0645\u0646 \u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621: " + total.toLocaleString("en-US") + " \u0631\u064A\u0627\u0644.";
+  }
+  if (has("ضمان", "شكوى", "شكاوى")) {
+    const openCount = (warrantyRequests || []).filter((w) => w.status !== "\u062A\u0645 \u0627\u0644\u062D\u0644").length;
+    return "\u0641\u064A " + openCount + " \u0628\u0644\u0627\u063A \u0636\u0645\u0627\u0646 \u0644\u0633\u0647 \u0645\u0641\u062A\u0648\u062D.";
+  }
+  const nameMatch = active.find((o) => q.includes((o.clientName || "\u2014\u2014\u2014\u2014")) && o.clientName && o.clientName.length > 1);
+  if (nameMatch) {
+    const custOrders = active.filter((o) => o.clientName === nameMatch.clientName);
+    const total = custOrders.reduce((s, o) => s + (Number(o.sellingPrice) || 0), 0);
+    return "\u0639\u0646\u062F " + nameMatch.clientName + ": " + custOrders.length + " \u0623\u0648\u0631\u062F\u0631\u060C \u0625\u062C\u0645\u0627\u0644\u064A \u0642\u064A\u0645\u062A\u0647\u0645 " + total.toLocaleString("en-US") + " \u0631\u064A\u0627\u0644.";
+  }
+  return "\u0645\u0639\u0631\u0641\u062A\u0634\u0623\u062C\u0627\u0648\u0628 \u0639\u0644\u0649 \u0627\u0644\u0633\u0624\u0627\u0644 \u062F\u0647 \u0644\u0633\u0647. \u062C\u0631\u0651\u0628\u064A \u0623\u0633\u0626\u0644\u064A \u0639\u0646: \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629\u060C \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629\u060C \u0627\u0644\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645\u060C \u0627\u0644\u0645\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629\u060C \u0623\u0633\u0631\u0639 \u0645\u0647\u0646\u062F\u0633\u060C \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629\u060C \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629\u060C \u0627\u0644\u0645\u0628\u0627\u0644\u063A \u0627\u0644\u0645\u0633\u062A\u062D\u0642\u0629\u060C \u0628\u0644\u0627\u063A\u0627\u062A \u0627\u0644\u0636\u0645\u0627\u0646\u060C \u0623\u0648 \u0627\u0633\u0645 \u0639\u0645\u064A\u0644 \u0645\u0639\u064A\u0651\u0646.";
+}
+function AssistantPage({ orders, pieces, warrantyRequests, emailToName, onBack }) {
+  const [query, setQuery] = useState("");
+  const [history, setHistory] = useState([]);
+  const ask = () => {
+    if (!query.trim()) return;
+    const answer = buildAssistantAnswer(query.trim(), { orders, pieces, warrantyRequests, emailToName });
+    setHistory((h) => [{ q: query.trim(), a: answer, id: uid() }, ...h]);
+    setQuery("");
+  };
+  const suggestions = ["\u0641\u064A\u0647 \u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639\u061F", "\u0641\u064A\u0647 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u062D\u062A\u0627\u062C\u0629 \u0645\u0631\u0627\u062C\u0639\u0629\u061F", "\u0645\u064A\u0646 \u0623\u0633\u0631\u0639 \u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0634\u0647\u0631 \u062F\u0647\u061F", "\u0641\u064A \u062E\u0627\u0645\u0627\u062A \u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631\u0629\u061F", "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u0628\u0627\u0644\u063A \u0627\u0644\u0645\u0633\u062A\u062D\u0642\u0629 \u0643\u0627\u0645"];
+  return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
+    h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F50D} \u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A")
+    ),
+    h("div", { style: { padding: 16 } },
+      h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 12 } }, "\u0627\u0633\u0623\u0644\u064A \u0628\u0627\u0644\u0639\u0631\u0628\u064A \u0627\u0644\u0639\u0627\u062F\u064A \u0639\u0646 \u0623\u0648\u0631\u062F\u0631\u0627\u062A\u0643 \u0648\u0628\u064A\u0627\u0646\u0627\u062A\u0643 \u0627\u0644\u062D\u0642\u064A\u0642\u064A\u0629 \u2014 \u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A \u0645\u0628\u0646\u064A \u0639\u0644\u0649 \u0623\u0633\u0626\u0644\u0629 \u062C\u0627\u0647\u0632\u0629 \u0645\u0634 ذكاء اصطناعي عام."),
+      h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+        h("input", { style: { ...fieldStyle, flex: 1 }, value: query, onChange: (e) => setQuery(e.target.value), onKeyDown: (e) => e.key === "Enter" && ask(), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0633\u0624\u0627\u0644\u0643..." }),
+        h("button", { onClick: ask, style: { ...primaryBtn(!query.trim()), width: "auto", padding: "0 20px" }, disabled: !query.trim() }, "\u0627\u0633\u0623\u0644")
+      ),
+      history.length === 0 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } }, suggestions.map((s) => h("button", { key: s, onClick: () => { setQuery(s); }, style: { fontSize: 11.5, padding: "6px 12px", borderRadius: 999, border: `1px solid ${COLORS.border}`, background: COLORS.surface, color: COLORS.muted, cursor: "pointer" } }, s))) : null,
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10, marginTop: 16 } }, history.map((h_) => h("div", { key: h_.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 6 } }, "\u{1F4AC} " + h_.q),
+        h("div", { style: { fontSize: 14, fontWeight: 600 } }, h_.a)
+      )))
+    )
+  );
+}
+function CustomerValuePage({ orders, onBack }) {
+  const [query, setQuery] = useState("");
+  const active = orders.filter((o) => !o.archived);
+  const byCustomer = {};
+  active.forEach((o) => {
+    const name = o.clientName || "\u2014";
+    if (!byCustomer[name]) byCustomer[name] = { name, totalValue: 0, orderCount: 0, lastOrder: "", firstOrder: "9999" };
+    byCustomer[name].totalValue += Number(o.sellingPrice) || 0;
+    byCustomer[name].orderCount += 1;
+    if ((o.enteredAt || "") > byCustomer[name].lastOrder) byCustomer[name].lastOrder = o.enteredAt || "";
+    if ((o.enteredAt || "9999") < byCustomer[name].firstOrder) byCustomer[name].firstOrder = o.enteredAt || "9999";
+  });
+  const today = todayStr();
+  const list = Object.values(byCustomer).map((c) => ({
+    ...c,
+    atRisk: c.orderCount >= 2 && c.lastOrder && dayDiff(c.lastOrder, today) !== null && dayDiff(c.lastOrder, today) > 180
+  })).sort((a, b) => b.totalValue - a.totalValue);
+  const filtered = list.filter((c) => !query.trim() || c.name.includes(query.trim()));
+  const atRiskList = list.filter((c) => c.atRisk);
+  return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
+    h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F465} \u0642\u064A\u0645\u0629 \u0627\u0644\u0639\u0645\u0644\u0627\u0621")
+    ),
+    h("div", { style: { padding: 16 } },
+      atRiskList.length > 0 ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 12, padding: 12, marginBottom: 14 } },
+        h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.danger, marginBottom: 4 } }, "\u26A0\uFE0F " + atRiskList.length + " \u0639\u0645\u064A\u0644 \u0645\u0639\u0631\u0651\u0636 \u0644\u0644\u062A\u0648\u0642\u0641 \u0639\u0646 \u0627\u0644\u0637\u0644\u0628"),
+        h("div", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u0639\u0645\u0644\u0627\u0621 \u0645\u062A\u0643\u0631\u0631\u064A\u0646 \u0645\u0631\u0651 \u0623\u0643\u062B\u0631 \u0645\u0646 6 \u0634\u0647\u0648\u0631 \u0645\u0646 \u063A\u064A\u0631 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F: " + atRiskList.slice(0, 5).map((c) => c.name).join("\u060C "))
+      ) : null,
+      h("input", { style: { ...fieldStyle, marginBottom: 12 }, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, filtered.map((c) => h("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${c.atRisk ? COLORS.danger : COLORS.border}`, borderRadius: 12, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("div", null,
+          h("div", { style: { fontWeight: 700, fontSize: 14 } }, c.name + (c.atRisk ? " \u26A0\uFE0F" : "")),
+          h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, c.orderCount + " \u0623\u0648\u0631\u062F\u0631 \u2014 \u0622\u062E\u0631 \u0637\u0644\u0628: " + (c.lastOrder ? c.lastOrder.slice(0, 10) : "\u2014"))
+        ),
+        h("div", { style: { fontWeight: 700, fontSize: 14, color: COLORS.gold } }, c.totalValue.toLocaleString("en-US") + " \u0631\u064A\u0627\u0644")
+      )))
+    )
+  );
+}
 function TeamCalendarPage({ pieces, quickTasks, preApprovalRecords, emailToName, onBack }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -3375,6 +3527,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
   const [selectedType, setSelectedType] = useState(null);
   const [query, setQuery] = useState("");
   const [fAvailability, setFAvailability] = useState("");
+  const [fCompany, setFCompany] = useState("");
   const byType = {};
   orders.forEach((o) => {
     (o.materials || []).forEach((m) => {
@@ -3407,12 +3560,14 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
   const isMeasured = MEASURED_TYPES.includes(selectedType);
   const isCoded = CODED_TYPES.includes(selectedType);
   const availabilityOptions = Array.from(new Set(byType[selectedType].map((m) => m.availability).filter(Boolean)));
+  const companyOptions = Array.from(new Set(byType[selectedType].map((m) => (m.companyName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const filtered = byType[selectedType].filter((m) => {
     if (query.trim()) {
       const hay = normalizeDigits([m.clientName, m.materialName, m.description, m.itemCode, m.companyName].filter(Boolean).join(" ")).toLowerCase();
       if (!hay.includes(normalizeDigits(query.trim()).toLowerCase())) return false;
     }
     if (fAvailability && m.availability !== fAvailability) return false;
+    if (fCompany && (m.companyName || "").trim() !== fCompany) return false;
     return true;
   });
   const exportExcel = () => {
@@ -3437,6 +3592,9 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u062E\u0627\u0645\u0629...", value: query, onChange: (e) => setQuery(e.target.value) }),
     availabilityOptions.length > 0 ? h("select", { style: fieldStyle, value: fAvailability, onChange: (e) => setFAvailability(e.target.value) },
       h("option", { value: "" }, "\u0643\u0644 \u062D\u0627\u0644\u0627\u062A \u0627\u0644\u062A\u0648\u0627\u0641\u0631"), availabilityOptions.map((a) => h("option", { key: a, value: a }, a))
+    ) : null,
+    companyOptions.length > 0 ? h("select", { style: fieldStyle, value: fCompany, onChange: (e) => setFCompany(e.target.value) },
+      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A"), companyOptions.map((c) => h("option", { key: c, value: c }, c))
     ) : null,
     filtered.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
@@ -3693,6 +3851,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipment
     if (!egyptCustomers.has(o.clientName)) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
+      if (m.pieceCategory && m.pieceCategory !== "\u0643\u0646\u0628") return;
       rows.push({ orderId: o.id, materialId: m.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate, itemCode: m.itemCode, companyName: m.companyName, quantity: m.quantity, unit: m.unit || "\u0645\u062A\u0631", availability: m.availability, fabricShippingStatus: m.fabricShippingStatus, fabricShippingDate: m.fabricShippingDate, fabricArrivalStatus: m.fabricArrivalStatus, fabricArrivalDate: m.fabricArrivalDate });
     });
   });
@@ -4109,11 +4268,11 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder }) {
   const [query, setQuery] = useState("");
   const [locFilter, setLocFilter] = useState("");
   const todayPieces = pieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d === 0;
   }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!locFilter || p.currentLocation === locFilter));
-  const allLocationOptions = Array.from(new Set(pieces.filter((p) => { if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false; return pieceDeadlineDiff(p) === 0; }).map((p) => p.currentLocation).filter(Boolean)));
+  const allLocationOptions = Array.from(new Set(pieces.filter((p) => { if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false; return pieceDeadlineDiff(p) === 0; }).map((p) => p.currentLocation).filter(Boolean)));
   const byLocation = {};
   todayPieces.forEach((p) => {
     const loc = p.currentLocation || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0642\u0639";
@@ -4168,7 +4327,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   let heaviestSupplier = null, heaviestCount = 0;
   Object.keys(locCounts).forEach((s) => { if (locCounts[s] > heaviestCount) { heaviestCount = locCounts[s]; heaviestSupplier = s; } });
   const overdueCount = new Set(pieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).map((p) => p.customerName || "\u2014")).size;
@@ -4624,7 +4783,7 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
 function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCustomer, onOpenOrder }) {
   const [showFilters, setShowFilters] = useState(false);
   const [fCategory, setFCategory] = useState("");
-  const [fStatus, setFStatus] = useState("");
+  const [fStatus, setFStatus] = useState([]);
   const [fFabric, setFFabric] = useState("");
   const [fTag, setFTag] = useState("");
   const statusOptions = Array.from(new Set(orders.map((o) => orderStatusLabel(o))));
@@ -4638,7 +4797,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   });
   scoped = scoped.filter((o) => {
     if (fCategory && o.category !== fCategory) return false;
-    if (fStatus && orderStatusLabel(o) !== fStatus) return false;
+    if (fStatus.length > 0 && !fStatus.includes(orderStatusLabel(o))) return false;
     if (fTag && !(o.tags || []).includes(fTag)) return false;
     if (fFabric) {
       if (fFabric === "\u0641\u0627\u0631\u063A") { if (o.fabricShippingStatus) return false; }
@@ -4702,8 +4861,12 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), statusOptions.map((s) => h("option", { key: s, value: s }, s))
+        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+          statusOptions.map((s) => h("button", {
+            key: s,
+            onClick: () => setFStatus((cur) => cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]),
+            style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: fStatus.includes(s) ? COLORS.teal : "#fff", color: fStatus.includes(s) ? "#fff" : COLORS.teal, cursor: "pointer" }
+          }, s))
         )
       ),
       h("div", null,
@@ -4835,7 +4998,7 @@ function ProductionDelaysPage({ pieces, onBack }) {
   const [query, setQuery] = useState("");
   const [fLocation, setFLocation] = useState("");
   const delayed = pieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fLocation || p.currentLocation === fLocation)).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
@@ -4951,13 +5114,13 @@ function DeliveryDelaysPage({ pieces, onBack, onUpdate, canEdit, isAdminUser }) 
 function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateOrder }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [fStatus, setFStatus] = useState("");
+  const [fStatus, setFStatus] = useState([]);
   const [fType, setFType] = useState("");
   const allPieces = pieces || [];
   const statusOptions = Array.from(new Set(allPieces.map((p) => p.status).filter(Boolean)));
   const typeOptions = Array.from(new Set(allPieces.map((p) => p.pieceType).filter(Boolean)));
   const matchesFilters = (p) => {
-    if (fStatus && p.status !== fStatus) return false;
+    if (fStatus.length > 0 && !fStatus.includes(p.status)) return false;
     if (fType && p.pieceType !== fType) return false;
     return true;
   };
@@ -5003,8 +5166,12 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), statusOptions.map((s) => h("option", { key: s, value: s }, s))
+        h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+          statusOptions.map((s) => h("button", {
+            key: s,
+            onClick: () => setFStatus((cur) => cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]),
+            style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: fStatus.includes(s) ? COLORS.teal : "#fff", color: fStatus.includes(s) ? "#fff" : COLORS.teal, cursor: "pointer" }
+          }, s))
         )
       ),
       h("div", null,
@@ -5562,7 +5729,7 @@ function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
     const isMeasured = MEASURED_TYPES.includes(m.type);
     const isCoded = CODED_TYPES.includes(m.type);
     const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold;
-    return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, isMeasured ? m.materialName : m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.description), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.edgeFinish && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641: ", p.edgeFinish), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 320 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, ["\u0627\u062E\u062A\u064A\u0627\u0631", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0645\u062F\u0629"].map((c) => /* @__PURE__ */ React.createElement("th", { key: c, style: { padding: "4px 6px", textAlign: "start", color: COLORS.muted, fontWeight: 600, fontSize: 11 } }, c)))), /* @__PURE__ */ React.createElement("tbody", null, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("tr", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { cursor: "pointer", borderTop: `1px solid ${COLORS.border}`, background: q.chosen ? COLORS.goldSoft : "transparent" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: q.chosen ? 700 : 400 } }, q.supplierName), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: 700, color: COLORS.ink } }, q.price, " \u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", color: COLORS.muted } }, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
+    return /* @__PURE__ */ React.createElement("div", { key: m.id, onClick: () => setEditingMaterial(m), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6 } }, m.type), m.availability && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability), m.pieceCategory && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: "#fff", border: `1px solid ${COLORS.gold}`, padding: "1px 8px", borderRadius: 6 } }, "\u0642\u0637\u0639\u0629: " + m.pieceCategory)), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600, marginTop: 5 } }, isMeasured ? m.materialName : m.description), isCoded && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4, display: "flex", flexDirection: "column", gap: 2 } }, m.itemCode && /* @__PURE__ */ React.createElement("span", null, "\u0643\u0648\u062F: ", m.itemCode), m.companyName && /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F3E2}"), m.companyName), /* @__PURE__ */ React.createElement("span", null, m.quantity, " ", m.unit)), isMeasured && m.description && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 4 } }, m.description), !isCoded && !isMeasured && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted } }, m.quantity, " ", m.unit), (m.orderDate || m.leadTimeDays) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), m.orderDate ? `\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628: ${m.orderDate}` : "", m.orderDate && m.leadTimeDays ? " \xB7 " : "", m.leadTimeDays ? `\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F: ${m.leadTimeDays} \u064A\u0648\u0645` : "")), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeMaterial(m.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), isMeasured && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, (m.pieces || []).length === 0 && /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 6px" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0633\u062C\u0651\u0644\u0629 \u0628\u0639\u062F"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (m.pieces || []).map((p) => /* @__PURE__ */ React.createElement("div", { key: p.id, onClick: (e) => { e.stopPropagation(); setEditingPiece({ materialId: m.id, piece: p }); }, style: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer" } }, p.image ? /* @__PURE__ */ React.createElement("img", { src: p.image, alt: "\u0642\u0637\u0639\u0629", style: { width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.border}` } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 48, height: 48, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 18, color: COLORS.muted }, "\u{1F5BC}\uFE0F")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 13.5, display: "flex", flexDirection: "column", gap: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.muted }, "\u{1F4D0}"), p.length, " \xD7 ", p.width, " ", p.unit, p.pieceCount ? ` \xB7 \u0627\u0644\u0639\u062F\u062F: ${p.pieceCount}` : ""), p.edgeFinish && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641: ", p.edgeFinish), p.drawingFile && /* @__PURE__ */ React.createElement("a", { href: p.drawingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 11 }, "\u{1F4CE}"), " ", p.drawingFile.name)), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removePiece(m.id, p.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddPiece(m.id); }, style: { ...addLinkStyle, marginTop: 8, fontSize: 13, color: COLORS.teal } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0642\u0637\u0639\u0629")), quotesForMaterial.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 320 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, ["\u0627\u062E\u062A\u064A\u0627\u0631", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0645\u062F\u0629"].map((c) => /* @__PURE__ */ React.createElement("th", { key: c, style: { padding: "4px 6px", textAlign: "start", color: COLORS.muted, fontWeight: 600, fontSize: 11 } }, c)))), /* @__PURE__ */ React.createElement("tbody", null, quotesForMaterial.slice().sort((a, b) => a.price - b.price).map((q) => /* @__PURE__ */ React.createElement("tr", { key: q.id, onClick: (e) => { e.stopPropagation(); setEditingQuote(q); }, style: { cursor: "pointer", borderTop: `1px solid ${COLORS.border}`, background: q.chosen ? COLORS.goldSoft : "transparent" } }, /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); chooseQuote(m.id, q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.gold }, q.chosen ? "\u2B50" : "\u2606"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: q.chosen ? 700 : 400 } }, q.supplierName), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", fontWeight: 700, color: COLORS.ink } }, q.price, " \u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px", color: COLORS.muted } }, q.leadTimeDays, " \u064A\u0648\u0645"), /* @__PURE__ */ React.createElement("td", { style: { padding: "6px" } }, /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeQuote(q.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 13, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))))))), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); setShowAddQuote(m.id); }, style: { marginTop: 8, fontSize: 13, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 } }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0631\u0636 \u0633\u0639\u0631"));
   })), canEdit && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddMaterial(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062E\u0627\u0645\u0629")), showAddMaterial && /* @__PURE__ */ React.createElement(AddMaterialModal, { onClose: () => setShowAddMaterial(false), onSave: (m) => {
     addMaterial(m);
     setShowAddMaterial(false);
@@ -5592,6 +5759,7 @@ function AddMaterialModal({ onClose, onSave, existing }) {
   const [itemCode, setItemCode] = useState((existing && existing.itemCode) || "");
   const [companyName, setCompanyName] = useState((existing && existing.companyName) || "");
   const [materialName, setMaterialName] = useState((existing && existing.materialName) || "");
+  const [pieceCategory, setPieceCategory] = useState((existing && existing.pieceCategory) || "");
   const [pieceCount, setPieceCount] = useState((firstPiece && firstPiece.pieceCount) || "");
   const [pieceLength, setPieceLength] = useState((firstPiece && firstPiece.length) || "");
   const [pieceWidth, setPieceWidth] = useState((firstPiece && firstPiece.width) || "");
@@ -5665,7 +5833,9 @@ function AddMaterialModal({ onClose, onSave, existing }) {
         h("input", { style: fieldStyle, value: itemCode, onChange: (e) => setItemCode(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: F-204" }),
         h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629"),
         h("input", { style: fieldStyle, value: companyName, onChange: (e) => setCompanyName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0627\u0644\u0645\u0648\u0631\u062F\u0629 \u0623\u0648 \u0627\u0643\u062A\u0628\u064A \u0627\u0633\u0645 \u062C\u062F\u064A\u062F", list: "fabric-company-list" }),
-        h("datalist", { id: "fabric-company-list" }, Array.from(new Set(DEFAULT_FABRIC_COMPANIES.concat(KNOWN_NAMES.fabricCompanies))).map((c) => h("option", { key: c, value: c })))
+        h("datalist", { id: "fabric-company-list" }, Array.from(new Set(DEFAULT_FABRIC_COMPANIES.concat(KNOWN_NAMES.fabricCompanies))).map((c) => h("option", { key: c, value: c }))),
+        h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0637\u0639\u0629 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
+        h("select", { style: fieldStyle, value: pieceCategory, onChange: (e) => setPieceCategory(e.target.value) }, FABRIC_PIECE_CATEGORY_OPTIONS.map((c) => h("option", { key: c, value: c }, c || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")))
       ) : h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0635\u0641"),
         h("input", { style: fieldStyle, value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u0648\u0635\u0641 \u0627\u0644\u062E\u0627\u0645\u0629" })
@@ -5697,6 +5867,7 @@ function AddMaterialModal({ onClose, onSave, existing }) {
     itemCode: isCoded ? normalizeDigits(itemCode.trim()) : "",
     companyName: isCoded ? companyName.trim() : "",
     materialName: isMeasured ? materialName.trim() : "",
+    pieceCategory: isCoded ? pieceCategory : "",
     pieces: isMeasured ? [{ id: (firstPiece && firstPiece.id) || uid(), pieceCount, length: pieceLength, width: pieceWidth, unit: pieceUnit, image: pieceImage, drawingFile, edgeFinish: EDGE_FINISH_TYPES.includes(type) ? edgeFinish.trim() : "" }] : null
   }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u062E\u0627\u0645\u0629"));
 }
@@ -5956,6 +6127,15 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
   const updateMaterialPrice = (materialId, price) => {
     onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, price } : m) });
   };
+  const updateMaterialPaymentStatus = (materialId, paymentStatus) => {
+    onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, paymentStatus } : m) });
+  };
+  const MATERIAL_PAYMENT_OPTIONS = [
+    { value: "", label: "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F", color: COLORS.muted },
+    { value: "\u0644\u0645 \u064A\u064F\u062F\u0641\u0639", label: "\u0644\u0645 \u064A\u064F\u062F\u0641\u0639", color: COLORS.danger },
+    { value: "\u062F\u0641\u0639\u0629 \u0645\u0642\u062F\u0645\u0629", label: "\u062F\u0641\u0639\u0629 \u0645\u0642\u062F\u0645\u0629", color: COLORS.gold },
+    { value: "\u0645\u062F\u0641\u0648\u0639 \u0628\u0627\u0644\u0643\u0627\u0645\u0644", label: "\u0645\u062F\u0641\u0648\u0639 \u0628\u0627\u0644\u0643\u0627\u0645\u0644", color: COLORS.green }
+  ];
   const cost = computeOrderCost(order);
   const materials = order.materials || [];
   return h("div", null,
@@ -5963,13 +6143,27 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
     h("input", { style: fieldStyle, type: "number", disabled: !canEdit, value: order.sellingPrice || "", onChange: (e) => onUpdate({ sellingPrice: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "0 \u0631\u064A\u0627\u0644" }),
     h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0633\u0639\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
     materials.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u0645\u0633\u062C\u0644\u0629 \u0644\u0644\u0623\u0648\u0631\u062F\u0631 \u062F\u0647 \u0628\u0639\u062F" }) :
-    h("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 } }, materials.map((m) => h("div", { key: m.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "8px 12px", gap: 10 } },
-      h("div", { style: { flex: 1, minWidth: 0 } },
-        h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6, marginInlineEnd: 6 } }, m.type),
-        h("span", { style: { fontSize: 13.5, fontWeight: 600 } }, m.materialName || m.description || m.companyName || "\u2014")
-      ),
-      h("input", { type: "number", disabled: !canEdit, value: m.price || "", onChange: (e) => updateMaterialPrice(m.id, e.target.value === "" ? "" : Number(e.target.value)), placeholder: "0", style: { width: 90, padding: "6px 8px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 13, textAlign: "center" } })
-    ))),
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 } }, materials.map((m) => {
+      const payOpt = MATERIAL_PAYMENT_OPTIONS.find((o) => o.value === (m.paymentStatus || "")) || MATERIAL_PAYMENT_OPTIONS[0];
+      return h("div", { key: m.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "8px 12px", display: "flex", flexDirection: "column", gap: 8 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 } },
+          h("div", { style: { flex: 1, minWidth: 0 } },
+            h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 6, marginInlineEnd: 6 } }, m.type),
+            h("span", { style: { fontSize: 13.5, fontWeight: 600 } }, m.materialName || m.description || m.companyName || "\u2014")
+          ),
+          h("input", { type: "number", disabled: !canEdit, value: m.price || "", onChange: (e) => updateMaterialPrice(m.id, e.target.value === "" ? "" : Number(e.target.value)), placeholder: "0", style: { width: 90, padding: "6px 8px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 13, textAlign: "center" } })
+        ),
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
+          h("span", { style: { fontSize: 11.5, color: COLORS.muted } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u062F\u0641\u0639"),
+          h("select", {
+            disabled: !canEdit,
+            value: m.paymentStatus || "",
+            onChange: (e) => updateMaterialPaymentStatus(m.id, e.target.value),
+            style: { fontSize: 12, fontWeight: 700, color: payOpt.color, background: "#fff", border: `1px solid ${payOpt.color}`, borderRadius: 8, padding: "4px 8px" }
+          }, MATERIAL_PAYMENT_OPTIONS.map((o) => h("option", { key: o.value, value: o.value }, o.label)))
+        )
+      );
+    })),
     materials.length > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", padding: "10px 4px", borderTop: `1px solid ${COLORS.border}`, marginBottom: 20 } },
       h("span", { style: { fontWeight: 700 } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062E\u0627\u0645\u0627\u062A"),
       h("span", { style: { fontWeight: 700, color: COLORS.gold } }, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")
@@ -6023,15 +6217,19 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
 function ProductionQuotePage({ order, onUpdate, canEdit }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [supplierFilter, setSupplierFilter] = useState([]);
   const items = order.productionQuoteItems || [];
+  const supplierNames = Array.from(new Set(items.map((it) => (it.supplierName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const toggleSupplier = (name) => setSupplierFilter((cur) => cur.includes(name) ? cur.filter((s) => s !== name) : [...cur, name]);
+  const filteredItems = supplierFilter.length === 0 ? items : items.filter((it) => supplierFilter.includes((it.supplierName || "").trim()));
   const addItem = (it) => { if (!canEdit) return; onUpdate({ productionQuoteItems: [...items, it] }); };
   const updateItem = (it) => { if (!canEdit) return; onUpdate({ productionQuoteItems: items.map((x) => x.id === it.id ? it : x) }); };
   const removeItem = (id) => { if (!canEdit) return; onUpdate({ productionQuoteItems: items.filter((i) => i.id !== id) }); };
-  const totalSAR = items.filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
-  const totalEGP = items.filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const totalSAR = filteredItems.filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  const totalEGP = filteredItems.filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
   const exportExcel = () => {
     const rows = [["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
-    items.forEach((it) => rows.push([it.pieceName || "", it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]));
+    filteredItems.forEach((it) => rows.push([it.pieceName || "", it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]));
     rows.push(["", "", "", "", ""]);
     if (totalSAR > 0) rows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalSAR, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", ""]);
     if (totalEGP > 0) rows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", ""]);
@@ -6039,18 +6237,52 @@ function ProductionQuotePage({ order, onUpdate, canEdit }) {
   };
   const exportPdf = () => {
     const headers = ["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
-    const dataRows = items.map((it) => [it.pieceName || "", it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]);
+    const dataRows = filteredItems.map((it) => [it.pieceName || "", it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]);
     if (totalSAR > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalSAR, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", ""]);
     if (totalEGP > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", ""]);
     printAsPdf("\u062A\u0633\u0639\u064A\u0631 " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
   };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, totalSAR > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")), totalEGP > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645"))), canEdit && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
-    addItem(it);
-    setShowAdd(false);
-  } }), editingItem && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { existing: editingItem, onClose: () => setEditingItem(null), onSave: (it) => {
-    updateItem(it);
-    setEditingItem(null);
-  } }));
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }),
+    supplierNames.length > 1 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } },
+      h("button", { onClick: () => setSupplierFilter([]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.length === 0 ? COLORS.teal : "#fff", color: supplierFilter.length === 0 ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
+      supplierNames.map((name) => h("button", { key: name, onClick: () => toggleSupplier(name), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.includes(name) ? COLORS.teal : "#fff", color: supplierFilter.includes(name) ? "#fff" : COLORS.teal, cursor: "pointer" } }, name))
+    ) : null,
+    filteredItems.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
+    items.length === 0 ? h(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }) :
+    filteredItems.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0646\u0627\u0635\u0631 \u0644\u0644\u0645\u0648\u0631\u062F\/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 \u0627\u0644\u0645\u062D\u062F\u062F\u064A\u0646" }) : null,
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 10, ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } }, filteredItems.map((it) => h("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+        h("div", null,
+          h("div", { style: { fontWeight: 600 } }, it.pieceName),
+          it.supplierName ? h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName) : null,
+          it.notes ? h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes) : null,
+          ((Number(it.paid) || 0) > 0 || (Number(it.price) - (Number(it.paid) || 0)) > 0) ? h("div", { style: { fontSize: 11.5, marginTop: 4, display: "flex", gap: 10 } },
+            h("span", { style: { color: COLORS.green, fontWeight: 700 } }, "\u0645\u062F\u0641\u0648\u0639: ", (Number(it.paid) || 0).toLocaleString("en-US")),
+            h("span", { style: { color: (Number(it.price) - (Number(it.paid) || 0)) > 0 ? COLORS.danger : COLORS.muted, fontWeight: 700 } }, "\u0645\u062A\u0628\u0642\u064A: ", (Number(it.price) - (Number(it.paid) || 0)).toLocaleString("en-US"))
+          ) : null
+        ),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+          h("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"),
+          h("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
+        )
+      ),
+      it.priceFile ? h("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name) : null
+    ))),
+    filteredItems.length > 0 ? h("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } },
+      totalSAR > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between" } }, h("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")) : null,
+      totalEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between" } }, h("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645")) : null
+    ) : null,
+    canEdit ? h("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631") : null,
+    showAdd ? h(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
+      addItem(it);
+      setShowAdd(false);
+    } }) : null,
+    editingItem ? h(AddQuoteItemModal, { existing: editingItem, onClose: () => setEditingItem(null), onSave: (it) => {
+      updateItem(it);
+      setEditingItem(null);
+    } }) : null
+  );
 }
 function AddQuoteItemModal({ onClose, onSave, existing }) {
   const [pieceName, setPieceName] = useState((existing && existing.pieceName) || "");
@@ -6059,8 +6291,124 @@ function AddQuoteItemModal({ onClose, onSave, existing }) {
   const [currency, setCurrency] = useState((existing && existing.currency) || "\u0631\u064A\u0627\u0644");
   const [notes, setNotes] = useState((existing && existing.notes) || "");
   const [priceFile, setPriceFile] = useState((existing && existing.priceFile) || null);
+  const [paid, setPaid] = useState((existing && existing.paid) || "");
+  const [egpRate, setEgpRate] = useState(null);
+  const [rateLoading, setRateLoading] = useState(false);
+  const [rateError, setRateError] = useState(false);
+  useEffect(() => {
+    if (currency !== "\u062C\u0646\u064A\u0647" || egpRate !== null || rateLoading) return;
+    setRateLoading(true);
+    setRateError(false);
+    fetch("https://open.er-api.com/v6/latest/EGP")
+      .then((r) => r.json())
+      .then((data) => {
+        const rate = data && data.rates && data.rates.SAR;
+        if (rate) setEgpRate(rate); else setRateError(true);
+      })
+      .catch(() => setRateError(true))
+      .finally(() => setRateLoading(false));
+  }, [currency]);
+  const convertedSAR = egpRate && price ? Number(price) * egpRate : null;
+  const remaining = price ? (Number(price) - (Number(paid) || 0)) : 0;
+  const currencyLabel = currency === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644";
   const canSave = pieceName.trim() && price;
-  return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0642\u0637\u0639\u0629"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: pieceName, onChange: (e) => setPieceName(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u0629 3 \u0645\u0642\u0627\u0639\u062F" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, list: "supplier-options-list-pricequote", value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639 \u0623\u0648 \u0627\u0644\u0648\u0631\u0634\u0629" }), /* @__PURE__ */ React.createElement("datalist", { id: "supplier-options-list-pricequote" }, KNOWN_NAMES.suppliers.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0639\u0645\u0644\u0629"), /* @__PURE__ */ React.createElement("select", { style: fieldStyle, value: currency, onChange: (e) => setCurrency(e.target.value) }, /* @__PURE__ */ React.createElement("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A"), /* @__PURE__ */ React.createElement("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A")))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), /* @__PURE__ */ React.createElement("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }), /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: priceFile, onChange: setPriceFile, onRemove: () => setPriceFile(null), folder: "quotes" }), /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: existing ? existing.id : uid(), pieceName: pieceName.trim(), supplierName: supplierName.trim(), price: Number(price), currency, notes: notes.trim(), priceFile }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0646\u0635\u0631"));
+  return h(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631" : "\u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631 \u062A\u0633\u0639\u064A\u0631", onClose },
+    h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0642\u0637\u0639\u0629"),
+    h("input", { style: fieldStyle, value: pieceName, onChange: (e) => setPieceName(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: \u0643\u0646\u0628\u0629 3 \u0645\u0642\u0627\u0639\u062F" }),
+    h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639"),
+    h("input", { style: fieldStyle, list: "supplier-options-list-pricequote", value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639 \u0623\u0648 \u0627\u0644\u0648\u0631\u0634\u0629" }),
+    h("datalist", { id: "supplier-options-list-pricequote" }, KNOWN_NAMES.suppliers.map((s) => h("option", { key: s, value: s }))),
+    h("div", { style: { display: "flex", gap: 10 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0633\u0639\u0631"), h("input", { style: fieldStyle, type: "number", value: price, onChange: (e) => setPrice(e.target.value), placeholder: "0" })),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0639\u0645\u0644\u0629"), h("select", { style: fieldStyle, value: currency, onChange: (e) => { setCurrency(e.target.value); setEgpRate(null); setRateError(false); } },
+        h("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A"),
+        h("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A")
+      ))
+    ),
+    currency === "\u062C\u0646\u064A\u0647" ? h("div", { style: { fontSize: 12.5, color: COLORS.muted, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 10px", marginTop: -6, marginBottom: 12 } },
+      rateLoading ? "\u062C\u0627\u0631\u064A \u062C\u0644\u0628 \u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645..." :
+      rateError ? "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645" :
+      convertedSAR !== null ? [`\u2248 `, h("b", { key: "v" }, convertedSAR.toLocaleString("en-US", { maximumFractionDigits: 1 })), ` \u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A (\u0628\u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645: 1 \u062C.\u0645 = ${egpRate.toFixed(4)} \u0631\u064A\u0627\u0644) \u2014 \u0627\u0644\u0633\u0639\u0631 \u0627\u0644\u0645\u062F\u062E\u0644 \u0628\u0627\u0644\u062C\u0646\u064A\u0647 \u0645\u0627\u064A\u062A\u063A\u064A\u0631\u0634`] :
+      "\u0623\u062F\u062E\u0644\u064A \u0627\u0644\u0633\u0639\u0631 \u0644\u0645\u0639\u0631\u0641\u0629 \u0627\u0644\u0645\u0642\u0627\u0628\u0644 \u0628\u0627\u0644\u0631\u064A\u0627\u0644"
+    ) : null,
+    h("div", { style: { display: "flex", gap: 10 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u062F\u0641\u0648\u0639"), h("input", { style: fieldStyle, type: "number", value: paid, onChange: (e) => setPaid(e.target.value), placeholder: "0" })),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u062A\u0628\u0642\u064A"), h("div", { style: { ...fieldStyle, display: "flex", alignItems: "center", fontWeight: 700, color: remaining > 0 ? COLORS.danger : COLORS.green, background: COLORS.bg } }, remaining.toLocaleString("en-US"), " ", currencyLabel))
+    ),
+    h("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }),
+    h(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: priceFile, onChange: setPriceFile, onRemove: () => setPriceFile(null), folder: "quotes" }),
+    h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: existing ? existing.id : uid(), pieceName: pieceName.trim(), supplierName: supplierName.trim(), price: Number(price), currency, paid: paid === "" ? 0 : Number(paid), notes: notes.trim(), priceFile }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0646\u0635\u0631")
+  );
+}
+function ProductionQuoteHubPage({ orders, onBack, onOpenOrder }) {
+  const [query, setQuery] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState([]);
+  const allItems = [];
+  orders.forEach((o) => {
+    (o.productionQuoteItems || []).forEach((it) => {
+      allItems.push({ ...it, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", orderId: o.id });
+    });
+  });
+  const supplierNames = Array.from(new Set(allItems.map((it) => (it.supplierName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const toggleSupplier = (name) => setSupplierFilter((cur) => cur.includes(name) ? cur.filter((s) => s !== name) : [...cur, name]);
+  let filtered = supplierFilter.length === 0 ? allItems : allItems.filter((it) => supplierFilter.includes((it.supplierName || "").trim()));
+  if (query.trim()) {
+    const q = query.trim();
+    filtered = filtered.filter((it) => (it.clientName || "").includes(q) || (it.pieceName || "").includes(q) || (it.supplierName || "").includes(q));
+  }
+  const byCustomer = {};
+  filtered.forEach((it) => { (byCustomer[it.clientName] = byCustomer[it.clientName] || []).push(it); });
+  const customerNames = Object.keys(byCustomer).sort((a, b) => a.localeCompare(b, "ar"));
+  const exportRows = () => {
+    const rows = [];
+    customerNames.forEach((name) => {
+      byCustomer[name].forEach((it) => {
+        rows.push([name, it.supplierName || "", it.pieceName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", Number(it.paid) || 0, (Number(it.price) || 0) - (Number(it.paid) || 0)]);
+      });
+    });
+    return rows;
+  };
+  const cols = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639", "\u0627\u0644\u0645\u062A\u0628\u0642\u064A"];
+  return h("div", null,
+    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { fontSize: 20, fontWeight: 700 } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621")
+    ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0645\u0648\u0631\u062F \u0623\u0648 \u0627\u0644\u0642\u0637\u0639\u0629...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    supplierNames.length > 1 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
+      h("button", { onClick: () => setSupplierFilter([]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.length === 0 ? COLORS.teal : "#fff", color: supplierFilter.length === 0 ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
+      supplierNames.map((name) => h("button", { key: name, onClick: () => toggleSupplier(name), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.includes(name) ? COLORS.teal : "#fff", color: supplierFilter.includes(name) ? "#fff" : COLORS.teal, cursor: "pointer" } }, name))
+    ) : null,
+    filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u062A\u0635\u0646\u064A\u0639-\u0643\u0644-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", cols, exportRows()) }) : null,
+    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0646\u0627\u0635\u0631 \u062A\u0633\u0639\u064A\u0631 \u062A\u0635\u0646\u064A\u0639 \u0645\u0637\u0627\u0628\u0642\u0629" }) :
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, customerNames.map((name) => {
+      const custItems = byCustomer[name];
+      const orderId = custItems[0].orderId;
+      return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+          h("span", { style: { fontWeight: 700 } }, name),
+          onOpenOrder ? h("button", { onClick: () => onOpenOrder(orderId), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer" } }, "\u{1F4C2} \u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+        ),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, custItems.map((it, idx) => {
+          const remaining = (Number(it.price) || 0) - (Number(it.paid) || 0);
+          return h("div", { key: idx, style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderTop: idx > 0 ? `1px solid ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } },
+            h("div", null,
+              h("div", { style: { fontWeight: 600, fontSize: 13 } }, it.pieceName || "\u2014"),
+              it.supplierName ? h("div", { style: { fontSize: 12, color: COLORS.muted } }, it.supplierName) : null
+            ),
+            h("div", { style: { textAlign: "end" } },
+              h("div", { style: { fontWeight: 700 } }, Number(it.price || 0).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"),
+              (Number(it.paid) || 0) > 0 || remaining > 0 ? h("div", { style: { fontSize: 11, marginTop: 2 } },
+                h("span", { style: { color: COLORS.green, fontWeight: 700 } }, "\u0645\u062F\u0641\u0648\u0639: ", (Number(it.paid) || 0).toLocaleString("en-US")), " \u00B7 ",
+                h("span", { style: { color: remaining > 0 ? COLORS.danger : COLORS.muted, fontWeight: 700 } }, "\u0645\u062A\u0628\u0642\u064A: ", remaining.toLocaleString("en-US"))
+              ) : null
+            )
+          );
+        }))
+      );
+    }))
+  );
 }
 function ProductionPage({ order, onUpdate }) {
   const [showAddLog, setShowAddLog] = useState(false);
@@ -6120,6 +6468,9 @@ const ALL_TABS = [
   { key: "full-production", label: "الإنتاج الكامل", emoji: "📇" },
   { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
   { key: "gallery", label: "Gallery", emoji: "🖼️" },
+  { key: "production-quote-hub", label: "تسعير التصنيع لكل العملاء", emoji: "🏭" },
+  { key: "assistant", label: "مساعد ذكي", emoji: "🔍" },
+  { key: "customer-value", label: "قيمة العملاء", emoji: "💎" },
   { key: "supplier-performance", label: "تقييم الموردين", emoji: "⭐" },
   { key: "today-queue", label: "طابور شغل النهاردة", emoji: "📋" },
   { key: "deliveries", label: "الجاهزية والتسليم", emoji: "🏁" }
@@ -6527,11 +6878,11 @@ function stageGroupForLocation(location, isDammam) {
   return "carpentry";
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
-function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece) {
+function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, selection) {
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"];
+  const cols = (selection ? [""] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]);
   return h("div", null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B/\u0627\u0644\u0641\u0644\u062A\u0631" }) : null,
     dateKeys.map((dateKey) => {
@@ -6553,7 +6904,8 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
                 const tColor = custDone ? COLORS.muted : (custDays !== null && custDays <= 2) ? COLORS.danger : (custDays !== null && custDays <= 5) ? COLORS.gold : COLORS.teal;
                 const tBg = custDone ? COLORS.bg : (custDays !== null && custDays <= 2) ? "#FBEAE6" : (custDays !== null && custDays <= 5) ? COLORS.goldSoft : "#E6EEEF";
                 const tLabel = p.customerDeliveryDate ? (custDays === null ? "\u2014" : custDays < 0 ? "\u0645\u062A\u0623\u062E\u0631 " + Math.abs(custDays) : custDays === 0 ? "\u0627\u0644\u064A\u0648\u0645" : "\u0628\u0627\u0642\u064A " + custDays + " \u064A\u0648\u0645") : "\u2014";
-                return h("tr", { key: p.id, onClick: () => setOpenPiece(p), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" } },
+                return h("tr", { key: p.id, onClick: () => setOpenPiece(p), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer", background: (selection && selection.selected.includes(p.id)) ? COLORS.goldSoft : "transparent" } },
+                selection ? h("td", { style: { padding: "8px 10px" }, onClick: (e) => e.stopPropagation() }, h("input", { type: "checkbox", checked: selection.selected.includes(p.id), onChange: () => selection.onToggle(p.id) })) : null,
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: COLORS.goldSoft, color: COLORS.gold, whiteSpace: "nowrap" } }, p.status)),
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: tBg, color: tColor, whiteSpace: "nowrap" } }, "\u23F1\uFE0F " + tLabel)),
                 h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
@@ -6575,7 +6927,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
     })
   );
 }
-function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack, isAdminUser, statusOnly }) {
+function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -6583,6 +6935,18 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
   const [fType, setFType] = useState("");
   const [fFabric, setFFabric] = useState("");
   const [fSupplier, setFSupplier] = useState("");
+  const [selected, setSelected] = useState([]);
+  const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
+  const toggleSelect = (id) => setSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const bulkMove = () => {
+    if (!bulkTarget || selected.length === 0) return;
+    if (!window.confirm("\u0646\u0642\u0644 " + selected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkTarget + "\"\u061F")) return;
+    selected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (piece) onUpdate({ ...piece, currentLocation: bulkTarget });
+    });
+    setSelected([]);
+  };
   const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
   const scoped = pieces.filter((p) => {
     if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
@@ -6659,16 +7023,40 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
         )
       )
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece),
+    (isAdminUser && siblingLocations && siblingLocations.length > 0 && selected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, selected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
+      h("button", { onClick: bulkMove, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px" } }, "\u0646\u0642\u0644"),
+      h("button", { onClick: () => setSelected([]), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.muted }, "\u2715"))
+    ) : null,
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected, onToggle: toggleSelect } : null),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser, statusOnly })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn, isAdminUser, statusOnly }) {
+function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn, isAdminUser, statusOnly, siblingLocations }) {
   const [scope, setScope] = useState(null);
   const [query, setQuery] = useState("");
   const [openPiece, setOpenPiece] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
+  const toggleSelect = (id) => setSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const bulkMove = () => {
+    if (!bulkTarget || selected.length === 0) return;
+    if (!window.confirm("\u0646\u0642\u0644 " + selected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkTarget + "\"\u061F")) return;
+    selected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (piece) onUpdate({ ...piece, currentLocation: bulkTarget });
+    });
+    setSelected([]);
+  };
+  const bulkBar = (isAdminUser && siblingLocations && siblingLocations.length > 0 && selected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+    h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, selected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+    h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
+    h("button", { onClick: bulkMove, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px" } }, "\u0646\u0642\u0644"),
+    h("button", { onClick: () => setSelected([]), style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.muted }, "\u2715"))
+  ) : null;
   const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
 
   const monthCounts = {};
@@ -6692,7 +7080,8 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
     const filtered = pieces.filter((p) => (p.customerName || "").includes(query.trim()));
     return h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece),
+      bulkBar,
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected, onToggle: toggleSelect } : null),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser, statusOnly })
       ) : null
@@ -6700,7 +7089,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly });
+    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations });
   }
 
   return h("div", null,
@@ -6727,7 +7116,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
   ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false } ])
     .concat([{ key: "delays", label: "\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A", emoji: "\u23F0", locations: [], allowAdd: false, special: true }]);
   const trueDelays = entityPieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
@@ -6832,7 +7221,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, activeLoc)
     ),
     locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-      h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly })
+      h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: group.locations.filter((l) => l !== activeLoc) })
   );
 }
 
