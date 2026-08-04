@@ -1443,7 +1443,6 @@ function App() {
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
-        homeDrilldown.type === "production-quote-hub" ? h(ProductionQuoteHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
         homeDrilldown.type === "assistant" ? h(AssistantPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "customer-value" ? h(CustomerValuePage, { orders: activeOrders, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
@@ -1652,7 +1651,6 @@ function App() {
             regularTile("supplier-performance"),
             regularTile("dashboard"),
             (isOwner || hasRole("admin")) ? h(NavTile, { key: "pricing-tile", active: false, onClick: () => setHomeDrilldown({ type: "pricing" }), emoji: "\u{1F4B0}", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A" }) : null,
-            h(NavTile, { key: "production-quote-hub-tile", active: false, locked: !canSeeTab("production-quote-hub"), onClick: () => { if (canSeeTab("production-quote-hub")) setHomeDrilldown({ type: "production-quote-hub" }); }, emoji: "\u{1F3ED}", label: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639" }),
             h(NavTile, { key: "assistant-tile", active: false, locked: !canSeeTab("assistant"), onClick: () => { if (canSeeTab("assistant")) setHomeDrilldown({ type: "assistant" }); }, emoji: "\u{1F50D}", label: "\u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A" }),
             h(NavTile, { key: "customer-value-tile", active: false, locked: !canSeeTab("customer-value"), onClick: () => { if (canSeeTab("customer-value")) setHomeDrilldown({ type: "customer-value" }); }, emoji: "\u{1F48E}", label: "\u0642\u064A\u0645\u0629 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" }),
             h(NavTile, { key: "warranty-tile", active: false, onClick: () => setHomeDrilldown({ type: "warranty" }), emoji: "\u{1F9F0}", label: "\u062E\u062F\u0645\u0629 \u0645\u0627 \u0628\u0639\u062F \u0627\u0644\u0628\u064A\u0639" }),
@@ -1727,7 +1725,12 @@ function App() {
         onClick: (e) => { e.stopPropagation(); setToast(null); },
         style: { background: "transparent", border: "none", color: "#D8CBB8", fontSize: 16, cursor: "pointer", padding: 0, lineHeight: 1 }
       }, "\u2715")
-    ) : null
+    ) : null,
+    (selectedOrder || homeDrilldown || tab) ? h("button", {
+      onClick: () => { setSelectedId(null); setSelectedOrderSection(null); setHomeDrilldown(null); setTab(null); },
+      title: "\u0627\u0644\u0631\u062C\u0648\u0639 \u0644\u0644\u0631\u0626\u064A\u0633\u064A\u0629",
+      style: { position: "fixed", bottom: 18, insetInlineStart: 18, zIndex: 9998, width: 48, height: 48, borderRadius: "50%", background: COLORS.teal, color: "#fff", border: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.28)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
+    }, h(Emoji, { size: 22 }, "\u{1F3E0}")) : null
   );
 }
 function SettingsMenuModal({ onClose, isOwner, canManageRoles, onTeam, onRoles, onBranding, onAutomation, onLoginSessions, onGuide, onActivityLog, onTrash, onSignOut, darkMode, onToggleDarkMode }) {
@@ -6052,6 +6055,7 @@ function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
   );
 }
 function PricingHubPage({ orders, onBack, onOpenOrder }) {
+  const [view, setView] = useState("customers");
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
   const byName = {};
@@ -6092,6 +6096,11 @@ function PricingHubPage({ orders, onBack, onOpenOrder }) {
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F4B0} \u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A")
     ),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+      h("button", { onClick: () => setView("customers"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "customers" ? COLORS.teal : "#fff", color: view === "customers" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644"),
+      h("button", { onClick: () => setView("production"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "production" ? COLORS.teal : "#fff", color: view === "production" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639")
+    ),
+    view === "production" ? h(ProductionQuoteHubPage, { orders, onOpenOrder, hideHeader: true }) : h(React.Fragment, null,
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     names.length > 0 ? h(ExportButtons, {
       onExcel: () => {
@@ -6121,6 +6130,7 @@ function PricingHubPage({ orders, onBack, onOpenOrder }) {
         h(Emoji, { size: 13 }, "\u2039")
       );
     }))
+    )
   );
 }
 function PricingPage({ order, onUpdate, canEdit, branding }) {
@@ -6138,6 +6148,25 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
   ];
   const cost = computeOrderCost(order);
   const materials = order.materials || [];
+  const [egpToSarRate, setEgpToSarRate] = useState(null);
+  const [egpRateLoading, setEgpRateLoading] = useState(false);
+  const [egpRateError, setEgpRateError] = useState(false);
+  useEffect(() => {
+    if (cost.productionCostEGP <= 0 || egpToSarRate !== null || egpRateLoading) return;
+    setEgpRateLoading(true);
+    setEgpRateError(false);
+    fetch("https://open.er-api.com/v6/latest/EGP")
+      .then((r) => r.json())
+      .then((data) => {
+        const rate = data && data.rates && data.rates.SAR;
+        if (rate) setEgpToSarRate(rate); else setEgpRateError(true);
+      })
+      .catch(() => setEgpRateError(true))
+      .finally(() => setEgpRateLoading(false));
+  }, [cost.productionCostEGP]);
+  const liveProductionCostEGPInSAR = egpToSarRate ? cost.productionCostEGP * egpToSarRate : cost.productionCostEGPInSAR;
+  const liveTotalCost = cost.materialsCost + cost.productionCostSAR + liveProductionCostEGPInSAR + cost.packingShippingCost;
+  const liveMargin = cost.sellingPrice - liveTotalCost;
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4B0}", title: "\u0633\u0639\u0631 \u0628\u064A\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }),
     h("input", { style: fieldStyle, type: "number", disabled: !canEdit, value: order.sellingPrice || "", onChange: (e) => onUpdate({ sellingPrice: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "0 \u0631\u064A\u0627\u0644" }),
@@ -6175,11 +6204,13 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", gap: 8 } },
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"), h("span", null, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u0631\u064A\u0627\u0644)"), h("span", null, cost.productionCostSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-      cost.productionCostEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: COLORS.muted } }, h("span", null, "\u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u062C\u0646\u064A\u0647)"), h("span", null, cost.productionCostEGP.toLocaleString("en-US"), " \u062C.\u0645 \u2248 ", cost.productionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")) : null,
+      cost.productionCostEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: COLORS.muted } }, h("span", null, "\u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u062C\u0646\u064A\u0647)"), h("span", null, cost.productionCostEGP.toLocaleString("en-US"), " \u062C.\u0645 \u2248 ", egpRateLoading ? "..." : liveProductionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")) : null,
+      cost.productionCostEGP > 0 && egpToSarRate ? h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: -4 } }, "\u0628\u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645: 1 \u062C.\u0645 = " + egpToSarRate.toFixed(4) + " \u0631\u064A\u0627\u0644") : null,
+      cost.productionCostEGP > 0 && egpRateError ? h("div", { style: { fontSize: 11, color: COLORS.danger, marginTop: -4 } }, "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u0639\u0631 \u0627\u0644\u0635\u0631\u0641 \u0627\u0644\u064A\u0648\u0645") : null,
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646"), h("span", null, cost.packingShippingCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginTop: 4 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629"), h("span", null, cost.totalCost.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")),
+      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginTop: 4 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629"), h("span", null, liveTotalCost.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")),
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700 } }, h("span", null, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639"), h("span", null, cost.sellingPrice.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, background: cost.margin >= 0 ? "#E8F0E4" : "#FBEAE6", color: cost.margin >= 0 ? COLORS.green : COLORS.danger, borderRadius: 8, padding: "8px 10px", marginTop: 4 } }, h("span", null, "\u0635\u0627\u0641\u064A \u0627\u0644\u0631\u0628\u062D"), h("span", null, cost.margin.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644"))
+      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, background: liveMargin >= 0 ? "#E8F0E4" : "#FBEAE6", color: liveMargin >= 0 ? COLORS.green : COLORS.danger, borderRadius: 8, padding: "8px 10px", marginTop: 4 } }, h("span", null, "\u0635\u0627\u0641\u064A \u0627\u0644\u0631\u0628\u062D"), h("span", null, liveMargin.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644"))
     ),
     h(SectionHeader, { emoji: "\u{1F4B5}", title: "\u062D\u0627\u0644\u0629 \u0627\u0644\u0633\u062F\u0627\u062F" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 10 } },
@@ -6341,7 +6372,7 @@ function AddQuoteItemModal({ onClose, onSave, existing }) {
     h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({ id: existing ? existing.id : uid(), pieceName: pieceName.trim(), supplierName: supplierName.trim(), price: Number(price), currency, paid: paid === "" ? 0 : Number(paid), notes: notes.trim(), priceFile }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0639\u0646\u0635\u0631")
   );
 }
-function ProductionQuoteHubPage({ orders, onBack, onOpenOrder }) {
+function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState([]);
   const allItems = [];
@@ -6371,7 +6402,7 @@ function ProductionQuoteHubPage({ orders, onBack, onOpenOrder }) {
   };
   const cols = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639", "\u0627\u0644\u0645\u062A\u0628\u0642\u064A"];
   return h("div", null,
-    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+    hideHeader ? null : h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { fontSize: 20, fontWeight: 700 } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621")
     ),
@@ -6468,7 +6499,6 @@ const ALL_TABS = [
   { key: "full-production", label: "الإنتاج الكامل", emoji: "📇" },
   { key: "dashboard", label: "لوحة الإحصائيات", emoji: "📊" },
   { key: "gallery", label: "Gallery", emoji: "🖼️" },
-  { key: "production-quote-hub", label: "تسعير التصنيع لكل العملاء", emoji: "🏭" },
   { key: "assistant", label: "مساعد ذكي", emoji: "🔍" },
   { key: "customer-value", label: "قيمة العملاء", emoji: "💎" },
   { key: "supplier-performance", label: "تقييم الموردين", emoji: "⭐" },
