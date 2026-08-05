@@ -118,6 +118,7 @@ function monthLabelAr(key) {
 }
 const CODED_TYPES = ["\u0642\u0645\u0627\u0634"];
 const AVAILABILITY_OPTIONS = ["\u0645\u062A\u0648\u0641\u0631", "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631", "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628"];
+const FABRIC_PIECE_CATEGORY_OPTIONS = ["", "\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u0623\u062E\u0631\u0649"];
 const STONE_AVAILABILITY_OPTIONS = ["\u0645\u062A\u0648\u0641\u0631", "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0637\u0644\u0628", "\u062C\u0627\u0631\u064A \u062A\u0635\u0646\u064A\u0639\u0647"];
 const STONE_TYPES_WITH_CUSTOM_AVAILABILITY = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646"];
 const PRODUCTION_STAGE_DEFS = [
@@ -1237,6 +1238,14 @@ function App() {
   };
   const updateProductionPiece = (piece) => {
     const prevPiece = productionPieces.find((p) => p.id === piece.id);
+    if (prevPiece && piece.currentLocation && piece.currentLocation !== prevPiece.currentLocation) {
+      const now = (/* @__PURE__ */ new Date()).toISOString();
+      const history = (piece.locationHistory || prevPiece.locationHistory || []).map((h) => h.leftAt ? h : { ...h, leftAt: now });
+      history.push({ location: piece.currentLocation, enteredAt: now, leftAt: null });
+      piece = { ...piece, locationHistory: history };
+    } else if (!piece.locationHistory && piece.currentLocation) {
+      piece = { ...piece, locationHistory: [{ location: piece.currentLocation, enteredAt: (/* @__PURE__ */ new Date()).toISOString(), leftAt: null }] };
+    }
     persistRecordWrite(piecesColRef().doc(piece.id).set(piece));
     logActivity("\u0639\u062F\u0651\u0644 \u0642\u0637\u0639\u0629 \u0644\u0640" + piece.customerName + " (\u0627\u0644\u062D\u0627\u0644\u0629: " + piece.status + ")");
     syncPublicTrackingForCustomer(piece.customerName, productionPieces.map((p) => p.id === piece.id ? piece : p));
@@ -1740,7 +1749,12 @@ function App() {
         onClick: (e) => { e.stopPropagation(); setToast(null); },
         style: { background: "transparent", border: "none", color: "#D8CBB8", fontSize: 16, cursor: "pointer", padding: 0, lineHeight: 1 }
       }, "\u2715")
-    ) : null
+    ) : null,
+    (selectedOrder || homeDrilldown || tab) ? h("button", {
+      onClick: () => { setSelectedId(null); setSelectedOrderSection(null); setHomeDrilldown(null); setTab(null); },
+      title: "\u0627\u0644\u0631\u062C\u0648\u0639 \u0644\u0644\u0631\u0626\u064A\u0633\u064A\u0629",
+      style: { position: "fixed", bottom: 18, insetInlineStart: 18, zIndex: 9998, width: 48, height: 48, borderRadius: "50%", background: COLORS.teal, color: "#fff", border: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.28)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }
+    }, h(Emoji, { size: 22 }, "\u{1F3E0}")) : null
   );
 }
 function SettingsMenuModal({ onClose, isOwner, canManageRoles, canSeeGuide, onTeam, onRoles, onBranding, onAutomation, onLoginSessions, onGuide, onActivityLog, onTrash, onSignOut, darkMode, onToggleDarkMode }) {
@@ -4089,6 +4103,8 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
   const [summarySearch, setSummarySearch] = useState("");
   const [rollupSearch, setRollupSearch] = useState("");
   const [missingSearch, setMissingSearch] = useState("");
+  const [missingCompany, setMissingCompany] = useState("");
+  const [missingType, setMissingType] = useState("");
   const customerGroups = {};
   orders.forEach((o) => {
     const key = (o.clientName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
@@ -4108,7 +4124,12 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
     if (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" || m.availability === "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628" || m.availability === "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0637\u0644\u0628" || m.availability === "\u062C\u0627\u0631\u064A \u062A\u0635\u0646\u064A\u0639\u0647") missingMaterials.push({ customerName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", orderTitle: o.title, deliveryDate: o.deliveryDate, material: m });
   }));
   const missingSearchNorm = normalizeDigits(missingSearch.trim()).toLowerCase();
-  const filteredMissing = !missingSearchNorm ? missingMaterials : missingMaterials.filter((item) => {
+  const missingCompanyOptions = Array.from(new Set(missingMaterials.map((item) => (item.material.companyName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const missingTypeOptions = Array.from(new Set(missingMaterials.map((item) => item.material.type).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const filteredMissing = missingMaterials.filter((item) => {
+    if (missingCompany && (item.material.companyName || "").trim() !== missingCompany) return false;
+    if (missingType && item.material.type !== missingType) return false;
+    if (!missingSearchNorm) return true;
     const hay = normalizeDigits([item.customerName, item.orderTitle, item.material.type, item.material.companyName, item.material.itemCode, item.material.description, item.material.materialName].filter(Boolean).join(" ")).toLowerCase();
     return hay.includes(missingSearchNorm);
   });
@@ -4192,6 +4213,14 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
       h("input", { style: fieldStyle, value: missingSearch, onChange: (e) => setMissingSearch(e.target.value), placeholder: "\u0628\u062D\u062B \u0628\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F..." }),
+      h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+        missingCompanyOptions.length > 0 ? h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: missingCompany, onChange: (e) => setMissingCompany(e.target.value) },
+          h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A"), missingCompanyOptions.map((c) => h("option", { key: c, value: c }, c))
+        ) : null,
+        missingTypeOptions.length > 1 ? h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: missingType, onChange: (e) => setMissingType(e.target.value) },
+          h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0646\u0648\u0627\u0639"), missingTypeOptions.map((t) => h("option", { key: t, value: t }, t))
+        ) : null
+      ),
       h(ExportButtons, { onExcel: exportMissingExcel, onPdf: exportMissingPdf }),
       missingGroups.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, missingGroups.map((g) => h("div", { key: g.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
@@ -4264,6 +4293,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipment
     if (!manuallyFlagged && !distributedToEgypt) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
+      if (!manuallyFlagged && distributedToEgypt && m.pieceCategory && m.pieceCategory !== "\u0643\u0646\u0628") return;
       rows.push({ orderId: o.id, materialId: m.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate, itemCode: m.itemCode, companyName: m.companyName, quantity: m.quantity, unit: m.unit || "\u0645\u062A\u0631", availability: m.availability, fabricShippingStatus: m.fabricShippingStatus, fabricShippingDate: m.fabricShippingDate, fabricArrivalStatus: m.fabricArrivalStatus, fabricArrivalDate: m.fabricArrivalDate });
     });
   });
@@ -6192,6 +6222,7 @@ function AddMaterialModal({ onClose, onSave, existing }) {
   const [orderDate, setOrderDate] = useState((existing && existing.orderDate) || "");
   const [leadTimeDays, setLeadTimeDays] = useState((existing && existing.leadTimeDays) || "");
   const [availability, setAvailability] = useState((existing && existing.availability) || AVAILABILITY_OPTIONS[0]);
+  const [pieceCategory, setPieceCategory] = useState((existing && existing.pieceCategory) || "");
   const [busy, setBusy] = useState(false);
   const isCoded = CODED_TYPES.includes(type);
   const isMeasured = MEASURED_TYPES.includes(type);
@@ -6255,7 +6286,9 @@ function AddMaterialModal({ onClose, onSave, existing }) {
         h("input", { style: fieldStyle, value: itemCode, onChange: (e) => setItemCode(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: F-204" }),
         h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629"),
         h("input", { style: fieldStyle, value: companyName, onChange: (e) => setCompanyName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0627\u0644\u0645\u0648\u0631\u062F\u0629 \u0623\u0648 \u0627\u0643\u062A\u0628\u064A \u0627\u0633\u0645 \u062C\u062F\u064A\u062F", list: "fabric-company-list" }),
-        h("datalist", { id: "fabric-company-list" }, Array.from(new Set(DEFAULT_FABRIC_COMPANIES.concat(KNOWN_NAMES.fabricCompanies))).map((c) => h("option", { key: c, value: c })))
+        h("datalist", { id: "fabric-company-list" }, Array.from(new Set(DEFAULT_FABRIC_COMPANIES.concat(KNOWN_NAMES.fabricCompanies))).map((c) => h("option", { key: c, value: c }))),
+        h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0637\u0639\u0629 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
+        h("select", { style: fieldStyle, value: pieceCategory, onChange: (e) => setPieceCategory(e.target.value) }, FABRIC_PIECE_CATEGORY_OPTIONS.map((c) => h("option", { key: c, value: c }, c || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")))
       ) : h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0635\u0641"),
         h("input", { style: fieldStyle, value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u0648\u0635\u0641 \u0627\u0644\u062E\u0627\u0645\u0629" })
@@ -6286,6 +6319,7 @@ function AddMaterialModal({ onClose, onSave, existing }) {
     unit: isMeasured ? "" : unit,
     itemCode: isCoded ? normalizeDigits(itemCode.trim()) : "",
     companyName: isCoded ? companyName.trim() : "",
+    pieceCategory: isCoded ? pieceCategory : "",
     materialName: isMeasured ? materialName.trim() : "",
     pieces: isMeasured ? [{ id: (firstPiece && firstPiece.id) || uid(), pieceCount, length: pieceLength, width: pieceWidth, unit: pieceUnit, image: pieceImage, drawingFile, edgeFinish: EDGE_FINISH_TYPES.includes(type) ? edgeFinish.trim() : "" }] : null
   }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u062E\u0627\u0645\u0629"));
@@ -6470,7 +6504,77 @@ function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
     })()
   );
 }
+function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
+  const [query, setQuery] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState([]);
+  const allItems = [];
+  orders.forEach((o) => {
+    (o.productionQuoteItems || []).forEach((it) => {
+      allItems.push({ ...it, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", orderId: o.id });
+    });
+  });
+  const supplierNames = Array.from(new Set(allItems.map((it) => (it.supplierName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const toggleSupplier = (name) => setSupplierFilter((cur) => cur.includes(name) ? cur.filter((s) => s !== name) : [...cur, name]);
+  let filtered = supplierFilter.length === 0 ? allItems : allItems.filter((it) => supplierFilter.includes((it.supplierName || "").trim()));
+  if (query.trim()) {
+    const q = query.trim();
+    filtered = filtered.filter((it) => (it.clientName || "").includes(q) || (it.pieceName || "").includes(q) || (it.supplierName || "").includes(q));
+  }
+  const byCustomer = {};
+  filtered.forEach((it) => { (byCustomer[it.clientName] = byCustomer[it.clientName] || []).push(it); });
+  const customerNames = Object.keys(byCustomer).sort((a, b) => a.localeCompare(b, "ar"));
+  const exportRows = () => {
+    const rows = [];
+    customerNames.forEach((name) => {
+      byCustomer[name].forEach((it) => {
+        rows.push([name, it.supplierName || "", it.pieceName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", Number(it.paid) || 0, (Number(it.price) || 0) - (Number(it.paid) || 0)]);
+      });
+    });
+    return rows;
+  };
+  const cols = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0627\u0644\u0645\u062F\u0641\u0648\u0639", "\u0627\u0644\u0645\u062A\u0628\u0642\u064A"];
+  return h("div", null,
+    hideHeader ? null : h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { fontSize: 20, fontWeight: 700 } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621")
+    ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0645\u0648\u0631\u062F \u0623\u0648 \u0627\u0644\u0642\u0637\u0639\u0629...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    supplierNames.length > 1 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
+      h("button", { onClick: () => setSupplierFilter([]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.length === 0 ? COLORS.teal : "#fff", color: supplierFilter.length === 0 ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
+      supplierNames.map((name) => h("button", { key: name, onClick: () => toggleSupplier(name), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.includes(name) ? COLORS.teal : "#fff", color: supplierFilter.includes(name) ? "#fff" : COLORS.teal, cursor: "pointer" } }, name))
+    ) : null,
+    filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u062A\u0635\u0646\u064A\u0639-\u0643\u0644-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", cols, exportRows()) }) : null,
+    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0646\u0627\u0635\u0631 \u062A\u0633\u0639\u064A\u0631 \u062A\u0635\u0646\u064A\u0639 \u0645\u0637\u0627\u0628\u0642\u0629" }) :
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, customerNames.map((name) => {
+      const custItems = byCustomer[name];
+      const orderId = custItems[0].orderId;
+      return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+          h("span", { style: { fontWeight: 700 } }, name),
+          onOpenOrder ? h("button", { onClick: () => onOpenOrder(orderId), style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer" } }, "\u{1F4C2} \u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+        ),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, custItems.map((it, idx) => {
+          const remaining = (Number(it.price) || 0) - (Number(it.paid) || 0);
+          return h("div", { key: idx, style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderTop: idx > 0 ? `1px solid ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } },
+            h("div", null,
+              h("div", { style: { fontWeight: 600, fontSize: 13 } }, it.pieceName || "\u2014"),
+              it.supplierName ? h("div", { style: { fontSize: 12, color: COLORS.muted } }, it.supplierName) : null
+            ),
+            h("div", { style: { textAlign: "end" } },
+              h("div", { style: { fontWeight: 700 } }, Number(it.price || 0).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"),
+              (Number(it.paid) || 0) > 0 || remaining > 0 ? h("div", { style: { fontSize: 11, marginTop: 2 } },
+                h("span", { style: { color: COLORS.green, fontWeight: 700 } }, "\u0645\u062F\u0641\u0648\u0639: ", (Number(it.paid) || 0).toLocaleString("en-US")), " \u00B7 ",
+                h("span", { style: { color: remaining > 0 ? COLORS.danger : COLORS.muted, fontWeight: 700 } }, "\u0645\u062A\u0628\u0642\u064A: ", remaining.toLocaleString("en-US"))
+              ) : null
+            )
+          );
+        }))
+      );
+    }))
+  );
+}
 function PricingHubPage({ orders, onBack, onOpenOrder }) {
+  const [view, setView] = useState("customers");
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
   const byName = {};
@@ -6511,6 +6615,11 @@ function PricingHubPage({ orders, onBack, onOpenOrder }) {
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F4B0} \u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A")
     ),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+      h("button", { onClick: () => setView("customers"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "customers" ? COLORS.teal : "#fff", color: view === "customers" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644"),
+      h("button", { onClick: () => setView("production"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "production" ? COLORS.teal : "#fff", color: view === "production" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639")
+    ),
+    view === "production" ? h(ProductionQuoteHubPage, { orders, onOpenOrder, hideHeader: true }) : h(React.Fragment, null,
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     names.length > 0 ? h(ExportButtons, {
       onExcel: () => {
@@ -6540,6 +6649,7 @@ function PricingHubPage({ orders, onBack, onOpenOrder }) {
         h(Emoji, { size: 13 }, "\u2039")
       );
     }))
+    )
   );
 }
 function PricingPage({ order, onUpdate, canEdit, branding }) {
@@ -6548,6 +6658,25 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
   };
   const cost = computeOrderCost(order);
   const materials = order.materials || [];
+  const [egpToSarRate, setEgpToSarRate] = useState(null);
+  const [egpRateLoading, setEgpRateLoading] = useState(false);
+  const [egpRateError, setEgpRateError] = useState(false);
+  useEffect(() => {
+    if (cost.productionCostEGP <= 0 || egpToSarRate !== null || egpRateLoading) return;
+    setEgpRateLoading(true);
+    setEgpRateError(false);
+    fetch("https://open.er-api.com/v6/latest/EGP")
+      .then((r) => r.json())
+      .then((data) => {
+        const rate = data && data.rates && data.rates.SAR;
+        if (rate) setEgpToSarRate(rate); else setEgpRateError(true);
+      })
+      .catch(() => setEgpRateError(true))
+      .finally(() => setEgpRateLoading(false));
+  }, [cost.productionCostEGP]);
+  const liveProductionCostEGPInSAR = egpToSarRate ? cost.productionCostEGP * egpToSarRate : cost.productionCostEGPInSAR;
+  const liveTotalCost = cost.materialsCost + cost.productionCostSAR + liveProductionCostEGPInSAR + cost.packingShippingCost;
+  const liveMargin = cost.sellingPrice - liveTotalCost;
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4B0}", title: "\u0633\u0639\u0631 \u0628\u064A\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }),
     h("input", { style: fieldStyle, type: "number", disabled: !canEdit, value: order.sellingPrice || "", onChange: (e) => onUpdate({ sellingPrice: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "0 \u0631\u064A\u0627\u0644" }),
@@ -6571,11 +6700,11 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", gap: 8 } },
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"), h("span", null, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u0631\u064A\u0627\u0644)"), h("span", null, cost.productionCostSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-      cost.productionCostEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: COLORS.muted } }, h("span", null, "\u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u062C\u0646\u064A\u0647)"), h("span", null, cost.productionCostEGP.toLocaleString("en-US"), " \u062C.\u0645 \u2248 ", cost.productionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")) : null,
+      cost.productionCostEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5, color: COLORS.muted } }, h("span", null, "\u0627\u0644\u062A\u0635\u0646\u064A\u0639 (\u062C\u0646\u064A\u0647)"), h("span", null, cost.productionCostEGP.toLocaleString("en-US"), " \u062C.\u0645 \u2248 ", liveProductionCostEGPInSAR.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644", egpToSarRate ? h("span", { style: { fontSize: 10, color: COLORS.green, marginInlineStart: 4 } }, "\u{1F7E2} \u0633\u0639\u0631 \u0627\u0644\u064A\u0648\u0645") : egpRateLoading ? h("span", { style: { fontSize: 10, color: COLORS.muted, marginInlineStart: 4 } }, "...") : null)) : null,
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646"), h("span", null, cost.packingShippingCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginTop: 4 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629"), h("span", null, cost.totalCost.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")),
+      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, marginTop: 4 } }, h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0643\u0644\u0641\u0629"), h("span", null, liveTotalCost.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644")),
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700 } }, h("span", null, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639"), h("span", null, cost.sellingPrice.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
-      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, background: cost.margin >= 0 ? "#E8F0E4" : "#FBEAE6", color: cost.margin >= 0 ? COLORS.green : COLORS.danger, borderRadius: 8, padding: "8px 10px", marginTop: 4 } }, h("span", null, "\u0635\u0627\u0641\u064A \u0627\u0644\u0631\u0628\u062D"), h("span", null, cost.margin.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644"))
+      h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, background: liveMargin >= 0 ? "#E8F0E4" : "#FBEAE6", color: liveMargin >= 0 ? COLORS.green : COLORS.danger, borderRadius: 8, padding: "8px 10px", marginTop: 4 } }, h("span", null, "\u0635\u0627\u0641\u064A \u0627\u0644\u0631\u0628\u062D"), h("span", null, liveMargin.toLocaleString("en-US", { maximumFractionDigits: 1 }), " \u0631\u064A\u0627\u0644"))
     ),
     h(SectionHeader, { emoji: "\u{1F4B5}", title: "\u062D\u0627\u0644\u0629 \u0627\u0644\u0633\u062F\u0627\u062F" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 10 } },
@@ -7131,11 +7260,17 @@ function stageGroupForLocation(location, isDammam) {
   return "carpentry";
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
-function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece) {
+function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc) {
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"];
+  const cols = ["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"].concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
+  const fmtDuration = (ms) => {
+    const days = Math.floor(ms / 86400000);
+    if (days >= 1) return days + "\u064A\u0648\u0645";
+    const hours = Math.max(1, Math.floor(ms / 3600000));
+    return hours + " \u0633\u0627\u0639\u0629";
+  };
   return h("div", null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B/\u0627\u0644\u0641\u0644\u062A\u0631" }) : null,
     dateKeys.map((dateKey) => {
@@ -7169,7 +7304,18 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece)
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].start) || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, (p.stages && p.stages[stageDateKey] && p.stages[stageDateKey].end) || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014")
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
+                activeLoc ? (() => {
+                  const stillHere = p.currentLocation === activeLoc;
+                  const entry = stillHere ? (p.locationHistory || []).slice().reverse().find((h) => h.location === activeLoc && !h.leftAt) : null;
+                  const durationMs = entry ? ((/* @__PURE__ */ new Date()) - new Date(entry.enteredAt)) : null;
+                  return [
+                    h("td", { key: "dur", style: { padding: "8px 10px", whiteSpace: "nowrap" } }, durationMs !== null ? fmtDuration(durationMs) : "\u2014"),
+                    h("td", { key: "cur", style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stillHere ?
+                      h("span", { style: { fontSize: 10.5, fontWeight: 700, color: COLORS.green, background: "#E8F0E4", padding: "2px 7px", borderRadius: 999 } }, "\u{1F4CC} \u0644\u0633\u0647 \u0647\u0646\u0627") :
+                      h("span", { style: { fontSize: 10.5, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 7px", borderRadius: 999 } }, "\u27A1\uFE0F " + (p.currentLocation || "\u2014")))
+                  ];
+                })() : null
                 );
               }))
             )
@@ -7263,7 +7409,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
         )
       )
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece),
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser, statusOnly })
     ) : null
@@ -7296,7 +7442,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
     const filtered = pieces.filter((p) => (p.customerName || "").includes(query.trim()));
     return h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece),
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser, statusOnly })
       ) : null
