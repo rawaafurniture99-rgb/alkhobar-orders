@@ -383,12 +383,21 @@ function exportToExcel(filename, sheets) {
     console.error("Excel export failed", e);
   }
 }
+function pdfCellHtml(c) {
+  if (c == null) return "";
+  if (typeof c === "object") {
+    if (c.type === "image" && c.url) return '<img src="' + c.url + '" style="max-width:70px;max-height:70px;object-fit:cover;border-radius:6px;display:block" />';
+    if (c.type === "link" && c.url) return '<a href="' + c.url + '" target="_blank" style="color:#B8873D;text-decoration:underline">' + (c.label || "\u{1F4CE} \u0641\u062A\u062D") + "</a>";
+    return "";
+  }
+  return String(c);
+}
 function printAsPdf(title, headers, rows) {
   const win = window.open("", "_blank");
   if (!win) return;
-  const styles = "body{font-family:'IBM Plex Sans Arabic',Arial,sans-serif;direction:rtl;padding:24px;color:#2A211B}h1{font-size:19px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ddd;padding:6px 8px;text-align:right}th{background:#F1E3C8}@media print{body{padding:0}}";
+  const styles = "body{font-family:'IBM Plex Sans Arabic',Arial,sans-serif;direction:rtl;padding:24px;color:#2A211B}h1{font-size:19px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ddd;padding:6px 8px;text-align:right;vertical-align:middle}th{background:#F1E3C8}a{color:#B8873D}@media print{body{padding:0}}";
   const theadHtml = "<tr>" + headers.map((c) => "<th>" + (c == null ? "" : String(c)) + "</th>").join("") + "</tr>";
-  const tbodyHtml = rows.map((r) => "<tr>" + r.map((c) => "<td>" + (c == null ? "" : String(c)) + "</td>").join("") + "</tr>").join("");
+  const tbodyHtml = rows.map((r) => "<tr>" + r.map((c) => "<td>" + pdfCellHtml(c) + "</td>").join("") + "</tr>").join("");
   win.document.write('<html><head><meta charset="utf-8"><title>' + title + '</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap"><style>' + styles + "</style></head><body><h1>" + title + "</h1><table><thead>" + theadHtml + "</thead><tbody>" + tbodyHtml + "</tbody></table></body></html>");
   win.document.close();
   win.onload = () => { win.print(); };
@@ -823,6 +832,21 @@ function App() {
     if (myEditableTabs) return myEditableTabs.includes(key);
     return defaultCanEditForTab(key);
   };
+  const mySubPermissions = (myMember && myMember.subPermissions) || {};
+  const canSeeSubTab = (mainKey, subKey) => {
+    if (isOwner || hasRole("admin")) return true;
+    const v = mySubPermissions[mainKey] && mySubPermissions[mainKey][subKey];
+    if (v === "none") return false;
+    if (v === "view" || v === "edit") return true;
+    return canSeeTab(mainKey);
+  };
+  const canEditSubTab = (mainKey, subKey) => {
+    if (isOwner || hasRole("admin")) return true;
+    const v = mySubPermissions[mainKey] && mySubPermissions[mainKey][subKey];
+    if (v === "edit") return true;
+    if (v === "view" || v === "none") return false;
+    return canEditTab(mainKey);
+  };
   useEffect(() => { if (tab && !canSeeTab(tab)) setTab(null); }, [tab, myPermittedTabs]);
   useEffect(() => {
     if (!user || !isAllowed) {
@@ -932,7 +956,7 @@ function App() {
           (snap) => { setMyDailyLogs(snap.docs.map((d) => d.data())); },
           (err) => { console.error("my daily logs listener failed", err); }
         );
-        unsubTeamDailyLogs = dailyLogsColRef().where("managerEmail", "==", user.email).onSnapshot(
+        unsubTeamDailyLogs = dailyLogsColRef().where("managerEmails", "array-contains", user.email).onSnapshot(
           (snap) => { setTeamDailyLogs(snap.docs.map((d) => d.data())); },
           (err) => { console.error("team daily logs listener failed", err); }
         );
@@ -1496,7 +1520,7 @@ function App() {
   };
   const addDailyLog = (text, media) => {
     const mine = (access && access.members || []).find((m) => m.email === (user && user.email));
-    const withOwner = { id: uid(), employeeEmail: (user && user.email) || "", employeeName: myDisplayName || "", managerEmail: (mine && mine.managerEmail) || "", text, media: media || [], at: (/* @__PURE__ */ new Date()).toISOString() };
+    const withOwner = { id: uid(), employeeEmail: (user && user.email) || "", employeeName: myDisplayName || "", managerEmails: (mine && mine.managerEmails) || [], text, media: media || [], at: (/* @__PURE__ */ new Date()).toISOString() };
     persistRecordWrite(dailyLogsColRef().doc(withOwner.id).set(withOwner));
   };
   const trackingOrderId = (() => { try { return new URLSearchParams(window.location.search).get("track"); } catch (e) { return null; } })();
@@ -1614,9 +1638,9 @@ function App() {
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, onUpdateOrder: updateOrder }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries") }),
-        tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), emailToName, onNotify: notify, emailsWithTabAccess }),
+        tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
         tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
-        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder })
+        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
         )
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -2830,6 +2854,11 @@ function WarrantyHubPage({ requests, orders, members, emailToName, onAdd, onUpda
     if (!r) { setSelected(null); return null; }
     return h(WarrantyRequestPage, { request: r, members, emailToName, onUpdate: (patch) => onUpdate(r.id, patch), onBack: () => setSelected(null) });
   }
+  const exportPdf = () => {
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0639\u0637\u0644", "\u0627\u0644\u0623\u0648\u0644\u0648\u064A\u0629", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0645\u0633\u0624\u0648\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+  const dataRows = filtered.map((r) => [r.clientName || "", r.issueType || "", r.priority || "\u0639\u0627\u062F\u064A", r.description || "", r.status || "", (emailToName && emailToName[r.assignedToEmail]) || r.assignedToEmail || "\u2014", (r.photos && r.photos[0]) ? { type: "image", url: r.photos[0].dataUrl } : ""]);
+    printAsPdf("\u062E\u062F\u0645\u0629 \u0645\u0627 \u0628\u0639\u062F \u0627\u0644\u0628\u064A\u0639", headers, dataRows);
+  };
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -2838,6 +2867,7 @@ function WarrantyHubPage({ requests, orders, members, emailToName, onAdd, onUpda
     h("div", { style: { padding: 16 } },
       canAdd ? h("button", { onClick: () => setShowAdd(true), style: { ...primaryBtn(false), marginBottom: 14 } }, "\u2795 \u0628\u0644\u0627\u063A \u062C\u062F\u064A\u062F") : null,
       requests.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+      filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062E\u062F\u0645\u0629-\u0645\u0627-\u0628\u0639\u062F-\u0627\u0644\u0628\u064A\u0639", [{ name: "\u0627\u0644\u0628\u0644\u0627\u063A\u0627\u062A", rows: [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0639\u0637\u0644", "\u0627\u0644\u0623\u0648\u0644\u0648\u064A\u0629", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0645\u0633\u0624\u0648\u0644"]].concat(filtered.map((r) => [r.clientName || "", r.issueType || "", r.priority || "\u0639\u0627\u062F\u064A", r.description || "", r.status || "", (emailToName && emailToName[r.assignedToEmail]) || r.assignedToEmail || "\u2014"])) }]), onPdf: exportPdf }) : null,
       filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0628\u0644\u0627\u063A\u0627\u062A \u0644\u0633\u0629" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 10, marginTop: 10 } }, filtered.map((r) => {
         const st = statusStyle(r.status);
@@ -3565,7 +3595,7 @@ function UniversalSearchPage({ orders, pieces, onBack, onOpenOrder, onOpenCustom
       }
     });
     active.forEach((o) => (o.materials || []).forEach((m) => {
-      const hay = normalizeDigits([m.companyName, m.itemCode, m.materialName, m.description].filter(Boolean).join(" ")).toLowerCase();
+      const hay = normalizeDigits([m.companyName, m.itemCode, m.materialName, m.description, o.clientName].filter(Boolean).join(" ")).toLowerCase();
       if (hay.includes(q)) results.push({ type: "\u062E\u0627\u0645\u0629", title: (m.materialName || m.description || m.companyName || "\u2014"), subtitle: (o.clientName || "\u2014") + " \u00B7 " + (m.type || "\u2014"), onClick: () => onOpenOrder(o.id) });
     }));
     pieces.forEach((p) => {
@@ -4010,6 +4040,36 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
     onUpdate(o.id, patch);
   };
   const drawingsOrder = drawingsFor ? orders.find((o) => o.id === drawingsFor) : null;
+  const exportPdf = () => {
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u0627\u0644\u0631\u0633\u0645"];
+    const dataRows = [];
+    filtered.forEach((o) => {
+      const orderPieces = piecesFor(o);
+      const firstDrawing = (o.technicalOfficeFiles || [])[0];
+      const drawingCell = firstDrawing ? (firstDrawing.kind === "image" ? { type: "image", url: firstDrawing.dataUrl } : { type: "link", url: firstDrawing.dataUrl, label: "\u{1F4CE} \u0641\u062A\u062D" }) : "\u2014";
+      if (orderPieces.length === 0) {
+        dataRows.push([o.clientName || "\u2014", o.deliveryDate || "\u2014", o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623", "\u2014", "\u2014", "\u2014", "\u2014", o.technicalOfficeMeters || "\u2014", drawingCell]);
+      } else {
+        orderPieces.forEach((p, idx) => {
+          dataRows.push([o.clientName || "\u2014", o.deliveryDate || "\u2014", o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623", p.pieceType || "\u2014", p.description || "\u2014", p.pieceCount || 1, p.size || "\u2014", p.technicalOfficeMeters || "\u2014", idx === 0 ? drawingCell : ""]);
+        });
+      }
+    });
+    printAsPdf("\u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", headers, dataRows);
+  };
+  const exportExcel = () => {
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u0639\u062F\u062F \u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0631\u0633\u0645"]];
+    filtered.forEach((o) => {
+      const orderPieces = piecesFor(o);
+      const filesCount = (o.technicalOfficeFiles || []).length;
+      if (orderPieces.length === 0) {
+        rows.push([o.clientName || "\u2014", o.deliveryDate || "\u2014", o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623", "\u2014", "\u2014", "\u2014", "\u2014", o.technicalOfficeMeters || "\u2014", filesCount]);
+      } else {
+        orderPieces.forEach((p) => rows.push([o.clientName || "\u2014", o.deliveryDate || "\u2014", o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623", p.pieceType || "\u2014", p.description || "\u2014", p.pieceCount || 1, p.size || "\u2014", p.technicalOfficeMeters || "\u2014", filesCount]));
+      }
+    });
+    exportToExcel("\u0627\u0644\u0645\u0643\u062A\u0628-\u0627\u0644\u0641\u0646\u064A", [{ name: "\u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", rows }]);
+  };
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -4022,6 +4082,7 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
         h("button", { onClick: () => setTab("finished"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "finished" ? COLORS.green : COLORS.border}`, background: tab === "finished" ? "#E8F0E4" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 (" + finishedCount + ")")
       ),
       scoped.length > 0 ? h("input", { style: { ...fieldStyle, marginBottom: 12 }, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+      filtered.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
       filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0647\u0646\u0627" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, filtered.map((o) => {
         const orderPieces = piecesFor(o);
@@ -4819,7 +4880,7 @@ function TopRequestedMaterialsPage({ orders }) {
     )
   );
 }
-function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
+function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub }) {
   const [view, setView] = useState(null);
   const [summarySearch, setSummarySearch] = useState("");
   const [rollupSearch, setRollupSearch] = useState("");
@@ -4899,7 +4960,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
       { key: "missing", label: "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628", emoji: "\u26A0\uFE0F", count: missingMaterials.length }
     ].map((it) => h("div", {
       key: it.key,
-      onClick: () => setView(it.key),
+      onClick: () => { if (!canSeeSub || canSeeSub(it.key)) setView(it.key); },
       style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" }
     },
       h("span", { style: { fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 } }, h(Emoji, { size: 16 }, it.emoji), it.label),
@@ -4930,7 +4991,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder }) {
     ) : view === "byOrder" ? h(React.Fragment, null,
       h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0639\u0645\u064A\u0644 \u0648\u0627\u062E\u062A\u0627\u0631\u064A \u0623\u0648\u0631\u062F\u0631\u0647 \u2014 \u0647\u062A\u0648\u0635\u0644\u064A \u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0635\u0641\u062D\u0629 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0643\u0644 \u062A\u0641\u0627\u0635\u064A\u0644\u0647\u0627 (\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628\u060C \u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F\u060C \u0627\u0644\u0635\u0648\u0631\u0629\u060C \u0627\u0644\u0645\u0644\u0641\u0627\u062A) \u2014 \u062A\u0642\u0631\u064A\u0631 \u0645\u0641\u0635\u0644 \u0644\u0643\u0644 \u0623\u0648\u0631\u062F\u0631 \u0644\u0648\u062D\u062F\u0647"),
       h(CustomersList, { orders, onOpen: onOpenOrder })
-    ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder }) : view === "missing" ? (
+    ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder: (!canEditSub || canEditSub("byType")) ? onUpdateOrder : null }) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
       h("input", { style: fieldStyle, value: missingSearch, onChange: (e) => setMissingSearch(e.target.value), placeholder: "\u0628\u062D\u062B \u0628\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F..." }),
@@ -7174,13 +7235,25 @@ function CustomerGalleryPage({ order, onUpdateOrder, onBack }) {
     const next = (gallery[key] || []).filter((_, i) => i !== idx);
     onUpdateOrder({ gallery: { ...gallery, [key]: next } });
   };
+  const exportPdf = () => {
+    const headers = ["\u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+    const dataRows = [];
+    GALLERY_CATEGORIES.forEach((cat) => {
+      (gallery[cat.key] || []).forEach((f) => {
+        dataRows.push([cat.label, f.kind === "video" ? { type: "link", url: f.dataUrl, label: "\u{1F3A5} \u0641\u062A\u062D \u0627\u0644\u0641\u064A\u062F\u064A\u0648" } : { type: "image", url: f.dataUrl }]);
+      });
+    });
+    printAsPdf("\u0635\u0648\u0631 " + (order.clientName || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
+  };
+  const hasAnyMedia = GALLERY_CATEGORIES.some((cat) => (gallery[cat.key] || []).length > 0);
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", null,
         h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, order.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
         h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, order.deliveryDate ? "\u062A\u0633\u0644\u064A\u0645: " + order.deliveryDate : "")
-      )
+      ),
+      hasAnyMedia ? h("button", { onClick: exportPdf, style: { marginRight: "auto", fontSize: 12, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.teal}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u{1F5A8}\uFE0F PDF") : null
     ),
     GALLERY_CATEGORIES.map((cat) => h("div", { key: cat.key, style: { marginBottom: 22 } },
       h(SectionHeader, { emoji: cat.emoji, title: cat.label }),
@@ -7263,7 +7336,9 @@ function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
     return { ...it, showPacking };
   });
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F", "\u0646\u0648\u0639 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0643\u0644\u0641\u0629", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646"];
+  const pdfCols = cols.concat(["\u0627\u0644\u0645\u0644\u0641"]);
   const exportRows = () => rowsData.map((it) => [it.clientName, it.pieceCount || "", it.pieceName || "", it.size || "", it.supplierName || "", (it.manufacturingType || []).join("\u060C "), (Number(it.price) || 0) + " " + ((it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), it.showPacking ? it.packingShippingCost : ""]);
+  const exportRowsPdf = () => rowsData.map((it) => [it.clientName, it.pieceCount || "", it.pieceName || "", it.size || "", it.supplierName || "", (it.manufacturingType || []).join("\u060C "), (Number(it.price) || 0) + " " + ((it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), it.showPacking ? it.packingShippingCost : "", it.priceFile ? { type: "link", url: it.priceFile.dataUrl, label: "\u{1F4CE} \u0641\u062A\u062D" } : ""]);
   return h("div", null,
     hideHeader ? null : h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -7274,7 +7349,7 @@ function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
       h("button", { onClick: () => setSupplierFilter([]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.length === 0 ? COLORS.teal : "#fff", color: supplierFilter.length === 0 ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
       supplierNames.map((name) => h("button", { key: name, onClick: () => toggleSupplier(name), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.includes(name) ? COLORS.teal : "#fff", color: supplierFilter.includes(name) ? "#fff" : COLORS.teal, cursor: "pointer" } }, name))
     ) : null,
-    filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u062A\u0635\u0646\u064A\u0639-\u0643\u0644-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", cols, exportRows()) }) : null,
+    filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u062A\u0635\u0646\u064A\u0639-\u0643\u0644-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", pdfCols, exportRowsPdf()) }) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0646\u0627\u0635\u0631 \u062A\u0633\u0639\u064A\u0631 \u062A\u0635\u0646\u064A\u0639 \u0645\u0637\u0627\u0628\u0642\u0629" }) :
     h("div", { style: { overflowX: "auto" } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 900 } },
@@ -7294,7 +7369,7 @@ function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
   );
 }
 function PricingHubPage({ orders, onBack, onOpenOrder }) {
-  const [view, setView] = useState("customers");
+  const [view, setView] = useState(null);
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
   const byName = {};
@@ -7477,10 +7552,10 @@ function ProductionQuotePage({ order, onUpdate, canEdit }) {
     exportToExcel(`\u062A\u0633\u0639\u064A\u0631-${order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"}`, [{ name: "\u0627\u0644\u062A\u0633\u0639\u064A\u0631", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0646\u0648\u0639 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
-    const dataRows = items.map((it) => [it.pieceName || "", it.pieceCount || "", it.size || "", (it.manufacturingType || []).join("\u060C "), it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || ""]);
-    if (totalSAR > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", "", "", "", totalSAR, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", ""]);
-    if (totalEGP > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", "", "", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", ""]);
+    const headers = ["\u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0646\u0648\u0639 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0639\u0645\u0644\u0629", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A", "\u0627\u0644\u0645\u0644\u0641"];
+    const dataRows = items.map((it) => [it.pieceName || "", it.pieceCount || "", it.size || "", (it.manufacturingType || []).join("\u060C "), it.supplierName || "", Number(it.price) || 0, (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A" : "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", it.notes || "", it.priceFile ? { type: "link", url: it.priceFile.dataUrl, label: "\u{1F4CE} \u0641\u062A\u062D" } : ""]);
+    if (totalSAR > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", "", "", "", totalSAR, "\u0631\u064A\u0627\u0644 \u0633\u0639\u0648\u062F\u064A", "", ""]);
+    if (totalEGP > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", "", "", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", "", ""]);
     printAsPdf("\u062A\u0633\u0639\u064A\u0631 " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
   };
   return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), (it.pieceCount || it.size || (it.manufacturingType && it.manufacturingType.length)) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: COLORS.gold, marginTop: 2 } }, [it.pieceCount ? "\u0639\u062F\u062F: " + it.pieceCount : "", it.size ? "\u0645\u0642\u0627\u0633: " + it.size : "", it.manufacturingType && it.manufacturingType.length ? it.manufacturingType.join("\u060C ") : ""].filter(Boolean).join(" \u00B7 ")), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, totalSAR > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")), totalEGP > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645"))), canEdit && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
@@ -7560,7 +7635,17 @@ const DEFAULT_PRODUCTION_SUPPLIERS = {
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
-const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط" };
+const SUB_TABS_CONFIG = {
+  "materials-hub": [
+    { key: "byCustomer", label: "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644" },
+    { key: "byOrder", label: "\u062D\u0633\u0628 \u0627\u0644\u0623\u0648\u0631\u062F\u0631" },
+    { key: "byType", label: "\u062D\u0633\u0628 \u0627\u0644\u0646\u0648\u0639" },
+    { key: "topRequested", label: "\u0627\u0644\u0623\u0643\u062B\u0631 \u0637\u0644\u0628\u064B\u0627" },
+    { key: "rollup", label: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A" },
+    { key: "missing", label: "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628" }
+  ]
+};
 const ALL_TABS = [
   { key: "review", label: "المراجعة", emoji: "\u{1F9FE}" },
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
@@ -8208,8 +8293,19 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
 
   if (query.trim()) {
     const filtered = pieces.filter((p) => (p.customerName || "").includes(query.trim()));
+    const searchExportPdf = () => {
+      const headers = ["\u0627\u0644\u062A\u0627\u0631\u064A\u062E", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0635\u0648\u0631\u0629"];
+      const dataRows = filtered.map((p) => [p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E", p.status || "", p.customerName || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", p.image && p.image.dataUrl ? { type: "image", url: p.image.dataUrl } : "\u2014"]);
+      printAsPdf(activeLoc + " \u2014 \u0628\u062D\u062B", headers, dataRows);
+    };
+    const searchExportExcel = () => {
+      const rows = [["\u0627\u0644\u062A\u0627\u0631\u064A\u062E", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0635\u0648\u0631\u0629"]];
+      filtered.forEach((p) => rows.push([p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E", p.status || "", p.customerName || "", p.pieceType || "", p.pieceCount || "", p.description || "", p.size || "", p.image && p.image.dataUrl ? "\u0645\u0631\u0641\u0642\u0629" : ""]));
+      exportToExcel(activeLoc + "-\u0628\u062D\u062B", [{ name: activeLoc.slice(0, 28), rows }]);
+    };
     return h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      filtered.length > 0 ? h(ExportButtons, { onExcel: searchExportExcel, onPdf: searchExportPdf }) : null,
       (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
         h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
@@ -8457,18 +8553,18 @@ function FullProductionPage({ pieces }) {
     ));
   }
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
+    const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
+      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
+    const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
+      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
@@ -8593,17 +8689,19 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
         isExpanded ? h("div", { style: { marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.bg}` } },
           h("input", { style: { ...fieldStyle, marginBottom: 8 }, value: m.name || "", onChange: (e) => updateMember(m.email, { name: e.target.value }), placeholder: "اسم المستخدم (يظهر بدل الإيميل في التقارير)" }),
           !isOwnerRow ? h(React.Fragment, null,
-            h("label", { style: labelStyle }, "المدير المباشر (اختياري — لمتابعة الموظفين)"),
-            h("select", { style: { ...fieldStyle, marginBottom: 10 }, value: m.managerEmail || "", onChange: (e) => updateMember(m.email, { managerEmail: e.target.value }) },
-              h("option", { value: "" }, "بدون تحديد"),
-              members.filter((x) => x.email !== m.email).map((x) => h("option", { key: x.email, value: x.email }, x.name || x.email))
-            )
+            h("label", { style: labelStyle }, "المدراء المباشرون (اختياري — تقدري تحددي أكتر من مدير)"),
+            h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, members.filter((x) => x.email !== m.email).map((x) => {
+              const isMyManager = (m.managerEmails || []).includes(x.email);
+              return h("label", { key: x.email, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${isMyManager ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "4px 9px", cursor: "pointer", background: isMyManager ? COLORS.goldSoft : "#fff" } },
+                h("input", { type: "checkbox", checked: isMyManager, onChange: () => updateMember(m.email, { managerEmails: isMyManager ? (m.managerEmails || []).filter((e) => e !== x.email) : [...(m.managerEmails || []), x.email] }), style: { display: "none" } }), x.name || x.email
+              );
+            }))
           ) : null,
           h("label", { style: labelStyle }, "الموظفون التابعون له كمدير (اختياري — تقدري تحددي أكتر من موظف دفعة واحدة)"),
           h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, members.filter((x) => x.email !== m.email).map((x) => {
-            const reportsToMe = x.managerEmail === m.email;
+            const reportsToMe = (x.managerEmails || []).includes(m.email);
             return h("label", { key: x.email, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${reportsToMe ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "4px 9px", cursor: "pointer", background: reportsToMe ? COLORS.goldSoft : "#fff" } },
-              h("input", { type: "checkbox", checked: reportsToMe, onChange: () => updateMember(x.email, { managerEmail: reportsToMe ? "" : m.email }), style: { display: "none" } }), x.name || x.email
+              h("input", { type: "checkbox", checked: reportsToMe, onChange: () => updateMember(x.email, { managerEmails: reportsToMe ? (x.managerEmails || []).filter((e) => e !== m.email) : [...(x.managerEmails || []), m.email] }), style: { display: "none" } }), x.name || x.email
             );
           })),
           h("div", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted, marginBottom: 6 } }, "الأدوار"),
@@ -8630,15 +8728,34 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
             h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, ALL_TABS.map((t) => {
               const permitted = memberTabs(m).includes(t.key);
               const editableSet = m.editableTabs !== undefined ? m.editableTabs.includes(t.key) : null;
-              return h("div", { key: t.key, style: { display: "flex", alignItems: "center", gap: 2 } },
-                h("label", { style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${permitted ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: permitted ? COLORS.goldSoft : "#fff" } },
-                  h("input", { type: "checkbox", checked: permitted, onChange: () => toggleTab(m.email, t.key), style: { display: "none" } }), t.emoji + " " + t.label
+              return h("div", { key: t.key, style: { display: "flex", flexDirection: "column", gap: 4 } },
+                h("div", { style: { display: "flex", alignItems: "center", gap: 2 } },
+                  h("label", { style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${permitted ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: permitted ? COLORS.goldSoft : "#fff" } },
+                    h("input", { type: "checkbox", checked: permitted, onChange: () => toggleTab(m.email, t.key), style: { display: "none" } }), t.emoji + " " + t.label
+                  ),
+                  permitted ? h("button", {
+                    onClick: () => toggleEditTab(m.email, t.key),
+                    title: editableSet === null ? "\u0627\u0641\u062A\u0631\u0627\u0636\u064A (\u062D\u0633\u0628 \u0627\u0644\u062F\u0648\u0631)" : editableSet ? "\u064A\u0642\u062F\u0631 \u064A\u0639\u062F\u0651\u0644 \u2014 \u0627\u0636\u063A\u0637\u064A \u0644\u062A\u062D\u0648\u064A\u0644\u0647 \u0645\u0634\u0627\u0647\u062F\u0629 \u0641\u0642\u0637" : "\u0645\u0634\u0627\u0647\u062F\u0629 \u0641\u0642\u0637 \u2014 \u0627\u0636\u063A\u0637\u064A \u0644\u0644\u0633\u0645\u0627\u062D \u0628\u0627\u0644\u062A\u0639\u062F\u064A\u0644",
+                    style: { fontSize: 10.5, border: "none", borderRadius: 999, padding: "3px 6px", cursor: "pointer", background: editableSet === null ? "#F1F1F1" : editableSet ? "#E8F0E4" : "#FBEAE6", color: editableSet === null ? COLORS.muted : editableSet ? COLORS.green : COLORS.danger, fontWeight: 700 }
+                  }, editableSet === null ? "\u2699\uFE0F" : editableSet ? "\u270F\uFE0F" : "\u{1F441}\uFE0F") : null
                 ),
-                permitted ? h("button", {
-                  onClick: () => toggleEditTab(m.email, t.key),
-                  title: editableSet === null ? "\u0627\u0641\u062A\u0631\u0627\u0636\u064A (\u062D\u0633\u0628 \u0627\u0644\u062F\u0648\u0631)" : editableSet ? "\u064A\u0642\u062F\u0631 \u064A\u0639\u062F\u0651\u0644 \u2014 \u0627\u0636\u063A\u0637\u064A \u0644\u062A\u062D\u0648\u064A\u0644\u0647 \u0645\u0634\u0627\u0647\u062F\u0629 \u0641\u0642\u0637" : "\u0645\u0634\u0627\u0647\u062F\u0629 \u0641\u0642\u0637 \u2014 \u0627\u0636\u063A\u0637\u064A \u0644\u0644\u0633\u0645\u0627\u062D \u0628\u0627\u0644\u062A\u0639\u062F\u064A\u0644",
-                  style: { fontSize: 10.5, border: "none", borderRadius: 999, padding: "3px 6px", cursor: "pointer", background: editableSet === null ? "#F1F1F1" : editableSet ? "#E8F0E4" : "#FBEAE6", color: editableSet === null ? COLORS.muted : editableSet ? COLORS.green : COLORS.danger, fontWeight: 700 }
-                }, editableSet === null ? "\u2699\uFE0F" : editableSet ? "\u270F\uFE0F" : "\u{1F441}\uFE0F") : null
+                permitted && SUB_TABS_CONFIG[t.key] ? h("div", { style: { display: "flex", flexDirection: "column", gap: 3, paddingInlineStart: 14, borderInlineStart: `2px solid ${COLORS.border}` } }, SUB_TABS_CONFIG[t.key].map((sub) => {
+                  const current = (m.subPermissions && m.subPermissions[t.key] && m.subPermissions[t.key][sub.key]) || "";
+                  const setSub = (val) => {
+                    const nextForTab = { ...(m.subPermissions && m.subPermissions[t.key]) };
+                    if (val) nextForTab[sub.key] = val; else delete nextForTab[sub.key];
+                    updateMember(m.email, { subPermissions: { ...(m.subPermissions || {}), [t.key]: nextForTab } });
+                  };
+                  return h("div", { key: sub.key, style: { display: "flex", alignItems: "center", gap: 6 } },
+                    h("span", { style: { fontSize: 10.5, color: COLORS.muted, minWidth: 70 } }, sub.label),
+                    h("select", { value: current, onChange: (e) => setSub(e.target.value), style: { fontSize: 10, padding: "2px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, background: "#fff", color: COLORS.ink } },
+                      h("option", { value: "" }, "\u0648\u0631\u0627\u062B\u0629 (\u062D\u0633\u0628 \u0627\u0644\u0642\u0633\u0645)"),
+                      h("option", { value: "edit" }, "\u2705 \u062A\u0639\u062F\u064A\u0644"),
+                      h("option", { value: "view" }, "\u{1F441}\uFE0F \u0645\u0634\u0627\u0647\u062F\u0629 \u0641\u0642\u0637"),
+                      h("option", { value: "none" }, "\u26D4 \u0628\u062F\u0648\u0646 \u0638\u0647\u0648\u0631")
+                    )
+                  );
+                })) : null
               );
             }))
           )
