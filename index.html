@@ -3909,10 +3909,11 @@ function isTechnicalOfficeCategory(category) {
   const c = category || "";
   return c.includes("\u062E\u0634\u0628\u064A\u0627\u062A") || c.includes("\u062C\u064A\u0628\u0648\u0631\u062F") || c.includes("\u0645\u0633\u0637\u062D\u0627\u062A");
 }
-function TechnicalOfficeRecordModal({ order, onUpdate, onClose }) {
+function TechnicalOfficeRecordModal({ order, pieces, onUpdate, onClose }) {
   const [busy, setBusy] = useState(false);
   const [meters, setMeters] = useState(order.technicalOfficeMeters || "");
   const files = order.technicalOfficeFiles || [];
+  const orderPieces = (pieces || []).filter((p) => p.customerName === order.clientName);
   const addFiles = async (fileList) => {
     if (!fileList || fileList.length === 0) return;
     setBusy(true);
@@ -3934,6 +3935,20 @@ function TechnicalOfficeRecordModal({ order, onUpdate, onClose }) {
   };
   return h(Modal, { title: "\u{1F4D0} \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u2014 " + (order.clientName || ""), onClose },
     h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 14 } }, (order.title || "") + " \u2014 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (order.deliveryDate || "\u2014")),
+    orderPieces.length > 0 ? h("div", { style: { marginBottom: 14 } },
+      h("div", { style: { fontSize: 12, fontWeight: 700, color: COLORS.muted, marginBottom: 6 } }, "\u{1F4E6} \u0627\u0644\u0642\u0637\u0639 (" + orderPieces.length + ")"),
+      h("div", { style: { overflowX: "auto", border: `1px solid ${COLORS.border}`, borderRadius: 10 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 320 } },
+          h("thead", null, h("tr", null, ["\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0639\u062F\u062F"].map((c) => h("th", { key: c, style: { padding: "6px 8px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c)))),
+          h("tbody", null, orderPieces.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+            h("td", { style: { padding: "6px 8px" } }, p.description || "\u2014"),
+            h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
+            h("td", { style: { padding: "6px 8px", textAlign: "center" } }, p.pieceCount || 1)
+          )))
+        )
+      )
+    ) : null,
     h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       h("input", { style: { ...fieldStyle, flex: 1, marginBottom: 0 }, type: "number", value: meters, onChange: (e) => setMeters(e.target.value), placeholder: "0" }),
@@ -3963,10 +3978,17 @@ function TechnicalOfficeRecordModal({ order, onUpdate, onClose }) {
 function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onBack }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
+  const [tab, setTab] = useState("active");
   const scoped = orders.filter((o) => o.approved && o.distributionHandled && isTechnicalOfficeCategory(o.category));
-  const filtered = scoped.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.deliveryDate || "9999").localeCompare(b.deliveryDate || "9999"));
+  const isFinished = (o) => o.technicalOfficeStatus === "\u062A\u0645" || o.technicalOfficeStatus === "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C";
+  const byTab = scoped.filter((o) => tab === "active" ? !isFinished(o) : isFinished(o));
+  const filtered = byTab.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.deliveryDate || "9999").localeCompare(b.deliveryDate || "9999"));
   const selectedOrder = selected ? orders.find((o) => o.id === selected) : null;
-  const pieceCountFor = (o) => pieces.filter((p) => p.customerName === o.clientName).length;
+  const piecesFor = (o) => pieces.filter((p) => p.customerName === o.clientName);
+  const pieceCountFor = (o) => piecesFor(o).length;
+  const sizesFor = (o) => { const sizes = piecesFor(o).map((p) => p.size).filter(Boolean); return sizes.length ? Array.from(new Set(sizes)).join("\u060C ") : "\u2014"; };
+  const activeCount = scoped.filter((o) => !isFinished(o)).length;
+  const finishedCount = scoped.filter((o) => isFinished(o)).length;
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -3974,12 +3996,16 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onBack }) {
     ),
     h("p", { style: { fontSize: 12, color: COLORS.muted, padding: "10px 16px 0" } }, "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u062E\u0634\u0628\u064A\u0627\u062A/\u0627\u0644\u062C\u064A\u0628\u0648\u0631\u062F/\u0627\u0644\u0645\u0633\u0637\u062D\u0627\u062A \u0627\u0644\u0644\u064A \u0639\u062F\u062A التوزيع"),
     h("div", { style: { padding: 16 } },
+      h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+        h("button", { onClick: () => { setTab("active"); setSelected(null); }, style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "active" ? COLORS.gold : COLORS.border}`, background: tab === "active" ? COLORS.goldSoft : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F528} \u062C\u0627\u0631\u064A (" + activeCount + ")"),
+        h("button", { onClick: () => { setTab("finished"); setSelected(null); }, style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "finished" ? COLORS.green : COLORS.border}`, background: tab === "finished" ? "#E8F0E4" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 (" + finishedCount + ")")
+      ),
       scoped.length > 0 ? h("input", { style: { ...fieldStyle, marginBottom: 12 }, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
-      filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062F\u0644\u0648\u0642\u062A\u064A" }) :
+      filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0647\u0646\u0627" }) :
       h("div", { style: { overflowX: "auto" } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 780 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 880 } },
           h("thead", null, h("tr", null,
-            ["\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0628\u062F\u0621", "\u0627\u0646\u062A\u0647\u0649", "\u0631\u0633\u0648\u0645\u0627\u062A"].map((c) => h("th", { key: c, style: { padding: "8px 9px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c))
+            ["\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0628\u062F\u0621", "\u0627\u0646\u062A\u0647\u0649", "\u0631\u0633\u0648\u0645\u0627\u062A"].map((c) => h("th", { key: c, style: { padding: "8px 9px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c))
           )),
           h("tbody", null, filtered.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
             h("td", { style: { padding: "8px 9px", whiteSpace: "nowrap" }, onClick: (e) => e.stopPropagation() }, o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0641\u062A\u062D") : h("span", { style: { color: COLORS.muted } }, "\u2014")),
@@ -3987,6 +4013,7 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onBack }) {
             h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", whiteSpace: "nowrap", cursor: "pointer" } }, o.deliveryDate || "\u2014"),
             h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", cursor: "pointer" } }, o.title || "\u2014"),
             h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", whiteSpace: "nowrap", cursor: "pointer", textAlign: "center" } }, pieceCountFor(o)),
+            h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", maxWidth: 160, whiteSpace: "normal", cursor: "pointer" } }, sizesFor(o)),
             h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", whiteSpace: "nowrap", cursor: "pointer", textAlign: "center" } }, o.technicalOfficeMeters || "\u2014"),
             h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", cursor: "pointer" } }, h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap", color: o.technicalOfficeStatus === "\u062A\u0645" ? COLORS.green : o.technicalOfficeStatus === "\u062C\u0627\u0631\u064A" ? COLORS.gold : o.technicalOfficeStatus === "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C" ? COLORS.muted : COLORS.muted, background: o.technicalOfficeStatus === "\u062A\u0645" ? "#E8F0E4" : o.technicalOfficeStatus === "\u062C\u0627\u0631\u064A" ? COLORS.goldSoft : o.technicalOfficeStatus === "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C" ? COLORS.bg : COLORS.bg } }, o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623")),
             h("td", { onClick: () => setSelected(o.id), style: { padding: "8px 9px", whiteSpace: "nowrap", cursor: "pointer" } }, o.technicalOfficeStartDate || "\u2014"),
@@ -3996,7 +4023,7 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onBack }) {
         )
       )
     ),
-    selectedOrder ? h(TechnicalOfficeRecordModal, { order: selectedOrder, onUpdate: (patch) => onUpdate(selectedOrder.id, patch), onClose: () => setSelected(null) }) : null
+    selectedOrder ? h(TechnicalOfficeRecordModal, { order: selectedOrder, pieces, onUpdate: (patch) => onUpdate(selectedOrder.id, patch), onClose: () => setSelected(null) }) : null
   );
 }
 function RevisionNoteModal({ order, onClose, onSave }) {
