@@ -2513,9 +2513,9 @@ function BiometricLockScreen({ onUnlock }) {
     setBusy(false);
   };
   useEffect(() => { tryUnlock(); }, []);
-  return h("div", { dir: "rtl", style: { ...body, minHeight: "100vh", background: WARM.deep, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 24 } },
+  return h("div", { dir: "rtl", style: { ...body, minHeight: "100vh", background: "#3E2417", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 24 } },
     h(Emoji, { size: 52 }, "\u{1F510}"),
-    h("div", { style: { color: WARM.cream, fontSize: 15, fontWeight: 700 } }, "\u0627\u0644\u062A\u0637\u0628\u064A\u0642 \u0645\u0642\u0641\u0648\u0644 \u0628\u0627\u0644\u0628\u0635\u0645\u0629/\u0627\u0644\u0648\u062C\u0647"),
+    h("div", { style: { color: "#FBEFDD", fontSize: 15, fontWeight: 700 } }, "\u0627\u0644\u062A\u0637\u0628\u064A\u0642 \u0645\u0642\u0641\u0648\u0644 \u0628\u0627\u0644\u0628\u0635\u0645\u0629/\u0627\u0644\u0648\u062C\u0647"),
     error ? h("div", { style: { color: "#E8A99A", fontSize: 12.5, textAlign: "center" } }, "\u0627\u0644\u062A\u062D\u0642\u0642 \u0641\u0634\u0644 \u0623\u0648 \u0627\u062A\u0644\u063A\u0649 \u2014 \u062C\u0631\u0651\u0628\u064A \u062A\u0627\u0646\u064A") : null,
     h("button", { onClick: tryUnlock, disabled: busy, style: { background: COLORS.gold, color: "#fff", border: "none", borderRadius: 999, padding: "12px 28px", fontWeight: 700, fontSize: 14, cursor: "pointer" } }, busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u062A\u062D\u0642\u0642..." : "\u{1F513} \u0641\u062A\u062D \u0628\u0627\u0644\u0628\u0635\u0645\u0629/\u0627\u0644\u0648\u062C\u0647")
   );
