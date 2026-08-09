@@ -1579,6 +1579,8 @@ function App() {
       onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); setSelectedOrderSection(null); },
       canEdit: canEditOrder(selectedOrder),
       isAdminUser: isOwner || hasRole("admin"),
+      canSeePricing: canSeeTab("pricing"),
+      canEditPricingOverride: canEditSubTab("pricing", "customers"),
       onNotify: notify,
       emailsWithTabAccess,
       reviewTeamEmails,
@@ -1591,7 +1593,7 @@ function App() {
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); }, onUpdateOrder: updateOrder }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
-        homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); } }) :
+        homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k) }) :
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "gallery" ? h(GalleryHubPage, { orders: activeOrders, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null) }) :
@@ -1630,14 +1632,14 @@ function App() {
         !canSeeTab(tab) ? null : h(React.Fragment, null,
         tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
-        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia }),
+        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k) }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null) }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production") }),
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, onUpdateOrder: updateOrder }),
-        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries") }),
+        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k) }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
         tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
@@ -1840,7 +1842,7 @@ function App() {
               drill("appointments", "appointments")
             ] },
             { title: "\u{1F4B0} \u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631", tiles: [
-              { key: "pricing", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", emoji: "\u{1F4B0}", visible: isOwner || hasRole("admin"), onClick: () => setHomeDrilldown({ type: "pricing" }) },
+              { key: "pricing", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", emoji: "\u{1F4B0}", visible: canSeeTab("pricing"), onClick: () => setHomeDrilldown({ type: "pricing" }) },
               simple("dashboard"),
               simple("supplier-performance"),
               drill("warranty", "warranty"),
@@ -5054,8 +5056,9 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEd
     )
   );
 }
-function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipmentMedia, onUpdateShipmentMedia }) {
+function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnlyProp, shipmentMedia, onUpdateShipmentMedia, canSeeSub, canEditSub }) {
   const [subTab, setSubTab] = useState("list");
+  const readOnly = readOnlyProp || (canEditSub ? !canEditSub(subTab) : false);
   const [expandedShipDate, setExpandedShipDate] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -5116,8 +5119,8 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipment
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F6CB}\uFE0F", title: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
-      h(TabButton, { active: subTab === "list", onClick: () => setSubTab("list"), emoji: "\u{1F6CB}\uFE0F", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
-      h(TabButton, { active: subTab === "shipments", onClick: () => setSubTab("shipments"), emoji: "\u{1F69A}", label: "\u0634\u062D\u0646\u0627\u062A \u0627\u0644\u0623\u0642\u0645\u0634\u0629" })
+      h(TabButton, { active: subTab === "list", onClick: () => { if (!canSeeSub || canSeeSub("list")) setSubTab("list"); }, emoji: "\u{1F6CB}\uFE0F", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
+      h(TabButton, { active: subTab === "shipments", onClick: () => { if (!canSeeSub || canSeeSub("shipments")) setSubTab("shipments"); }, emoji: "\u{1F69A}", label: "\u0634\u062D\u0646\u0627\u062A \u0627\u0644\u0623\u0642\u0645\u0634\u0629" })
     ),
     subTab === "list" ? h(React.Fragment, null,
       h("div", null,
@@ -5198,7 +5201,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipment
         const uniformArrival = arrivalDates.length === 1 ? arrivalDates[0] : null;
         const media = (shipmentMedia && shipmentMedia[date]) || {};
         const addShipmentMedia = async (key, file, multiple) => {
-          if (!file) return;
+          if (!file || readOnly) return;
           const att = await fileToAttachment(file, "fabric-shipments");
           if (multiple) {
             onUpdateShipmentMedia(date, { [key]: [...(media[key] || []), att] });
@@ -5207,6 +5210,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly, shipment
           }
         };
         const removeShipmentPhoto = (idx) => {
+          if (readOnly) return;
           onUpdateShipmentMedia(date, { shipmentPhotos: (media.shipmentPhotos || []).filter((_, i) => i !== idx) });
         };
         return h("div", { key: date, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, overflow: "hidden" } },
@@ -5336,9 +5340,10 @@ function DeliveryCalendar({ pieces, onSelectDay }) {
     )
   );
 }
-function DeliveriesPage({ pieces, onUpdate, readOnly }) {
+function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, canEditSub }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState(null);
+  const readOnly = readOnlyProp || (canEditSub && view ? !canEditSub(view) : false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [fType, setFType] = useState("");
@@ -5428,19 +5433,19 @@ function DeliveriesPage({ pieces, onUpdate, readOnly }) {
       )
     ) : null,
     !view ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
-      h("div", { onClick: () => setView("list"), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
+      h("div", { onClick: () => { if (!canSeeSub || canSeeSub("list")) setView("list"); }, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
         h("span", { style: { fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 } }, h(Emoji, { size: 16 }, "\u{1F4CB}"), "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0633\u0644\u0645\u062A"),
         h("span", { style: { display: "flex", alignItems: "center", gap: 6, color: COLORS.muted, fontSize: 13 } }, countOrders(ready), h(Emoji, { size: 13 }, "\u2039"))
       ),
-      h("div", { onClick: () => setView("delayed"), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
+      h("div", { onClick: () => { if (!canSeeSub || canSeeSub("delayed")) setView("delayed"); }, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
         h("span", { style: { fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 } }, h(Emoji, { size: 16 }, "\u23F0"), "\u0645\u062A\u0623\u062E\u0631\u0627\u062A"),
         h("span", { style: { display: "flex", alignItems: "center", gap: 6, color: COLORS.muted, fontSize: 13 } }, countOrders(delayed), h(Emoji, { size: 13 }, "\u2039"))
       ),
-      h("div", { onClick: () => setView("delivered"), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
+      h("div", { onClick: () => { if (!canSeeSub || canSeeSub("delivered")) setView("delivered"); }, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
         h("span", { style: { fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 } }, h(Emoji, { size: 16 }, "\u2705"), "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
         h("span", { style: { display: "flex", alignItems: "center", gap: 6, color: COLORS.muted, fontSize: 13 } }, countOrders(delivered), h(Emoji, { size: 13 }, "\u2039"))
       ),
-      h("div", { onClick: () => { setView("calendar"); setSelectedDay(null); }, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
+      h("div", { onClick: () => { if (!canSeeSub || canSeeSub("calendar")) { setView("calendar"); setSelectedDay(null); } }, style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer" } },
         h("span", { style: { fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 } }, h(Emoji, { size: 16 }, "\u{1F4C5}"), "\u062A\u0642\u0648\u064A\u0645"),
         h(Emoji, { size: 13 }, "\u2039")
       )
@@ -6714,7 +6719,7 @@ function OrderTimelinePage({ order, pieces, onBack }) {
     )
   );
 }
-function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canEdit, isAdminUser, onNotify, emailsWithTabAccess, reviewTeamEmails, unreadCount, onOpenNotifPanel, initialSection }) {
+function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canEdit, isAdminUser, onNotify, emailsWithTabAccess, reviewTeamEmails, unreadCount, onOpenNotifPanel, initialSection, canSeePricing, canEditPricingOverride }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditOrder, setShowEditOrder] = useState(false);
   const [section, setSection] = useState(initialSection || null);
@@ -6763,7 +6768,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
       h("div", { style: { padding: 16 } },
         h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
           h(NavTile, { active: false, onClick: () => setSection("materials-hub"), emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }),
-          h(NavTile, { active: false, onClick: () => setSection("quote"), emoji: "\u{1F4B0}", label: "\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A" })
+          h(NavTile, { active: false, locked: !canSeePricing, onClick: () => setSection("quote"), emoji: "\u{1F4B0}", label: "\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A" })
         )
       ),
       deleteModal,
@@ -6831,10 +6836,18 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
       editOrderModal
     );
   }
+  if (section === "quote" && !canSeePricing) {
+    return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
+      subHeader("\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A", () => setSection(null)),
+      h("div", { style: { padding: 16 } }, h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0635\u0644\u0627\u062D\u064A\u0629 \u0644\u0644\u0648\u0635\u0648\u0644 \u0644\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A" })),
+      deleteModal,
+      editOrderModal
+    );
+  }
   if (section === "quote") {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       subHeader("\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A", () => setSection(null)),
-      h("div", { style: { padding: 16 } }, h(PricingPage, { order, onUpdate, canEdit, branding })),
+      h("div", { style: { padding: 16 } }, h(PricingPage, { order, onUpdate, canEdit: canEdit || canEditPricingOverride, branding })),
       deleteModal,
       editOrderModal
     );
@@ -7368,7 +7381,7 @@ function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
     )
   );
 }
-function PricingHubPage({ orders, onBack, onOpenOrder }) {
+function PricingHubPage({ orders, onBack, onOpenOrder, canSeeSub }) {
   const [view, setView] = useState(null);
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
@@ -7411,8 +7424,8 @@ function PricingHubPage({ orders, onBack, onOpenOrder }) {
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F4B0} \u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A")
     ),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
-      h("button", { onClick: () => setView("customers"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "customers" ? COLORS.teal : "#fff", color: view === "customers" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644"),
-      h("button", { onClick: () => setView("production"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "production" ? COLORS.teal : "#fff", color: view === "production" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639")
+      h("button", { onClick: () => { if (!canSeeSub || canSeeSub("customers")) setView("customers"); }, style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "customers" ? COLORS.teal : "#fff", color: view === "customers" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644"),
+      h("button", { onClick: () => { if (!canSeeSub || canSeeSub("production")) setView("production"); }, style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "production" ? COLORS.teal : "#fff", color: view === "production" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639")
     ),
     view === "production" ? h(ProductionQuoteHubPage, { orders, onOpenOrder, hideHeader: true }) : h(React.Fragment, null,
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
@@ -7644,6 +7657,20 @@ const SUB_TABS_CONFIG = {
     { key: "topRequested", label: "\u0627\u0644\u0623\u0643\u062B\u0631 \u0637\u0644\u0628\u064B\u0627" },
     { key: "rollup", label: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A" },
     { key: "missing", label: "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628" }
+  ],
+  "egypt-upholstery": [
+    { key: "list", label: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" },
+    { key: "shipments", label: "\u0634\u062D\u0646\u0627\u062A \u0627\u0644\u0623\u0642\u0645\u0634\u0629" }
+  ],
+  deliveries: [
+    { key: "list", label: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" },
+    { key: "delayed", label: "\u0645\u062A\u0623\u062E\u0631\u0627\u062A" },
+    { key: "delivered", label: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" },
+    { key: "calendar", label: "\u062A\u0642\u0648\u064A\u0645" }
+  ],
+  pricing: [
+    { key: "customers", label: "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644" },
+    { key: "production", label: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639" }
   ]
 };
 const ALL_TABS = [
@@ -7675,6 +7702,7 @@ const ALL_TABS = [
   { key: "custom-report", label: "تقارير إضافية", emoji: "\u{1F5C3}\uFE0F" },
   { key: "universal-search", label: "البحث الشامل", emoji: "\u{1F50E}" },
   { key: "escalations", label: "طلب مساعدة", emoji: "\u{1F198}" },
+  { key: "pricing", label: "الحسابات", emoji: "\u{1F4B0}" },
   { key: "guide", label: "دليل الاستخدام", emoji: "\u{1F4D7}" }
 ];
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -8350,6 +8378,10 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
+  const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
+  const visibleStageGroups = statusOnly && mySupplierScope.length > 0
+    ? STAGE_GROUPS.filter((g) => g.special || g.locations.some((loc) => mySupplierScope.includes(loc)))
+    : STAGE_GROUPS;
   if (!stageKey) {
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
@@ -8361,7 +8393,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
         h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, trueDelays.map((p) => h("span", { key: p.id, style: { fontSize: 11.5, background: "#fff", border: `1px solid ${COLORS.danger}`, borderRadius: 999, padding: "3px 8px", color: COLORS.danger } }, p.customerName + " \u00B7 " + p.currentLocation)))
       ) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
-        STAGE_GROUPS.map((g) => {
+        visibleStageGroups.map((g) => {
           const stagePieceCount = g.key === "delays" ? trueDelays.length : entityPieces.filter((p) => g.locations.includes(p.currentLocation)).length;
           return h(NavTile, { key: g.key, active: false, onClick: () => setStageKey(g.key), emoji: g.emoji, label: g.label + (stagePieceCount ? " (" + stagePieceCount + ")" : "") });
         })
@@ -8406,14 +8438,16 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
   const [newSupplierName, setNewSupplierName] = useState("");
   const canEditPiece = (p) => myRoles.includes("admin") || (myRoles.includes("production") && mySupplierScope.includes(p.currentLocation));
   const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
+  const visibleLocations = statusOnly && mySupplierScope.length > 0 ? group.locations.filter((loc) => mySupplierScope.includes(loc)) : group.locations;
   if (!activeLoc) {
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
         h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u062A\u0635\u0646\u064A\u0639 " + entity + " \u2014 " + group.label)
       ),
+      visibleLocations.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0645\u0648\u0627\u0642\u0639/\u0645\u0648\u0631\u062F\u064A\u0646 \u0645\u062E\u0635\u0635\u0635\u0629 \u0644\u0643 \u0647\u0646\u0627" }) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 14 } },
-        group.locations.map((loc) => {
+        visibleLocations.map((loc) => {
           const locPieces = entityPieces.filter((p) => p.currentLocation === loc);
           const count = countDistinctOrders(locPieces);
           return h("div", { key: loc, style: { position: "relative" } },
