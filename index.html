@@ -322,13 +322,49 @@ function orderIsOverdue(order) {
     return expected && expected < today;
   });
 }
-function computeOrderCost(order) {
+const COST_STAGES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u0641\u0635\u064A\u0644", "\u0627\u0633\u062A\u064A\u0644", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u062A\u063A\u0644\u064A\u0641", "\u0634\u062D\u0646", "\u0646\u0642\u0644 \u0648\u062A\u0631\u0643\u064A\u0628"];
+const SEWING_PIECE_TYPES = ["\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
+function isSewingPieceType(t) {
+  return SEWING_PIECE_TYPES.some((x) => (t || "").includes(x));
+}
+function stagesForPieceType(pieceType) {
+  if (isSewingPieceType(pieceType)) return COST_STAGES.filter((s) => s !== "\u0646\u062C\u0627\u0631\u0629" && s !== "\u062F\u0647\u0627\u0646" && s !== "\u062A\u0646\u062C\u064A\u062F");
+  return COST_STAGES.filter((s) => s !== "\u0627\u0644\u062A\u0641\u0635\u064A\u0644");
+}
+const PACKING_STAGES = ["\u062A\u063A\u0644\u064A\u0641", "\u0634\u062D\u0646", "\u0646\u0642\u0644 \u0648\u062A\u0631\u0643\u064A\u0628"];
+function pieceCostTotal(piece) {
+  const costs = piece.costs || {};
+  const qty = Number(piece.pieceCount) || 1;
+  let sar = 0, egp = 0;
+  COST_STAGES.forEach((stage) => {
+    const c = costs[stage];
+    if (!c || !c.amount) return;
+    if (c.currency === "\u062C\u0646\u064A\u0647") egp += Number(c.amount); else sar += Number(c.amount);
+  });
+  return { perUnitSAR: sar, perUnitEGP: egp, totalSAR: sar * qty, totalEGP: egp * qty };
+}
+function computeOrderCost(order, pieces) {
   const materialsCost = (order.materials || []).reduce((sum, m) => sum + (Number(m.price) || 0), 0);
-  const productionCostSAR = (order.productionQuoteItems || []).filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
-  const productionCostEGP = (order.productionQuoteItems || []).filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  let productionCostSAR = (order.productionQuoteItems || []).filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  let productionCostEGP = (order.productionQuoteItems || []).filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  let packingSAR = 0, packingEGP = 0;
+  const orderPieces = pieces ? pieces.filter((p) => p.customerName === order.clientName) : [];
+  orderPieces.forEach((p) => {
+    const costs = p.costs || {};
+    const qty = Number(p.pieceCount) || 1;
+    COST_STAGES.forEach((stage) => {
+      const c = costs[stage];
+      if (!c || !c.amount) return;
+      const total = Number(c.amount) * qty;
+      const isPacking = PACKING_STAGES.includes(stage);
+      if (c.currency === "\u062C\u0646\u064A\u0647") { if (isPacking) packingEGP += total; else productionCostEGP += total; }
+      else { if (isPacking) packingSAR += total; else productionCostSAR += total; }
+    });
+  });
   const exchangeRate = Number(order.exchangeRate) || 0;
   const productionCostEGPInSAR = exchangeRate > 0 ? productionCostEGP / exchangeRate : 0;
-  const packingShippingCost = Number(order.packingShippingCost) || 0;
+  const packingEGPInSAR = exchangeRate > 0 ? packingEGP / exchangeRate : 0;
+  const packingShippingCost = packingSAR + packingEGPInSAR + (Number(order.packingShippingCost) || 0);
   const totalCost = materialsCost + productionCostSAR + productionCostEGPInSAR + packingShippingCost;
   const sellingPrice = Number(order.sellingPrice) || 0;
   const margin = sellingPrice - totalCost;
@@ -1593,7 +1629,7 @@ function App() {
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id); }, onUpdateOrder: updateOrder }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
-        homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k) }) :
+        homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { setHomeDrilldown(null); openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k) }) :
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "gallery" ? h(GalleryHubPage, { orders: activeOrders, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null) }) :
@@ -1755,8 +1791,8 @@ function App() {
         return h("div", { style: { display: "flex", flexDirection: "column", gap: 1 } }, groups.map((g, i) => followupLine(g, i)));
       })(),
       (() => {
-        const reviewCount = orders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
-        const nearDeliveryNames = Array.from(new Set(orders.filter((o) => {
+        const reviewCount = activeOrders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
+        const nearDeliveryNames = Array.from(new Set(activeOrders.filter((o) => {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
           return d !== null && d >= 1 && d <= 5;
@@ -1818,7 +1854,6 @@ function App() {
           const TILE_GROUPS = [
             { title: "\u{1F4CB} \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0648\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", tiles: [
               { key: "new-order", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", emoji: "\u2795", visible: !myRoles.every((r) => r === "viewer"), onClick: () => setShowNewOrder(true), accent: true },
-              { key: "pre-approval", label: "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F", emoji: "\u{1F5D2}\uFE0F", visible: true, onClick: () => setHomeDrilldown({ type: "pre-approval" }) },
               simple("review"),
               simple("my-orders"),
               drill("technical-office", "technical-office")
@@ -1860,7 +1895,13 @@ function App() {
               { key: "employee-followup", label: "\u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646", emoji: "\u{1F4DD}", visible: true, onClick: () => setHomeDrilldown({ type: "employee-followup" }) }
             ] }
           ];
-          return h(React.Fragment, null, TILE_GROUPS.map((group) => {
+          return h(React.Fragment, null,
+            h("div", { style: { marginTop: 8, marginBottom: 4 } },
+              h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 } },
+                h(NavTile, { key: "pre-approval", active: false, onClick: () => setHomeDrilldown({ type: "pre-approval" }), emoji: "\u{1F5D2}\uFE0F", label: "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" })
+              )
+            ),
+            TILE_GROUPS.map((group) => {
             return h("div", { key: group.title, style: { marginTop: 22 } },
               h("div", { style: { fontSize: 13, fontWeight: 700, color: COLORS.ink, marginBottom: 10, paddingInlineStart: 2 } }, group.title),
               h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 } }, group.tiles.map((t) => h(NavTile, { key: t.key, active: false, accent: t.accent, locked: !t.visible, onClick: t.onClick, emoji: t.emoji, label: t.label })))
@@ -6447,6 +6488,7 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
             ) : null,
             matchingOrder ? h("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 8 } },
               matchingOrder.manufacturingOrderFile ? h("a", { href: matchingOrder.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", textDecoration: "none" } }, "\u{1F4CE} \u0627\u0644\u0645\u0644\u0641") : null,
+              matchingOrder.salesPricingFile ? h("a", { href: matchingOrder.salesPricingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "5px 10px", textDecoration: "none" } }, "\u{1F4B0} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") : null,
               onUpdateOrder ? h("button", {
                 onClick: () => onUpdateOrder(matchingOrder.id, { manufacturingLocation: matchingOrder.manufacturingLocation === "\u0645\u0635\u0631" ? "" : "\u0645\u0635\u0631" }),
                 title: "\u062D\u062F\u062F\u064A \u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0639\u0634\u0627\u0646 \u062A\u0638\u0647\u0631 \u0627\u0644\u062E\u0627\u0645\u0629 \u0641\u064A \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631 \u0641\u0648\u0631\u064B\u0627 \u0628\u0639\u062F \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A\u060C \u0645\u0646 \u063A\u064A\u0631 \u0645\u0627 \u062A\u0633\u062A\u0646\u064A \u0627\u0644\u062A\u0648\u0632\u064A\u0639",
@@ -6524,6 +6566,16 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
         style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.teal, textDecoration: "none" }
       }, h(Emoji, { size: 14 }, "\u{1F4C4}"), (o.category || o.title || "\u0623\u0648\u0631\u062F\u0631") + (o.dateReceived ? " \u2014 " + o.dateReceived : ""))))
     ) : null,
+    customerOrders.some((o) => o.salesPricingFile) ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.gold}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+      h("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 8, color: COLORS.gold } }, "\u{1F4B0} \u0645\u0644\u0641\u0627\u062A \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, customerOrders.filter((o) => o.salesPricingFile).map((o) => h("a", {
+        key: o.id,
+        href: o.salesPricingFile.dataUrl,
+        target: "_blank",
+        rel: "noreferrer",
+        style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.gold, textDecoration: "none" }
+      }, h(Emoji, { size: 14 }, "\u{1F4B0}"), (o.category || o.title || "\u0623\u0648\u0631\u062F\u0631") + (o.dateReceived ? " \u2014 " + o.dateReceived : ""))))
+    ) : null,
     h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px" } },
       h("div", { style: { ...display, fontSize: 15, fontWeight: 700 } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"),
       allCustomerPieces.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: addLinkStyle }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null
@@ -6562,6 +6614,7 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
               h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey, matchingOrder && matchingOrder.orderCode ? h("span", { style: { fontSize: 11, color: COLORS.muted, fontWeight: 700 } }, "\u00B7 " + matchingOrder.orderCode) : null, matchingOrder && matchingOrder.engineerName ? h("span", { style: { fontSize: 11, color: COLORS.muted, fontWeight: 700 } }, "\u00B7 \u{1F477} " + matchingOrder.engineerName) : null),
               h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                 matchingOrder && matchingOrder.manufacturingOrderFile ? h("a", { href: matchingOrder.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), "\u0627\u0644\u0645\u0644\u0641") : null,
+                matchingOrder && matchingOrder.salesPricingFile ? h("a", { href: matchingOrder.salesPricingFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4B0}"), "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") : null,
                 matchingOrder && onUpdateOrder ? h("button", {
                   onClick: () => onUpdateOrder(matchingOrder.id, { manufacturingLocation: matchingOrder.manufacturingLocation === "\u0645\u0635\u0631" ? "" : "\u0645\u0635\u0631" }),
                   title: "\u062D\u062F\u062F\u064A \u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0639\u0634\u0627\u0646 \u062A\u0638\u0647\u0631 \u0627\u0644\u062E\u0627\u0645\u0629 \u0641\u064A \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631 \u0641\u0648\u0631\u064B\u0627 \u0628\u0639\u062F \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A\u060C \u0645\u0646 \u063A\u064A\u0631 \u0645\u0627 \u062A\u0633\u062A\u0646\u064A \u0627\u0644\u062A\u0648\u0632\u064A\u0639",
@@ -6635,6 +6688,7 @@ function NewOrderModal({ onClose, onSave, existing, existingCategories, engineer
   const [deliveryDate, setDeliveryDate] = useState((existing && existing.deliveryDate) || "");
   const [fabricShippingStatus, setFabricShippingStatus] = useState((existing && existing.fabricShippingStatus) || "");
   const [orderFile, setOrderFile] = useState((existing && existing.manufacturingOrderFile) || null);
+  const [salesPricingFile, setSalesPricingFile] = useState((existing && existing.salesPricingFile) || null);
   const [sellingPrice, setSellingPrice] = useState((existing && existing.sellingPrice) || "");
   return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" : "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", onClose },
     /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
@@ -6657,7 +6711,8 @@ function NewOrderModal({ onClose, onSave, existing, existingCategories, engineer
     /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0644\u0644\u0639\u0645\u064A\u0644 (\u0631\u064A\u0627\u0644)"),
     /* @__PURE__ */ React.createElement("input", { style: fieldStyle, type: "number", value: sellingPrice, onChange: (e) => setSellingPrice(e.target.value), placeholder: "0" }),
     /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: orderFile, onChange: setOrderFile, onRemove: () => setOrderFile(null), folder: "manufacturing-orders" }),
-    /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : "") } : { ...emptyOrder(), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
+    /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 \u0645\u0646 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: salesPricingFile, onChange: setSalesPricingFile, onRemove: () => setSalesPricingFile(null), folder: "sales-pricing" }),
+    /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim(), style: primaryBtn(!clientName.trim()), onClick: () => onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, salesPricingFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : "") } : { ...emptyOrder(), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, salesPricingFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }) }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
   );
 }
 function BrandingModal({ branding, onClose, onSave }) {
@@ -6847,7 +6902,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   if (section === "quote") {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       subHeader("\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A", () => setSection(null)),
-      h("div", { style: { padding: 16 } }, h(PricingPage, { order, onUpdate, canEdit: canEdit || canEditPricingOverride, branding })),
+      h("div", { style: { padding: 16 } }, h(PricingPage, { order, pieces, onUpdate, canEdit: canEdit || canEditPricingOverride, branding })),
       deleteModal,
       editOrderModal
     );
@@ -7326,32 +7381,74 @@ function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
     })()
   );
 }
-function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
+function PieceCostCard({ piece, onUpdate, exchangeRate }) {
+  const [open, setOpen] = useState(false);
+  const costs = piece.costs || {};
+  const totals = pieceCostTotal(piece);
+  const rateInSAR = exchangeRate > 0 ? totals.perUnitEGP / exchangeRate : 0;
+  const perUnitTotal = totals.perUnitSAR + rateInSAR;
+  const qty = Number(piece.pieceCount) || 1;
+  const grandTotal = perUnitTotal * qty;
+  const stages = stagesForPieceType(piece.pieceType);
+  const setField = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "\u0631\u064A\u0627\u0644", supplierName: "" }), [key]: val } } });
+  const mainSupplier = stages.map((s) => costs[s] && costs[s].supplierName).find(Boolean) || piece.currentLocation || "\u2014";
+  return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 10 } },
+    h("div", { onClick: () => setOpen((v) => !v), style: { padding: 12, cursor: "pointer" } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+        h("div", null,
+          h("div", { style: { fontWeight: 700, fontSize: 13.5 } }, (piece.pieceType || "\u2014") + (piece.description ? " \u2014 " + piece.description : "")),
+          h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u0627\u0644\u0645\u0642\u0627\u0633: " + (piece.size || "\u2014") + " \u00B7 \u0627\u0644\u0639\u062F\u062F: " + qty + " \u00B7 \u0627\u0644\u0645\u0648\u0631\u062F: " + mainSupplier)
+        ),
+        h(Emoji, { size: 13 }, open ? "\u2304" : "\u2039")
+      ),
+      perUnitTotal > 0 ? h("div", { style: { display: "flex", gap: 14, marginTop: 8, fontSize: 12 } },
+        h("span", null, h("span", { style: { color: COLORS.muted } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0642\u0637\u0639\u0629: "), h("span", { style: { fontWeight: 700 } }, perUnitTotal.toLocaleString("en-US", { maximumFractionDigits: 1 }) + " \u0631\u064A\u0627\u0644")),
+        qty > 1 ? h("span", null, h("span", { style: { color: COLORS.muted } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A: "), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, grandTotal.toLocaleString("en-US", { maximumFractionDigits: 1 }) + " \u0631\u064A\u0627\u0644")) : null
+      ) : null
+    ),
+    open ? h("div", { style: { padding: "0 12px 12px", borderTop: `1px solid ${COLORS.bg}` } },
+      isSewingPieceType(piece.pieceType) ? h("div", { style: { fontSize: 11, color: COLORS.teal, background: "#EAF1F1", borderRadius: 8, padding: 8, marginTop: 10, marginBottom: 4 } }, "\u{1F9F5} \u0642\u0637\u0639\u0629 \u062A\u0641\u0635\u064A\u0644 (\u0633\u062A\u0627\u0626\u0631/\u0633\u062C\u0627\u062F/\u0645\u062E\u062F\u0627\u062A) \u2014 \u0628\u062F\u0627\u064A\u0629 \u0645\u0646 \u0628\u0646\u062F \"\u0627\u0644\u062A\u0641\u0635\u064A\u0644\" \u0628\u062F\u0644 \u0627\u0644\u0646\u062C\u0627\u0631\u0629/\u0627\u0644\u062F\u0647\u0627\u0646/\u0627\u0644\u062A\u0646\u062C\u064A\u062F") : null,
+      stages.map((stage) => h("div", { key: stage, style: { marginBottom: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.bg}` } },
+        h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 4 } }, stage),
+        h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+          h("input", { type: "number", style: { width: 80, padding: "8px 8px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 13 }, value: (costs[stage] && costs[stage].amount) || "", placeholder: "0", onChange: (e) => setField(stage, "amount", e.target.value) }),
+          h("select", { style: { padding: "8px 4px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 11.5 }, value: (costs[stage] && costs[stage].currency) || "\u0631\u064A\u0627\u0644", onChange: (e) => setField(stage, "currency", e.target.value) },
+            h("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644"),
+            h("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647")
+          ),
+          h("input", { style: { flex: 1, padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 12.5 }, value: (costs[stage] && costs[stage].supplierName) || "", placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F \u0644\u0640" + stage, onChange: (e) => setField(stage, "supplierName", e.target.value) })
+        )
+      )),
+      h("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"),
+      h("textarea", { style: { ...fieldStyle, minHeight: 44 }, value: piece.pricingNotes || "", onChange: (e) => onUpdate({ pricingNotes: e.target.value }) }),
+      h(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: piece.pricingFile || null, onChange: (f) => onUpdate({ pricingFile: f }), onRemove: () => onUpdate({ pricingFile: null }), folder: "piece-pricing" })
+    ) : null
+  );
+}
+function ProductionQuoteHubPage({ pieces, onBack, onOpenCustomer, hideHeader, exchangeRate }) {
   const [query, setQuery] = useState("");
   const [supplierFilter, setSupplierFilter] = useState([]);
-  const allItems = [];
-  orders.forEach((o) => {
-    (o.productionQuoteItems || []).forEach((it) => {
-      allItems.push({ ...it, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", orderId: o.id, packingShippingCost: o.packingShippingCost || 0 });
-    });
-  });
-  const supplierNames = Array.from(new Set(allItems.map((it) => (it.supplierName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const priced = (pieces || []).filter((p) => p.costs && Object.values(p.costs).some((c) => c && c.amount));
+  const mainSupplierFor = (p) => { const stages = stagesForPieceType(p.pieceType); return stages.map((s) => p.costs && p.costs[s] && p.costs[s].supplierName).find(Boolean) || p.currentLocation || ""; };
+  const supplierNames = Array.from(new Set(priced.map((p) => mainSupplierFor(p).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const toggleSupplier = (name) => setSupplierFilter((cur) => cur.includes(name) ? cur.filter((s) => s !== name) : [...cur, name]);
-  let filtered = supplierFilter.length === 0 ? allItems : allItems.filter((it) => supplierFilter.includes((it.supplierName || "").trim()));
+  let filtered = supplierFilter.length === 0 ? priced : priced.filter((p) => supplierFilter.includes(mainSupplierFor(p).trim()));
   if (query.trim()) {
     const q = query.trim();
-    filtered = filtered.filter((it) => (it.clientName || "").includes(q) || (it.pieceName || "").includes(q) || (it.supplierName || "").includes(q));
+    filtered = filtered.filter((p) => (p.customerName || "").includes(q) || (p.description || "").includes(q) || mainSupplierFor(p).includes(q));
   }
-  const seenOrderForPacking = new Set();
-  const rowsData = filtered.map((it) => {
-    const showPacking = !seenOrderForPacking.has(it.orderId);
-    seenOrderForPacking.add(it.orderId);
-    return { ...it, showPacking };
-  });
-  const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F", "\u0646\u0648\u0639 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0643\u0644\u0641\u0629", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646"];
-  const pdfCols = cols.concat(["\u0627\u0644\u0645\u0644\u0641"]);
-  const exportRows = () => rowsData.map((it) => [it.clientName, it.pieceCount || "", it.pieceName || "", it.size || "", it.supplierName || "", (it.manufacturingType || []).join("\u060C "), (Number(it.price) || 0) + " " + ((it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), it.showPacking ? it.packingShippingCost : ""]);
-  const exportRowsPdf = () => rowsData.map((it) => [it.clientName, it.pieceCount || "", it.pieceName || "", it.size || "", it.supplierName || "", (it.manufacturingType || []).join("\u060C "), (Number(it.price) || 0) + " " + ((it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), it.showPacking ? it.packingShippingCost : "", it.priceFile ? { type: "link", url: it.priceFile.dataUrl, label: "\u{1F4CE} \u0641\u062A\u062D" } : ""]);
+  const stageAmount = (p, stage) => {
+    const c = p.costs && p.costs[stage];
+    if (!c || !c.amount) return 0;
+    return c.currency === "\u062C\u0646\u064A\u0647" && exchangeRate > 0 ? Number(c.amount) / exchangeRate : c.currency === "\u062C\u0646\u064A\u0647" ? 0 : Number(c.amount);
+  };
+  const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"].concat(COST_STAGES, ["\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0642\u0637\u0639\u0629", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A"]);
+  const rowFor = (p) => {
+    const qty = Number(p.pieceCount) || 1;
+    const stageVals = COST_STAGES.map((s) => { const v = stageAmount(p, s); return v > 0 ? v.toLocaleString("en-US", { maximumFractionDigits: 1 }) : ""; });
+    const perUnit = COST_STAGES.reduce((sum, s) => sum + stageAmount(p, s), 0);
+    return [p.customerName || "\u2014", qty, p.description || p.pieceType || "\u2014", p.size || "\u2014", mainSupplierFor(p) || "\u2014"].concat(stageVals, [perUnit.toLocaleString("en-US", { maximumFractionDigits: 1 }), qty > 1 ? (perUnit * qty).toLocaleString("en-US", { maximumFractionDigits: 1 }) : ""]);
+  };
   return h("div", null,
     hideHeader ? null : h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -7362,29 +7459,30 @@ function ProductionQuoteHubPage({ orders, onBack, onOpenOrder, hideHeader }) {
       h("button", { onClick: () => setSupplierFilter([]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.length === 0 ? COLORS.teal : "#fff", color: supplierFilter.length === 0 ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
       supplierNames.map((name) => h("button", { key: name, onClick: () => toggleSupplier(name), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: supplierFilter.includes(name) ? COLORS.teal : "#fff", color: supplierFilter.includes(name) ? "#fff" : COLORS.teal, cursor: "pointer" } }, name))
     ) : null,
-    filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u062A\u0635\u0646\u064A\u0639-\u0643\u0644-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", pdfCols, exportRowsPdf()) }) : null,
-    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0646\u0627\u0635\u0631 \u062A\u0633\u0639\u064A\u0631 \u062A\u0635\u0646\u064A\u0639 \u0645\u0637\u0627\u0628\u0642\u0629" }) :
+    filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u062A\u0635\u0646\u064A\u0639-\u0643\u0644-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", rows: [cols].concat(filtered.map(rowFor)) }]), onPdf: () => printAsPdf("\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", cols, filtered.map(rowFor)) }) : null,
+    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0633\u0639\u0651\u0631\u0629 \u0628\u0639\u062F" }) :
     h("div", { style: { overflowX: "auto" } },
-      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 900 } },
-        h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 9px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-        h("tbody", null, rowsData.map((it, idx) => h("tr", { key: it.orderId + "-" + (it.id || idx), onClick: () => onOpenOrder && onOpenOrder(it.orderId), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: onOpenOrder ? "pointer" : "default" } },
-          h("td", { style: { padding: "8px 9px", fontWeight: 700, whiteSpace: "nowrap" } }, it.clientName),
-          h("td", { style: { padding: "8px 9px", textAlign: "center", whiteSpace: "nowrap" } }, it.pieceCount || "\u2014"),
-          h("td", { style: { padding: "8px 9px" } }, it.pieceName || "\u2014"),
-          h("td", { style: { padding: "8px 9px", whiteSpace: "nowrap" } }, it.size || "\u2014"),
-          h("td", { style: { padding: "8px 9px", whiteSpace: "nowrap" } }, it.supplierName || "\u2014"),
-          h("td", { style: { padding: "8px 9px", whiteSpace: "nowrap" } }, (it.manufacturingType || []).join("\u060C ") || "\u2014"),
-          h("td", { style: { padding: "8px 9px", whiteSpace: "nowrap", fontWeight: 700 } }, Number(it.price || 0).toLocaleString("en-US") + " " + ((it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644")),
-          h("td", { style: { padding: "8px 9px", whiteSpace: "nowrap", color: COLORS.muted } }, it.showPacking && it.packingShippingCost ? Number(it.packingShippingCost).toLocaleString("en-US") + " \u0631\u064A\u0627\u0644" : "\u2014")
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1500 } },
+        h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "7px 8px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c)))),
+        h("tbody", null, filtered.map((p) => h("tr", { key: p.id, onClick: () => onOpenCustomer && onOpenCustomer(p.customerName), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: onOpenCustomer ? "pointer" : "default" } },
+          rowFor(p).map((val, i) => h("td", { key: i, style: { padding: "7px 8px", whiteSpace: "nowrap", fontWeight: i === 0 || i === cols.length - 1 ? 700 : 400 } }, val || "\u2014"))
         )))
       )
     )
   );
 }
-function PricingHubPage({ orders, onBack, onOpenOrder, canSeeSub }) {
+function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, canSeeSub }) {
   const [view, setView] = useState(null);
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
+  const [liveRate, setLiveRate] = useState(null);
+  useEffect(() => {
+    if (liveRate !== null) return;
+    fetch("https://open.er-api.com/v6/latest/EGP").then((r) => r.json()).then((data) => {
+      const rate = data && data.rates && data.rates.SAR;
+      if (rate) setLiveRate(rate);
+    }).catch(() => {});
+  }, []);
   const byName = {};
   orders.forEach((o) => {
     const key = o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
@@ -7399,11 +7497,20 @@ function PricingHubPage({ orders, onBack, onOpenOrder, canSeeSub }) {
     });
   if (selectedName) {
     const custOrders = byName[selectedName] || [];
+    const custPieces = (pieces || []).filter((p) => p.customerName === selectedName);
+    const fallbackRate = custOrders.map((o) => Number(o.exchangeRate)).find((r) => r > 0) || 0;
+    const effectiveRate = liveRate || fallbackRate;
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
         h("button", { onClick: () => setSelectedName(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, selectedName)
       ),
+      liveRate ? h("div", { style: { fontSize: 11, color: COLORS.green, marginBottom: 10 } }, "\u{1F7E2} \u0633\u0639\u0631 \u0627\u0644\u062C\u0646\u064A\u0647 \u0627\u0644\u064A\u0648\u0645: 1 \u062C.\u0645 = " + liveRate.toFixed(3) + " \u0631\u064A\u0627\u0644") : null,
+      custPieces.length > 0 ? h("div", { style: { marginBottom: 20 } },
+        h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "\u{1F9E9} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 (" + custPieces.length + ")"),
+        custPieces.map((p) => h(PieceCostCard, { key: p.id, piece: p, exchangeRate: effectiveRate, onUpdate: (patch) => onUpdatePiece({ ...p, ...patch }) }))
+      ) : null,
+      h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "\u{1F4C2} \u0645\u0644\u062E\u0635 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A (\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0648\u0627\u0644\u0647\u0627\u0645\u0634)"),
       custOrders.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0623\u0648\u0631\u062F\u0631\u0627\u062A" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, custOrders.map((o) => h("div", {
         key: o.id,
@@ -7427,7 +7534,7 @@ function PricingHubPage({ orders, onBack, onOpenOrder, canSeeSub }) {
       h("button", { onClick: () => { if (!canSeeSub || canSeeSub("customers")) setView("customers"); }, style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "customers" ? COLORS.teal : "#fff", color: view === "customers" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644"),
       h("button", { onClick: () => { if (!canSeeSub || canSeeSub("production")) setView("production"); }, style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.teal}`, background: view === "production" ? COLORS.teal : "#fff", color: view === "production" ? "#fff" : COLORS.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u062A\u0635\u0646\u064A\u0639")
     ),
-    view === "production" ? h(ProductionQuoteHubPage, { orders, onOpenOrder, hideHeader: true }) : h(React.Fragment, null,
+    view === "production" ? h(ProductionQuoteHubPage, { pieces, onOpenCustomer: (name) => setSelectedName(name), hideHeader: true, exchangeRate: liveRate || 0 }) : h(React.Fragment, null,
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     names.length > 0 ? h(ExportButtons, {
       onExcel: () => {
@@ -7460,11 +7567,11 @@ function PricingHubPage({ orders, onBack, onOpenOrder, canSeeSub }) {
     )
   );
 }
-function PricingPage({ order, onUpdate, canEdit, branding }) {
+function PricingPage({ order, pieces, onUpdate, canEdit, branding }) {
   const updateMaterialPrice = (materialId, price) => {
     onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, price } : m) });
   };
-  const cost = computeOrderCost(order);
+  const cost = computeOrderCost(order, pieces);
   const materials = order.materials || [];
   const [egpToSarRate, setEgpToSarRate] = useState(null);
   const [egpRateLoading, setEgpRateLoading] = useState(false);
@@ -7502,8 +7609,8 @@ function PricingPage({ order, onUpdate, canEdit, branding }) {
       h("span", { style: { fontWeight: 700, color: COLORS.gold } }, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")
     ) : null,
     h(ProductionQuotePage, { order, onUpdate, canEdit }),
-    h(SectionHeader, { emoji: "\u{1F4E6}", title: "\u0633\u0639\u0631 \u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646" }),
-    h("input", { style: fieldStyle, type: "number", disabled: !canEdit, value: order.packingShippingCost || "", onChange: (e) => onUpdate({ packingShippingCost: e.target.value === "" ? "" : Number(e.target.value) }), placeholder: "0 \u0631\u064A\u0627\u0644" }),
+    h(SectionHeader, { emoji: "\u{1F4E6}", title: "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646 \u0648\u0627\u0644\u0646\u0642\u0644" }),
+    h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 16 } }, "\u064A\u062D\u0633\u0628 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0645\u0646 \u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u063A\u0644\u064A\u0641/\u0627\u0644\u0634\u062D\u0646/\u0627\u0644\u0646\u0642\u0644 \u0648\u0627\u0644\u062A\u0631\u0643\u064A\u0628 \u0627\u0644\u0645\u062F\u062E\u0644\u0629 \u0644\u0643\u0644 \u0642\u0637\u0639\u0629 \u2014 \u0627\u0644\u0645\u062C\u0645\u0648\u0639: " + cost.packingShippingCost.toLocaleString("en-US", { maximumFractionDigits: 1 }) + " \u0631\u064A\u0627\u0644"),
     h(SectionHeader, { emoji: "\u{1F4CA}", title: "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0648\u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0629" }),
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", gap: 8 } },
       h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, h("span", null, "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"), h("span", null, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")),
