@@ -1612,6 +1612,7 @@ function App() {
       branding,
       onBack: () => { setSelectedId(null); setSelectedOrderSection(null); },
       onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
+      onUpdatePiece: updateProductionPiece,
       onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); setSelectedOrderSection(null); },
       canEdit: canEditOrder(selectedOrder),
       isAdminUser: isOwner || hasRole("admin"),
@@ -3419,7 +3420,7 @@ function AssistantPage({ orders, pieces, warrantyRequests, ratings, quickTasks, 
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
-      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F50D} \u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A")
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F916} \u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A")
     ),
     h("div", { style: { padding: 16 } },
       h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 12 } }, "\u0627\u0633\u0623\u0644\u064A \u0628\u0627\u0644\u0639\u0631\u0628\u064A \u0627\u0644\u0639\u0627\u062F\u064A \u0639\u0646 \u0623\u0648\u0631\u062F\u0631\u0627\u062A\u0643\u060C \u0639\u0645\u0644\u0627\u0626\u0643\u060C \u0645\u0647\u0627\u0645\u0643\u060C \u0645\u0648\u0627\u0639\u064A\u062F\u0643\u060C \u062A\u0642\u064A\u064A\u0645\u0627\u062A\u0643\u060C \u0623\u0648 \u0643\u0648\u062F \u0623\u0648\u0631\u062F\u0631 \u0645\u0639\u064A\u0651\u0646 \u0632\u064A \"AK-0001\"."),
@@ -3698,9 +3699,10 @@ function SystemHealthCheckPage({ orders, pieces, onBack, onOpenOrder }) {
     const codeCounts = {};
     active.forEach((o) => { if (o.orderCode) codeCounts[o.orderCode] = (codeCounts[o.orderCode] || 0) + 1; });
     const dupeCodes = Object.entries(codeCounts).filter(([, n]) => n > 1);
-    const orderNames = new Set(active.map((o) => o.clientName));
-    const orphanPieces = pieces.filter((p) => p.customerName && !orderNames.has(p.customerName));
-    const noPieceOrders = active.filter((o) => o.approved && o.distributionHandled && !pieces.some((p) => p.customerName === o.clientName));
+    const normName = (s) => (s || "").trim().replace(/\s+/g, " ");
+    const orderNames = new Set(active.map((o) => normName(o.clientName)));
+    const orphanPieces = pieces.filter((p) => p.customerName && !orderNames.has(normName(p.customerName)));
+    const noPieceOrders = active.filter((o) => o.approved && o.distributionHandled && !pieces.some((p) => normName(p.customerName) === normName(o.clientName)));
     const collectionResults = [];
     for (const c of HEALTH_COLLECTIONS) {
       try {
@@ -3738,7 +3740,7 @@ function SystemHealthCheckPage({ orders, pieces, onBack, onOpenOrder }) {
         ),
         h(CheckRow, { ok: results.dupeCodes.length === 0, title: "\u0623\u0643\u0648\u0627\u062F \u0645\u0643\u0631\u0631\u0629", detail: results.dupeCodes.length === 0 ? "\u0643\u0644 \u0627\u0644\u0623\u0643\u0648\u0627\u062F \u0641\u0631\u064A\u062F\u0629" : results.dupeCodes.map(([c]) => c).join("\u060C ") + " \u2014 \u0645\u0643\u0631\u0631\u0629" }),
         h(CheckRow, { ok: results.orphanPieces.length === 0, title: "\u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0628\u062F\u0648\u0646 \u0623\u0648\u0631\u062F\u0631 \u0645\u0637\u0627\u0628\u0642", detail: results.orphanPieces.length === 0 ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639 \u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u062C\u0648\u062F\u0629" : results.orphanPieces.length + " \u0642\u0637\u0639\u0629 \u0627\u0633\u0645 \u0639\u0645\u064A\u0644\u0647\u0627 \u0645\u0634 \u0645\u0637\u0627\u0628\u0642 \u0623\u064A \u0623\u0648\u0631\u062F\u0631 \u062D\u0627\u0644\u064A \u2014 \u0631\u0627\u062C\u0639\u064A \u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0641\u064A \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }),
-        h(CheckRow, { ok: results.noPieceOrders.length === 0, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u0632\u0651\u0639\u0629 \u0628\u062F\u0648\u0646 \u0642\u0637\u0639", detail: results.noPieceOrders.length === 0 ? "\u0643\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u064A\u0647\u0627 \u0642\u0637\u0639" : results.noPieceOrders.length + " \u0623\u0648\u0631\u062F\u0631 \u0645\u0639\u062A\u0645\u062F \u0648\u0645\u0648\u0632\u0651\u0639 \u0628\u062F\u0648\u0646 \u0623\u064A \u0642\u0637\u0639\u0629 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629" }),
+        h(CheckRow, { ok: results.noPieceOrders.length === 0, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u0632\u0651\u0639\u0629 \u0628\u062F\u0648\u0646 \u0642\u0637\u0639", detail: results.noPieceOrders.length === 0 ? "\u0643\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u064A\u0647\u0627 \u0642\u0637\u0639 \u2014 \u064A\u0639\u0646\u064A \u0642\u0633\u0645 \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0641\u064A \u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A \u0647\u064A\u0638\u0647\u0631 \u0635\u062D \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" : results.noPieceOrders.length + " \u0623\u0648\u0631\u062F\u0631 \u0645\u0639\u062A\u0645\u062F \u0648\u0645\u0648\u0632\u0651\u0639 \u0628\u062F\u0648\u0646 \u0623\u064A \u0642\u0637\u0639\u0629 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629 \u2014 \u0647\u0630\u0648\u0644\u0627\u0621 \u0644\u0646 \u064A\u0638\u0647\u0631 \u0644\u0647\u0645 \u0642\u0633\u0645 \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0641\u064A \u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A \u0644\u062D\u062F \u0645\u0627 \u064A\u062A\u0648\u0632\u0651\u0639 \u0644\u0647\u0645 \u0642\u0637\u0639" }),
         h("div", { style: { fontSize: 12.5, fontWeight: 700, margin: "16px 0 8px", color: COLORS.muted } }, "\u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0644\u0643\u0644 \u0642\u0633\u0645"),
         results.collectionResults.map((c) => h(CheckRow, { key: c.key, ok: c.ok, title: c.label, detail: c.ok ? "\u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0634\u063A\u0627\u0644\u0629" : "\u0641\u0634\u0644: " + c.error }))
       )
@@ -4999,7 +5001,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEd
       { key: "byOrder", label: "\u062D\u0633\u0628 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0644\u0644\u062A\u0642\u0627\u0631\u064A\u0631)", emoji: "\u{1F4C2}" },
       { key: "byType", label: "\u062D\u0633\u0628 \u0627\u0644\u0646\u0648\u0639", emoji: "\u{1F3F7}\uFE0F" },
       { key: "topRequested", label: "\u0627\u0644\u0623\u0643\u062B\u0631 \u0637\u0644\u0628\u064B\u0627", emoji: "\u{1F4CA}" },
-      { key: "rollup", label: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A", emoji: "\u{1F4CA}" },
+      { key: "rollup", label: "\u062A\u062C\u0645\u064A\u0639 \u0627\u0644\u0643\u0645\u064A\u0627\u062A", emoji: "\u{1F522}" },
       { key: "missing", label: "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628", emoji: "\u26A0\uFE0F", count: missingMaterials.length }
     ].map((it) => h("div", {
       key: it.key,
@@ -6774,7 +6776,7 @@ function OrderTimelinePage({ order, pieces, onBack }) {
     )
   );
 }
-function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canEdit, isAdminUser, onNotify, emailsWithTabAccess, reviewTeamEmails, unreadCount, onOpenNotifPanel, initialSection, canSeePricing, canEditPricingOverride }) {
+function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canEdit, isAdminUser, onNotify, emailsWithTabAccess, reviewTeamEmails, unreadCount, onOpenNotifPanel, initialSection, canSeePricing, canEditPricingOverride, onUpdatePiece }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditOrder, setShowEditOrder] = useState(false);
   const [section, setSection] = useState(initialSection || null);
@@ -6902,7 +6904,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   if (section === "quote") {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       subHeader("\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A", () => setSection(null)),
-      h("div", { style: { padding: 16 } }, h(PricingPage, { order, pieces, onUpdate, canEdit: canEdit || canEditPricingOverride, branding })),
+      h("div", { style: { padding: 16 } }, h(PricingPage, { order, pieces, onUpdate, onUpdatePiece, canEdit: canEdit || canEditPricingOverride, branding })),
       deleteModal,
       editOrderModal
     );
@@ -7390,7 +7392,7 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
   const qty = Number(piece.pieceCount) || 1;
   const grandTotal = perUnitTotal * qty;
   const stages = stagesForPieceType(piece.pieceType);
-  const setField = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "\u0631\u064A\u0627\u0644", supplierName: "" }), [key]: val } } });
+  const setField = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), [key]: val } } });
   const mainSupplier = stages.map((s) => costs[s] && costs[s].supplierName).find(Boolean) || piece.currentLocation || "\u2014";
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 10 } },
     h("div", { onClick: () => setOpen((v) => !v), style: { padding: 12, cursor: "pointer" } },
@@ -7412,7 +7414,8 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 4 } }, stage),
         h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
           h("input", { type: "number", style: { width: 80, padding: "8px 8px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 13 }, value: (costs[stage] && costs[stage].amount) || "", placeholder: "0", onChange: (e) => setField(stage, "amount", e.target.value) }),
-          h("select", { style: { padding: "8px 4px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 11.5 }, value: (costs[stage] && costs[stage].currency) || "\u0631\u064A\u0627\u0644", onChange: (e) => setField(stage, "currency", e.target.value) },
+          h("select", { style: { padding: "8px 4px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 11.5 }, value: (costs[stage] && costs[stage].currency) || "", onChange: (e) => setField(stage, "currency", e.target.value) },
+            h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A"),
             h("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644"),
             h("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647")
           ),
@@ -7496,19 +7499,41 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, ca
       return dateA.localeCompare(dateB);
     });
   if (selectedName) {
+    const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
     const custOrders = byName[selectedName] || [];
-    const custPieces = (pieces || []).filter((p) => p.customerName === selectedName);
+    const custPieces = (pieces || []).filter((p) => norm(p.customerName) === norm(selectedName));
     const fallbackRate = custOrders.map((o) => Number(o.exchangeRate)).find((r) => r > 0) || 0;
     const effectiveRate = liveRate || fallbackRate;
+    const piecesForOrder = (o) => custOrders.length === 1 ? custPieces : custPieces.filter((p) => p.customerDeliveryDate && o.deliveryDate && p.customerDeliveryDate === o.deliveryDate);
+    const matchedPieceIds = new Set();
+    custOrders.forEach((o) => piecesForOrder(o).forEach((p) => matchedPieceIds.add(p.id)));
+    const unmatchedPieces = custOrders.length === 1 ? [] : custPieces.filter((p) => !matchedPieceIds.has(p.id));
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
         h("button", { onClick: () => setSelectedName(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, selectedName)
       ),
       liveRate ? h("div", { style: { fontSize: 11, color: COLORS.green, marginBottom: 10 } }, "\u{1F7E2} \u0633\u0639\u0631 \u0627\u0644\u062C\u0646\u064A\u0647 \u0627\u0644\u064A\u0648\u0645: 1 \u062C.\u0645 = " + liveRate.toFixed(3) + " \u0631\u064A\u0627\u0644") : null,
-      custPieces.length > 0 ? h("div", { style: { marginBottom: 20 } },
-        h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "\u{1F9E9} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 (" + custPieces.length + ")"),
-        custPieces.map((p) => h(PieceCostCard, { key: p.id, piece: p, exchangeRate: effectiveRate, onUpdate: (patch) => onUpdatePiece({ ...p, ...patch }) }))
+      custOrders.length > 0 ? h("div", { style: { marginBottom: 20 } },
+        h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "\u{1F9E9} \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u062D\u0633\u0628 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
+        custOrders.map((o) => {
+          const orderPieces = piecesForOrder(o);
+          return h("div", { key: o.id, style: { marginBottom: 16 } },
+            h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 6, borderBottom: `2px solid ${COLORS.goldSoft}` } },
+              h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, "\u{1F4E6} " + (o.category || o.title || "\u0623\u0648\u0631\u062F\u0631")),
+              o.orderCode ? h("span", { style: { fontSize: 11, color: COLORS.muted } }, "\u00B7 " + o.orderCode) : null,
+              o.deliveryDate ? h("span", { style: { fontSize: 11, color: COLORS.muted } }, "\u00B7 \u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate) : null
+            ),
+            orderPieces.length === 0 ? h("div", { style: { fontSize: 12, color: COLORS.muted, paddingInlineStart: 4 } }, "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0639\u062F") :
+            orderPieces.map((p) => h(PieceCostCard, { key: p.id, piece: p, exchangeRate: effectiveRate, onUpdate: (patch) => onUpdatePiece({ ...p, ...patch }) }))
+          );
+        }),
+        unmatchedPieces.length > 0 ? h("div", { style: { marginBottom: 16 } },
+          h("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 6, borderBottom: `2px solid ${COLORS.border}` } },
+            h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.muted } }, "\u{1F9E9} \u0642\u0637\u0639 \u063A\u064A\u0631 \u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645 \u0623\u0648\u0631\u062F\u0631 \u0645\u062D\u062F\u062F")
+          ),
+          unmatchedPieces.map((p) => h(PieceCostCard, { key: p.id, piece: p, exchangeRate: effectiveRate, onUpdate: (patch) => onUpdatePiece({ ...p, ...patch }) }))
+        ) : null
       ) : null,
       h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "\u{1F4C2} \u0645\u0644\u062E\u0635 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A (\u0633\u0639\u0631 \u0627\u0644\u0628\u064A\u0639 \u0648\u0627\u0644\u0647\u0627\u0645\u0634)"),
       custOrders.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0623\u0648\u0631\u062F\u0631\u0627\u062A" }) :
@@ -7567,7 +7592,7 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, ca
     )
   );
 }
-function PricingPage({ order, pieces, onUpdate, canEdit, branding }) {
+function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding }) {
   const updateMaterialPrice = (materialId, price) => {
     onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, price } : m) });
   };
@@ -7608,7 +7633,15 @@ function PricingPage({ order, pieces, onUpdate, canEdit, branding }) {
       h("span", { style: { fontWeight: 700 } }, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062E\u0627\u0645\u0627\u062A"),
       h("span", { style: { fontWeight: 700, color: COLORS.gold } }, cost.materialsCost.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")
     ) : null,
-    h(ProductionQuotePage, { order, onUpdate, canEdit }),
+    (() => {
+      const normName = (s) => (s || "").trim().replace(/\s+/g, " ");
+      const orderPieces = (pieces || []).filter((p) => normName(p.customerName) === normName(order.clientName) && (!order.deliveryDate || !p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate));
+      return h(React.Fragment, null,
+        h(SectionHeader, { emoji: "\u{1F9E9}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629" }),
+        orderPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0639\u062F" }) :
+        orderPieces.map((p) => h(PieceCostCard, { key: p.id, piece: p, exchangeRate: egpToSarRate || 0, onUpdate: (patch) => onUpdatePiece({ ...p, ...patch }) }))
+      );
+    })(),
     h(SectionHeader, { emoji: "\u{1F4E6}", title: "\u0627\u0644\u062A\u063A\u0644\u064A\u0641 \u0648\u0627\u0644\u0634\u062D\u0646 \u0648\u0627\u0644\u0646\u0642\u0644" }),
     h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 16 } }, "\u064A\u062D\u0633\u0628 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0645\u0646 \u062A\u0643\u0644\u0641\u0629 \u0627\u0644\u062A\u063A\u0644\u064A\u0641/\u0627\u0644\u0634\u062D\u0646/\u0627\u0644\u0646\u0642\u0644 \u0648\u0627\u0644\u062A\u0631\u0643\u064A\u0628 \u0627\u0644\u0645\u062F\u062E\u0644\u0629 \u0644\u0643\u0644 \u0642\u0637\u0639\u0629 \u2014 \u0627\u0644\u0645\u062C\u0645\u0648\u0639: " + cost.packingShippingCost.toLocaleString("en-US", { maximumFractionDigits: 1 }) + " \u0631\u064A\u0627\u0644"),
     h(SectionHeader, { emoji: "\u{1F4CA}", title: "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0648\u0627\u0644\u0645\u0642\u0627\u0631\u0646\u0629" }),
@@ -7803,7 +7836,7 @@ const ALL_TABS = [
   { key: "quick-estimate", label: "حاسبة تسعير", emoji: "\u{1F9EE}" },
   { key: "team-calendar", label: "تقويم الفريق", emoji: "\u{1F4C5}" },
   { key: "appointments", label: "مواعيد الزيارة", emoji: "\u{1F5D3}\uFE0F" },
-  { key: "assistant", label: "مساعد ذكي", emoji: "\u{1F50D}" },
+  { key: "assistant", label: "مساعد ذكي", emoji: "\u{1F916}" },
   { key: "customer-value", label: "قيمة العملاء", emoji: "\u{1F48E}" },
   { key: "demand-forecast", label: "توقع الطلب", emoji: "\u{1F52E}" },
   { key: "custom-report", label: "تقارير إضافية", emoji: "\u{1F5C3}\uFE0F" },
@@ -8116,6 +8149,20 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
         h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A \u0627\u0644\u0646\u0648\u0639..."),
         ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u0645\u062E\u062F\u0627\u062A", "\u0633\u062C\u0627\u062F"].map((t) => h("option", { key: t, value: t }, t))
       ),
+      h("label", { style: labelStyle }, "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.manufacturingEntity || "", onChange: (e) => updateField("manufacturingEntity", e.target.value) },
+        h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A..."),
+        ENTITIES.map((en) => h("option", { key: en, value: en }, en))
+      ),
+      h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F/\u0627\u0644\u0645\u0635\u0646\u0639"),
+      h("input", { style: { ...fieldStyle, marginBottom: 0 }, list: "piece-supplier-options-list", value: piece.supplierName || "", onChange: (e) => {
+        const newSupplier = e.target.value;
+        const patch = { supplierName: newSupplier };
+        if (piece.currentLocation === piece.supplierName) patch.currentLocation = newSupplier;
+        onUpdate({ ...piece, ...patch });
+      } }),
+      h("datalist", { id: "piece-supplier-options-list" }, KNOWN_NAMES.suppliers.map((s) => h("option", { key: s, value: s }))),
+      piece.currentLocation !== piece.supplierName ? h("div", { style: { fontSize: 10.5, color: COLORS.muted } }, "\u0627\u0644\u0642\u0637\u0639\u0629 \u062A\u062E\u0637\u062A \u0644\u0645\u0648\u0642\u0639/\u0645\u0631\u062D\u0644\u0629 \u062A\u0627\u0646\u064A\u0629 (" + piece.currentLocation + ") \u0648\u0645\u062A\u063A\u064A\u064A\u0631\u0634\u0634 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0647\u0646\u0627") : null,
       h("div", { style: { display: "flex", gap: 8 } },
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0642\u0627\u0633"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.size || "", onChange: (e) => updateField("size", e.target.value) })),
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.pieceCount, onChange: (e) => updateField("pieceCount", e.target.value) }))
