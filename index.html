@@ -673,7 +673,7 @@ async function ensureWorkspaceDoc() {
   const ref = workspaceDocRef();
   const snap = await ref.get();
   if (!snap.exists) {
-    await ref.set({ suppliers: [], branding: DEFAULT_BRANDING, productionSuppliers: DEFAULT_PRODUCTION_SUPPLIERS, migratedToSubcollections: true, fixedUpholsteryStagesV1: true, fixedOrderTitleFormatV1: true, orderCodesAssigned: true, nextOrderCodeNumber: 1 });
+    await ref.set({ suppliers: [], branding: DEFAULT_BRANDING, productionSuppliers: DEFAULT_PRODUCTION_SUPPLIERS, upholsterySuppliers: DEFAULT_UPHOLSTERY_SUPPLIERS, migratedToSubcollections: true, fixedUpholsteryStagesV1: true, fixedOrderTitleFormatV1: true, orderCodesAssigned: true, nextOrderCodeNumber: 1 });
     return;
   }
   const data = snap.data() || {};
@@ -790,6 +790,7 @@ function App() {
   const [toast, setToast] = useState(null);
   const notifFirstLoad = useRef(true);
   const [productionSuppliers, setProductionSuppliers] = useState(DEFAULT_PRODUCTION_SUPPLIERS);
+  const [upholsterySuppliers, setUpholsterySuppliers] = useState(DEFAULT_UPHOLSTERY_SUPPLIERS);
   const [fabricShipmentMedia, setFabricShipmentMedia] = useState({});
   const [automationWebhookUrl, setAutomationWebhookUrl] = useState("");
   const [showAutomation, setShowAutomation] = useState(false);
@@ -957,6 +958,7 @@ function App() {
           (snap) => {
             const data = snap.data() || {};
             setProductionSuppliers(data.productionSuppliers || DEFAULT_PRODUCTION_SUPPLIERS);
+            setUpholsterySuppliers(data.upholsterySuppliers || DEFAULT_UPHOLSTERY_SUPPLIERS);
             setFabricShipmentMedia(data.fabricShipmentMedia || {});
             setSuppliers(data.suppliers || []);
             setBranding(data.branding || DEFAULT_BRANDING);
@@ -1427,6 +1429,31 @@ function App() {
     persistRecordWrite(batch.commit());
     logActivity("\u063A\u064A\u0651\u0631 \u0627\u0633\u0645 \u0645\u0648\u0631\u062F: " + oldName + " \u2192 " + trimmed + " (" + entity + ")");
   };
+  const addUpholsterySupplier = (entity, name) => persistRecordWrite(
+    workspaceDocRef().update({ [`upholsterySuppliers.${entity}`]: firebase.firestore.FieldValue.arrayUnion(name) })
+  );
+  const removeUpholsterySupplier = (entity, name) => {
+    persistRecordWrite(workspaceDocRef().update({ [`upholsterySuppliers.${entity}`]: firebase.firestore.FieldValue.arrayRemove(name) }));
+    logActivity("\u062D\u0630\u0641 \u0645\u0648\u0631\u062F \u062A\u0646\u062C\u064A\u062F: " + name + " (" + entity + ")");
+  };
+  const renameUpholsterySupplier = (entity, oldName, newName) => {
+    const trimmed = (newName || "").trim();
+    if (!trimmed || trimmed === oldName) return;
+    const nextList = (upholsterySuppliers[entity] || []).map((n) => n === oldName ? trimmed : n);
+    const batch = db.batch();
+    batch.update(workspaceDocRef(), { [`upholsterySuppliers.${entity}`]: nextList });
+    productionPieces.forEach((p) => {
+      if (p.supplierName === oldName || p.currentLocation === oldName) {
+        const patch = {};
+        if (p.supplierName === oldName) patch.supplierName = trimmed;
+        if (p.currentLocation === oldName) patch.currentLocation = trimmed;
+        batch.update(piecesColRef().doc(p.id), patch);
+      }
+    });
+    persistRecordWrite(batch.commit());
+    logActivity("\u063A\u064A\u0651\u0631 \u0627\u0633\u0645 \u0645\u0648\u0631\u062F \u062A\u0646\u062C\u064A\u062F: " + oldName + " \u2192 " + trimmed + " (" + entity + ")");
+  };
+  CURRENT_UPHOLSTERY_SUPPLIERS = upholsterySuppliers;
   const selectedOrder = orders.find((o) => o.id === selectedId) || null;
   const activeOrders = orders.filter((o) => !o.archived && (!activeBranch || (o.branch || "\u0627\u0644\u0641\u0631\u0639 \u0627\u0644\u0631\u0626\u064A\u0633\u064A") === activeBranch));
   const allBranches = Array.from(new Set(orders.map((o) => o.branch || "\u0627\u0644\u0641\u0631\u0639 \u0627\u0644\u0631\u0626\u064A\u0633\u064A"))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -1708,8 +1735,8 @@ function App() {
         !canSeeTab(tab) ? null : h(React.Fragment, null,
         tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k) }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
-        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k) }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
+        tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production") }),
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
@@ -5057,7 +5084,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEd
   };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
-    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A" }) : null,
+    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", allowNotNeeded: true }) : null,
     !view ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, [
       { key: "byCustomer", label: "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644", emoji: "\u{1F464}", count: byCustomerNames.length },
       { key: "byOrder", label: "\u062D\u0633\u0628 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0644\u0644\u062A\u0642\u0627\u0631\u064A\u0631)", emoji: "\u{1F4C2}" },
@@ -5166,7 +5193,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEd
     )
   );
 }
-function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnlyProp, shipmentMedia, onUpdateShipmentMedia, canSeeSub, canEditSub }) {
+function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnlyProp, shipmentMedia, onUpdateShipmentMedia, canSeeSub, canEditSub, productionSuppliers, upholsterySuppliers }) {
   const [subTab, setSubTab] = useState("list");
   const readOnly = readOnlyProp || (canEditSub ? !canEditSub(subTab) : false);
   const [expandedShipDate, setExpandedShipDate] = useState(null);
@@ -5177,6 +5204,8 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [showShipFilters, setShowShipFilters] = useState(false);
   const [fArrivalStatus, setFArrivalStatus] = useState("");
   const [shipmentQuery, setShipmentQuery] = useState("");
+  const [selectedShipments, setSelectedShipments] = useState([]);
+  const egyptSupplierNames = [].concat((productionSuppliers && productionSuppliers["\u0645\u0635\u0631"]) || [], (upholsterySuppliers && upholsterySuppliers["\u0645\u0635\u0631"]) || []);
   const sofaPiecesByCustomer = {};
   pieces.forEach((p) => {
     if (!isSofaType(p.pieceType) || !p.customerName) return;
@@ -5185,7 +5214,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const rows = [];
   orders.forEach((o) => {
     const manuallyFlagged = o.manufacturingLocation === "\u0645\u0635\u0631";
-    const distributedToEgypt = isSofaType(o.category) && sofaPiecesByCustomer[o.clientName] && sofaPiecesByCustomer[o.clientName].some((p) => p.manufacturingEntity === "\u0645\u0635\u0631");
+    const distributedToEgypt = isSofaType(o.category) && sofaPiecesByCustomer[o.clientName] && sofaPiecesByCustomer[o.clientName].some((p) => egyptSupplierNames.includes(p.currentLocation));
     if (!manuallyFlagged && !distributedToEgypt) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
@@ -5296,6 +5325,16 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
       ),
       showShipFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
         h("div", null,
+          h("label", { style: labelStyle }, "\u0627\u062E\u062A\u0627\u0631\u064A \u0627\u0644\u0634\u062D\u0646\u0627\u062A"),
+          h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+            shipDates.map((date) => h("button", {
+              key: date,
+              onClick: () => setSelectedShipments((cur) => cur.includes(date) ? cur.filter((d) => d !== date) : [...cur, date]),
+              style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: selectedShipments.includes(date) ? COLORS.teal : "#fff", color: selectedShipments.includes(date) ? "#fff" : COLORS.teal, cursor: "pointer" }
+            }, "\u{1F6A9} " + shipmentTitle(date)))
+          )
+        ),
+        h("div", null,
           h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0634\u062D\u0646"),
           h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fShipStatus, onChange: (e) => setFShipStatus(e.target.value) },
             h("option", { value: "" }, "\u0627\u0644\u0643\u0644"),
@@ -5311,7 +5350,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
         )
       ) : null,
       shipDates.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0634\u062D\u0646\u0627\u062A \u0645\u0633\u062C\u0644\u0629 \u0628\u0639\u062F" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.filter((date) => (!shipmentQuery.trim() || shipmentTitle(date).includes(shipmentQuery.trim()) || date.includes(shipmentQuery.trim())) && (!fArrivalStatus || byShipDate[date].some((r) => r.fabricArrivalStatus === fArrivalStatus)) && (!fShipStatus || byShipDate[date].some((r) => fShipStatus === "__unset__" ? !r.fabricShippingStatus : r.fabricShippingStatus === fShipStatus))).map((date) => {
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.filter((date) => (selectedShipments.length === 0 || selectedShipments.includes(date)) && (!shipmentQuery.trim() || shipmentTitle(date).includes(shipmentQuery.trim()) || date.includes(shipmentQuery.trim())) && (!fArrivalStatus || byShipDate[date].some((r) => r.fabricArrivalStatus === fArrivalStatus)) && (!fShipStatus || byShipDate[date].some((r) => fShipStatus === "__unset__" ? !r.fabricShippingStatus : r.fabricShippingStatus === fShipStatus))).map((date) => {
         const rows = byShipDate[date];
         const arrivalDates = Array.from(new Set(rows.map((r) => r.fabricArrivalDate).filter(Boolean)));
         const uniformArrival = arrivalDates.length === 1 ? arrivalDates[0] : null;
@@ -6183,7 +6222,7 @@ function CustomerTimelineTablePage({ orders, pieces, onOpenOrder, hideHeader }) 
     let productionDate = null;
     if (totalPieces > 0 && readyCount === totalPieces) {
       matchingPieces.forEach((p) => {
-        const stageKey = LOCATION_TO_STAGE_KEY[p.currentLocation] || "\u0646\u062C\u0627\u0631\u0629";
+        const stageKey = resolveStageKey(p.currentLocation);
         const end = p.stages && p.stages[stageKey] && p.stages[stageKey].end;
         if (end && (!productionDate || end > productionDate)) productionDate = end;
       });
@@ -6951,7 +6990,7 @@ function OrderTimelinePage({ order, pieces, onBack }) {
   const steps = [
     { emoji: "\u{1F4E5}", label: "\u0627\u0633\u062A\u0644\u0627\u0645 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", done: true, detail: order.dateReceived ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.dateReceived : null },
     { emoji: "\u2705", label: "\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", done: !!order.approved, detail: order.approved ? (order.reviewDate ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.reviewDate.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F") : "\u0644\u0633\u0647 \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" },
-    { emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", done: !!order.materialsHandled, detail: !order.approved ? "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0623\u0648\u0644\u0627\u064B" : order.materialsHandled ? (order.materialsHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.materialsHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062D\u0635\u0631") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A" },
+    { emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", done: !!order.materialsHandled, detail: !order.approved ? "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0623\u0648\u0644\u0627\u064B" : order.materialsHandled === "not_needed" ? "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C" : order.materialsHandled ? (order.materialsHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.materialsHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062D\u0635\u0631") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A" },
     { emoji: "\u{1F4E6}", label: "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0642\u0637\u0639 \u0639\u0644\u0649 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646", done: !!order.distributionHandled, detail: !order.approved ? "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0623\u0648\u0644\u0627\u064B" : order.distributionHandled ? (order.distributionHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.distributionHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0648\u0632\u0651\u0639" },
     { emoji: "\u{1F6E0}\uFE0F", label: "\u0627\u0644\u062A\u0635\u0646\u064A\u0639", done: totalPieces > 0 && readyCount === totalPieces, detail: totalPieces === 0 ? "\u0645\u0633\u062A\u0646\u064A \u064A\u062A\u0648\u0632\u0651\u0639" : readyCount + " \u0645\u0646 " + totalPieces + " \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629", subItems: totalPieces > 0 && readyCount < totalPieces ? matchingPieces.filter((p) => !pieceIsReady(p)).map((p) => (p.pieceType || "\u2014") + " \u2014 " + stageLabel(p.currentLocation)) : [] },
     { emoji: "\u{1F69A}", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", done: totalPieces > 0 && deliveredCount === totalPieces, detail: totalPieces === 0 ? "\u2014" : deliveredCount + " \u0645\u0646 " + totalPieces + " \u0642\u0637\u0639\u0629 \u0627\u062A\u0633\u0644\u0645\u062A" + (order.deliveryDate ? " \u00B7 \u0645\u0648\u0639\u062F \u0645\u062A\u0648\u0642\u0639: " + order.deliveryDate : "") }
@@ -7526,6 +7565,7 @@ function CustomerGalleryPage({ order, onUpdateOrder, onBack }) {
       ),
       hasAnyMedia ? h("button", { onClick: exportPdf, style: { marginRight: "auto", fontSize: 12, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.teal}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u{1F5A8}\uFE0F PDF") : null
     ),
+    order.manufacturingOrderFile ? h("a", { href: order.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "7px 12px", textDecoration: "none", marginBottom: 16 } }, h(Emoji, { size: 13 }, "\u{1F4CE}"), "\u0641\u062A\u062D \u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0644\u0627\u0637\u0644\u0627\u0639") : null,
     GALLERY_CATEGORIES.map((cat) => h("div", { key: cat.key, style: { marginBottom: 22 } },
       h(SectionHeader, { emoji: cat.emoji, title: cat.label }),
       (gallery[cat.key] || []).length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0635\u0648\u0631 \u0623\u0648 \u0641\u064A\u062F\u064A\u0648\u0647\u0627\u062A \u0645\u0636\u0627\u0641\u0629 \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) : null,
@@ -8180,6 +8220,7 @@ const DEFAULT_PRODUCTION_SUPPLIERS = {
   "مصر": ["نجارة عبدالرحمن", "نجارة صابر", "الدهان", "التنجيد", "مصنع 36", "مصنع زمزم", "مصنع عسل", "مصنع نوح", "الاستيل", "التغليف", "الشحن"],
   "الدمام": ["ابو محمود", "الكينعي", "بستان", "عادى نسيب", "الدهان", "التنجيد", "التغليف", "الشحن"]
 };
+const DEFAULT_UPHOLSTERY_SUPPLIERS = { "مصر": ["التنجيد"], "الدمام": ["التنجيد"] };
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
@@ -8272,13 +8313,13 @@ function arabicDaysPhrase(n) {
 }
 function pieceDeadlineDiff(p) {
   if (!p.agreedDeadline) return null;
-  const stageKey = LOCATION_TO_STAGE_KEY[p.currentLocation] || "\u0646\u062C\u0627\u0631\u0629";
+  const stageKey = resolveStageKey(p.currentLocation);
   const completedDate = p.stages && p.stages[stageKey] && p.stages[stageKey].end;
   const compareDate = completedDate || todayStr();
   return Math.round((new Date(p.agreedDeadline) - new Date(compareDate)) / 86400000);
 }
 function pieceStageEndRecorded(p) {
-  const stageKey = LOCATION_TO_STAGE_KEY[p.currentLocation] || "\u0646\u062C\u0627\u0631\u0629";
+  const stageKey = resolveStageKey(p.currentLocation);
   return !!(p.stages && p.stages[stageKey] && p.stages[stageKey].end);
 }
 function pieceNeedsFinishing(p) {
@@ -8311,7 +8352,7 @@ function computeCustomerFriendlyStatus(order, matchingPieces) {
   return "\u0642\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639";
 }
 
-function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer }) {
+function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer, allowNotNeeded }) {
   const [tab, setTab] = useState("new");
   const [query, setQuery] = useState("");
   const approved = orders.filter((o) => o.approved);
@@ -8335,7 +8376,10 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLa
       ),
       h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
         onOpenOrder ? h("button", { onClick: (e) => { e.stopPropagation(); onOpenOrder(o.id); }, style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F4C2} \u062D\u0635\u0631") : null,
-        tab === "new" ? h("button", { onClick: (e) => { e.stopPropagation(); onUpdateOrder(o.id, { [flagKey]: true, [flagKey + "At"]: (/* @__PURE__ */ new Date()).toISOString() }); }, style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705") : h(React.Fragment, null, h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645"), onOpenCustomer ? h(Emoji, { size: 13, color: COLORS.muted }, "\u2039") : null)
+        tab === "new" ? h(React.Fragment, null,
+          h("button", { onClick: (e) => { e.stopPropagation(); onUpdateOrder(o.id, { [flagKey]: true, [flagKey + "At"]: (/* @__PURE__ */ new Date()).toISOString() }); }, style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: COLORS.green, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0645 \u2705"),
+          allowNotNeeded ? h("button", { onClick: (e) => { e.stopPropagation(); onUpdateOrder(o.id, { [flagKey]: "not_needed", [flagKey + "At"]: (/* @__PURE__ */ new Date()).toISOString() }); }, style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer" } }, "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C") : null
+        ) : h(React.Fragment, null, h("span", { style: { fontSize: 11, color: o[flagKey] === "not_needed" ? COLORS.muted : COLORS.green, fontWeight: 700 } }, o[flagKey] === "not_needed" ? "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C" : "\u2705 \u062A\u0645"), onOpenCustomer ? h(Emoji, { size: 13, color: COLORS.muted }, "\u2039") : null)
       )
     )))
   );
@@ -8487,11 +8531,19 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
 function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statusOnly }) {
   const [editingDates, setEditingDates] = useState(false);
   const [editingCore, setEditingCore] = useState(false);
-  const handleStatusChange = (newStatus) => {
+  const [pendingUpholsteryChoice, setPendingUpholsteryChoice] = useState(false);
+  const [chosenUpholsterySupplier, setChosenUpholsterySupplier] = useState("");
+  const upholsteryOptions = (CURRENT_UPHOLSTERY_SUPPLIERS && CURRENT_UPHOLSTERY_SUPPLIERS[piece.manufacturingEntity]) || [];
+  const handleStatusChange = (newStatus, specificTarget) => {
     if (!canEdit) return;
+    if (newStatus === "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" && !specificTarget && upholsteryOptions.length > 1) {
+      setChosenUpholsterySupplier(upholsteryOptions[0]);
+      setPendingUpholsteryChoice(true);
+      return;
+    }
     const p = { ...piece, stages: { ...(piece.stages || {}) } };
     const prevLocation = piece.currentLocation;
-    const currentStageKey = LOCATION_TO_STAGE_KEY[piece.currentLocation] || "\u0646\u062C\u0627\u0631\u0629";
+    const currentStageKey = resolveStageKey(piece.currentLocation);
     p.status = newStatus;
     if (newStatus === "\u062C\u0627\u0631\u0649") {
       p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), start: (p.stages[currentStageKey] && p.stages[currentStageKey].start) || todayStr() };
@@ -8500,8 +8552,8 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
       p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), end: (p.stages[currentStageKey] && p.stages[currentStageKey].end) || todayStr() };
     }
     if (STATUS_TARGET[newStatus]) {
-      const target = STATUS_TARGET[newStatus];
-      const stageKey = STATUS_STAGE_KEY[target];
+      const target = specificTarget || STATUS_TARGET[newStatus];
+      const stageKey = resolveStageKey(target);
       p.currentLocation = target;
       p.status = "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621";
       p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "", receivedAt: (/* @__PURE__ */ new Date()).toISOString() };
@@ -8512,7 +8564,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
   };
   const updateField = (field, value) => { if (canEdit) onUpdate({ ...piece, [field]: value }); };
   const updateStageDate = (stage, which, value) => { if (!canEdit) return; onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stage]: { ...((piece.stages || {})[stage] || {}), [which]: value } } }); };
-  const currentStageKeyNow = LOCATION_TO_STAGE_KEY[piece.currentLocation] || "\u0646\u062C\u0627\u0631\u0629";
+  const currentStageKeyNow = resolveStageKey(piece.currentLocation);
   const receivedFrom = piece.stages && piece.stages[currentStageKeyNow] && piece.stages[currentStageKeyNow].receivedFrom;
   const revertStage = () => {
     if (!receivedFrom) return;
@@ -8603,6 +8655,14 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
         } catch (err) { console.error(err); }
       } })
     ) : null,
+    pendingUpholsteryChoice ? h("div", { style: { background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: 10, marginBottom: 10 } },
+      h("div", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold, marginBottom: 6 } }, "\u{1F9F5} \u0627\u062E\u062A\u0627\u0631\u064A \u0645\u0648\u0631\u062F \u0627\u0644\u062A\u0646\u062C\u064A\u062F"),
+      h("div", { style: { display: "flex", gap: 8 } },
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: chosenUpholsterySupplier, onChange: (e) => setChosenUpholsterySupplier(e.target.value) }, upholsteryOptions.map((s) => h("option", { key: s, value: s }, s))),
+        h("button", { onClick: () => { handleStatusChange("\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", chosenUpholsterySupplier); setPendingUpholsteryChoice(false); }, style: { ...primaryBtn(false), width: 70, padding: "8px 0" } }, "\u062A\u0623\u0643\u064A\u062F"),
+        h("button", { onClick: () => setPendingUpholsteryChoice(false), style: { width: 60, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff", color: COLORS.muted, cursor: "pointer" } }, "\u0625\u0644\u063A\u0627\u0621")
+      )
+    ) : null,
     h("div", { style: { display: "flex", gap: 8 } },
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الحالة"), h("select", { style: fieldStyle, disabled: !canEdit, value: piece.status, onChange: (e) => handleStatusChange(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s)))),
       h("div", { style: { flex: 1 } },
@@ -8636,7 +8696,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
     isAdminUser && receivedFrom ? h("button", { onClick: revertStage, style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, background: COLORS.bg, border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "8px 0", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 } }, h(Emoji, { size: 13 }, "\u21A9\uFE0F"), "\u0625\u0631\u062C\u0627\u0639 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644ـ\"" + receivedFrom + "\"") : null,
     (canEdit && !statusOnly) ? h("button", { onClick: () => setEditingDates((v) => !v), style: { fontSize: 12, color: COLORS.teal, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, editingDates ? "إخفاء تواريخ المراحل" : "تعديل تواريخ المراحل يدويًا") : null,
     editingDates ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10, background: COLORS.bg, borderRadius: 8, padding: 8 } },
-      Array.from(new Set(Object.keys(piece.stages || {}).concat([LOCATION_TO_STAGE_KEY[piece.currentLocation] || "\u0646\u062C\u0627\u0631\u0629"]))).map((stage) => h("div", { key: stage, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 } },
+      Array.from(new Set(Object.keys(piece.stages || {}).concat([resolveStageKey(piece.currentLocation)]))).map((stage) => h("div", { key: stage, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 } },
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 6 } }, stage),
         (piece.stages[stage] && piece.stages[stage].receivedAt) ? h("div", { style: { fontSize: 11, color: COLORS.teal, marginBottom: 6 } }, "\u{1F4E5} \u062F\u062E\u0644\u062A \u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u062F\u064A \u0641\u064A: " + piece.stages[stage].receivedAt.replace("T", " ").slice(0, 16)) : null,
         h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 \u0645\u0646 " + ((piece.stages[stage] && piece.stages[stage].receivedFrom) || "\u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u0633\u0627\u0628\u0642\u0629")),
@@ -8660,7 +8720,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
+function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
   const [entity, setEntity] = useState((deepLink && deepLink.entity) || null);
   useEffect(() => { if (deepLink && onConsumeDeepLink) onConsumeDeepLink(); }, []);
   if (!entity) {
@@ -8671,7 +8731,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, onUpdate, onDelete, 
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -8680,6 +8740,13 @@ function stageGroupForLocation(location, isDammam) {
   return "carpentry";
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
+let CURRENT_UPHOLSTERY_SUPPLIERS = null;
+function resolveStageKey(loc) {
+  if (LOCATION_TO_STAGE_KEY[loc]) return LOCATION_TO_STAGE_KEY[loc];
+  const all = [].concat(...Object.values(CURRENT_UPHOLSTERY_SUPPLIERS || {}));
+  if (all.includes(loc)) return "\u062A\u0646\u062C\u064A\u062F";
+  return "\u0646\u062C\u0627\u0631\u0629";
+}
 function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection) {
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
@@ -8691,7 +8758,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
     const hours = Math.max(1, Math.floor(ms / 3600000));
     return hours + " \u0633\u0627\u0639\u0629";
   };
-  const stageKeyForPiece = (p) => LOCATION_TO_STAGE_KEY[p.currentLocation] || "\u0646\u062C\u0627\u0631\u0629";
+  const stageKeyForPiece = (p) => resolveStageKey(p.currentLocation);
   return h("div", null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B/\u0627\u0644\u0641\u0644\u062A\u0631" }) : null,
     dateKeys.map((dateKey) => {
@@ -8775,7 +8842,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     });
     setBulkSelected([]);
   };
-  const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
+  const stageDateKey = resolveStageKey(activeLoc);
   const scoped = pieces.filter((p) => {
     if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
     if (scope.type === "none") return !p.customerDeliveryDate;
@@ -8878,7 +8945,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
     });
     setBulkSelected([]);
   };
-  const stageDateKey = LOCATION_TO_STAGE_KEY[activeLoc] || "\u0646\u062C\u0627\u0631\u0629";
+  const stageDateKey = resolveStageKey(activeLoc);
 
   const monthCounts = {};
   let noDateCount = 0;
@@ -8939,16 +9006,17 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
   const allLocations = productionSuppliers[entity] || [];
   const carpentryLocs = allLocations.filter((l) => !FIXED_STAGE_LOCATIONS.includes(l));
+  const upholsteryLocs = upholsterySuppliers[entity] || [];
   const STAGE_GROUPS = [
     { key: "carpentry", label: "\u0646\u062C\u0627\u0631\u0629 / \u0645\u0635\u0627\u0646\u0639", emoji: "\u{1FA9A}", locations: carpentryLocs, allowAdd: true },
     { key: "painting", label: "\u062F\u0647\u0627\u0646", emoji: "\u{1F3A8}", locations: ["\u0627\u0644\u062F\u0647\u0627\u0646"], allowAdd: false },
-    { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F", emoji: "\u{1F9F5}", locations: ["\u0627\u0644\u062A\u0646\u062C\u064A\u062F"], allowAdd: false }
+    { key: "upholstery", label: "\u062A\u0646\u062C\u064A\u062F", emoji: "\u{1F9F5}", locations: upholsteryLocs, allowAdd: true }
   ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false } ])
     .concat([{ key: "delays", label: "\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A", emoji: "\u23F0", locations: [], allowAdd: false, special: true }]);
   const trueDelays = entityPieces.filter((p) => {
@@ -9010,7 +9078,11 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, onUpdate, o
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
-  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack: () => setStageKey(null), deepLink, canEditStage: !canEditSub || canEditSub(group.key) });
+  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete,
+    onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
+    onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
+    onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
+    myRoles, mySupplierScope, onBack: () => setStageKey(null), deepLink, canEditStage: !canEditSub || canEditSub(group.key) });
 }
 function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack, deepLink, canEditStage }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
