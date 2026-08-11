@@ -5214,7 +5214,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const rows = [];
   orders.forEach((o) => {
     const manuallyFlagged = o.manufacturingLocation === "\u0645\u0635\u0631";
-    const distributedToEgypt = isSofaType(o.category) && sofaPiecesByCustomer[o.clientName] && sofaPiecesByCustomer[o.clientName].some((p) => egyptSupplierNames.includes(p.currentLocation));
+    const distributedToEgypt = isSofaType(o.category) && sofaPiecesByCustomer[o.clientName] && sofaPiecesByCustomer[o.clientName].some((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && egyptSupplierNames.includes(p.currentLocation));
     if (!manuallyFlagged && !distributedToEgypt) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
