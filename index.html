@@ -5205,17 +5205,22 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [fArrivalStatus, setFArrivalStatus] = useState("");
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [selectedShipments, setSelectedShipments] = useState([]);
+  const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
   const egyptSupplierNames = [].concat((productionSuppliers && productionSuppliers["\u0645\u0635\u0631"]) || [], (upholsterySuppliers && upholsterySuppliers["\u0645\u0635\u0631"]) || []);
-  const sofaPiecesByCustomer = {};
-  pieces.forEach((p) => {
-    if (!isSofaType(p.pieceType) || !p.customerName) return;
-    (sofaPiecesByCustomer[p.customerName] = sofaPiecesByCustomer[p.customerName] || []).push(p);
-  });
+  const allSofaPieces = pieces.filter((p) => isSofaType(p.pieceType) && p.customerName);
+  const sofaPiecesForOrder = (o) => {
+    const matches = allSofaPieces.filter((p) => norm(p.customerName) === norm(o.clientName));
+    const sameNameOrders = orders.filter((oo) => norm(oo.clientName) === norm(o.clientName));
+    if (sameNameOrders.length <= 1) return matches;
+    return matches.filter((p) => p.customerDeliveryDate && o.deliveryDate && p.customerDeliveryDate === o.deliveryDate);
+  };
   const rows = [];
   orders.forEach((o) => {
     const manuallyFlagged = o.manufacturingLocation === "\u0645\u0635\u0631";
-    const distributedToEgypt = isSofaType(o.category) && sofaPiecesByCustomer[o.clientName] && sofaPiecesByCustomer[o.clientName].some((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && egyptSupplierNames.includes(p.currentLocation));
-    if (!manuallyFlagged && !distributedToEgypt) return;
+    const sofaPieces = sofaPiecesForOrder(o);
+    const hasSofaPieces = isSofaType(o.category) && sofaPieces.length > 0;
+    const distributedToEgypt = hasSofaPieces && sofaPieces.some((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && egyptSupplierNames.includes(p.currentLocation));
+    if (hasSofaPieces) { if (!distributedToEgypt) return; } else if (!manuallyFlagged) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
       if (m.pieceCategory && m.pieceCategory !== "\u0643\u0646\u0628") return;
