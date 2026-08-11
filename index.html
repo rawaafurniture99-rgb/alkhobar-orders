@@ -5207,6 +5207,8 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [selectedShipments, setSelectedShipments] = useState([]);
   const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
   const egyptSupplierNames = [].concat((productionSuppliers && productionSuppliers["\u0645\u0635\u0631"]) || [], (upholsterySuppliers && upholsterySuppliers["\u0645\u0635\u0631"]) || []);
+  const dammamSupplierNames = [].concat((productionSuppliers && productionSuppliers["\u0627\u0644\u062F\u0645\u0627\u0645"]) || [], (upholsterySuppliers && upholsterySuppliers["\u0627\u0644\u062F\u0645\u0627\u0645"]) || []);
+  const egyptOnlySupplierNames = egyptSupplierNames.filter((n) => !dammamSupplierNames.includes(n));
   const allSofaPieces = pieces.filter((p) => isSofaType(p.pieceType) && p.customerName);
   const sofaPiecesForOrder = (o) => {
     const matches = allSofaPieces.filter((p) => norm(p.customerName) === norm(o.clientName));
@@ -5219,7 +5221,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
     const manuallyFlagged = o.manufacturingLocation === "\u0645\u0635\u0631";
     const sofaPieces = sofaPiecesForOrder(o);
     const hasSofaPieces = isSofaType(o.category) && sofaPieces.length > 0;
-    const distributedToEgypt = hasSofaPieces && sofaPieces.some((p) => p.manufacturingEntity === "\u0645\u0635\u0631" && egyptSupplierNames.includes(p.currentLocation));
+    const distributedToEgypt = hasSofaPieces && sofaPieces.some((p) => egyptOnlySupplierNames.includes(p.currentLocation));
     if (hasSofaPieces) { if (!distributedToEgypt) return; } else if (!manuallyFlagged) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
