@@ -4004,7 +4004,7 @@ function TeamCalendarPage({ pieces, quickTasks, preApprovalRecords, emailToName,
           dayData.tasks.map((t) => h("div", { key: t.id, style: { fontSize: 12, color: COLORS.muted } }, t.title + " \u2014 " + ((emailToName && emailToName[t.assignedToEmail]) || t.assignedToEmail || "")))
         ) : null,
         dayData.meetings.length > 0 ? h("div", null,
-          h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.rose, marginBottom: 4 } }, "\u{1F7E3} \u0627\u062C\u062A\u0645\u0627\u0639\u0627\u062A \u0627\u0639\u062A\u0645\u0627\u062F"),
+          h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.rose, marginBottom: 4 } }, "\u{1F7E3} \u0645\u0648\u0627\u0639\u064A\u062F \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0645\u0647\u0646\u062F\u0633"),
           dayData.meetings.map((r) => h("div", { key: r.id, style: { fontSize: 12, color: COLORS.muted } }, r.clientName))
         ) : null
       ) : h(EmptyHint, { text: "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u064A\u0648\u0645 \u0641\u064A\u0647 \u062D\u0627\u062C\u0629 \u0644\u0645\u0632\u064A\u062F \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644" })
@@ -4226,7 +4226,7 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
                   h("span", { style: { fontWeight: 700, fontSize: 14 } }, o.clientName || "\u2014"),
                   h("span", { style: { fontSize: 11.5, color: COLORS.muted, marginInlineStart: 8 } }, o.deliveryDate || "\u2014")
                 ),
-                h("div", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700, marginTop: 2 } }, "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u0648\u0627\u0644\u062A\u0648\u0632\u064A\u0639: " + (orderEntities.length ? orderEntities.join("\u060C ") : "\u2014"))
+                h("div", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700, marginTop: 2 } }, orderEntities.length ? orderEntities.join("\u060C ") : "\u2014")
               ),
               o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
             ),
@@ -4246,10 +4246,11 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
           ),
           orderPieces.length === 0 ? h("div", { style: { padding: 12, fontSize: 12, color: COLORS.muted } }, "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u062E\u0634\u0628\u064A\u0627\u062A/\u0645\u0633\u0637\u062D\u0627\u062A/\u062C\u064A\u0628\u0648\u0631\u062F \u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0639\u0645\u064A\u0644 \u0628\u0639\u062F") :
           h("div", { style: { overflowX: "auto" } },
-            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 520 } },
-              h("thead", null, h("tr", null, ["\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"].map((c) => h("th", { key: c, style: { padding: "7px 9px", borderBottom: `1px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 620 } },
+              h("thead", null, h("tr", null, ["\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"].map((c) => h("th", { key: c, style: { padding: "7px 9px", borderBottom: `1px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
               h("tbody", null, orderPieces.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.bg}` } },
                 h("td", { style: { padding: "7px 9px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+                h("td", { style: { padding: "7px 9px", whiteSpace: "nowrap", color: COLORS.teal, fontWeight: 700 } }, p.supplierName || "\u2014"),
                 h("td", { style: { padding: "7px 9px" } }, p.description || "\u2014"),
                 h("td", { style: { padding: "7px 9px", textAlign: "center" } }, p.pieceCount || 1),
                 h("td", { style: { padding: "7px 9px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
@@ -4474,7 +4475,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
   const canEditShowroom = isAdminUser || r.createdBy === myEmail;
   const canEditEngineering = isAdminUser || myRoles.includes("pre-approval-engineering");
   const canEditTechnical = isAdminUser || myRoles.includes("pre-approval-technical");
-  const canMarkClientMeeting = isAdminUser || r.createdBy === myEmail || myRoles.includes("pre-approval-engineering") || myRoles.includes("pre-approval-technical");
+  const canEngineerApprove = isAdminUser || myRoles.includes("engineers-manager") || r.createdBy === myEmail;
   const addShowroomFiles = async (fileList) => {
     if (!fileList || fileList.length === 0) return;
     setBusy(true);
@@ -4520,9 +4521,13 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
     pushTimeline([{ stage: "technical", event: "done", at: now() }, { stage: "approval", event: "entered", at: now() }]);
     onUpdate({ technicalReviewStatus: "\u0645\u0639\u062A\u0645\u062F", technicalReviewNotes: "" });
   };
+  const sendBackFromApproval = (notes, media) => {
+    pushTimeline([{ stage: "approval", event: "sent_back", at: now() }, { stage: "engineering", event: "entered", at: now() }]);
+    onUpdate({ engineeringDone: false, engineeringStatus: "", technicalReviewStatus: "", approvalReviewStatus: "\u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644", approvalReviewNotes: notes, approvalReviewMedia: media || [], approvalRevisionCount: (r.approvalRevisionCount || 0) + 1 });
+  };
   const markClientApproved = () => {
     pushTimeline([{ stage: "approval", event: "done", at: now() }]);
-    onUpdate({ clientApproved: true, clientApprovedAt: now() });
+    onUpdate({ clientApproved: true, clientApprovedAt: now(), approvalReviewStatus: "", approvalReviewNotes: "" });
   };
   const stageStatus = (key) => {
     if (key === "showroom") return r.showroomDone ? { label: "\u062A\u0645", color: COLORS.green, bg: "#E8F0E4" } : { label: "\u062C\u0627\u0631\u064A", color: COLORS.gold, bg: COLORS.goldSoft };
@@ -4534,7 +4539,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
     { key: "showroom", emoji: "\u{1F3EC}", label: "1\u200F. \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 - \u0631\u0641\u0639 \u0627\u0644\u0645\u0642\u0627\u0633\u0627\u062A" },
     { key: "engineering", emoji: "\u{1F4D0}", label: "2\u200F. \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A" },
     { key: "technical", emoji: "\u{1F58A}\uFE0F", label: "3\u200F. \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A" },
-    { key: "approval", emoji: "\u2705", label: "4\u200F. \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644" }
+    { key: "approval", emoji: "\u2705", label: "4\u200F. \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0645\u0647\u0646\u062F\u0633" }
   ];
   if (activeStage) {
     const s = stages.find((x) => x.key === activeStage);
@@ -4565,6 +4570,13 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
       ) : null,
       activeStage === "engineering" ? h("div", null,
         !r.showroomDone ? h(EmptyHint, { text: "\u0645\u0633\u062A\u0646\u064A \u062E\u0644\u0627\u0635 \u0642\u0633\u0645 \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648\u0644\u0627\u064B" }) : h(React.Fragment, null,
+          r.approvalReviewStatus === "\u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644" && (r.approvalReviewNotes || (r.approvalReviewMedia || []).length > 0) ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
+            h("div", { style: { fontSize: 12, fontWeight: 700, color: COLORS.danger, marginBottom: 6 } }, "\u{1F504} \u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0637\u0644\u0628 \u062A\u0639\u062F\u064A\u0644:"),
+            r.approvalReviewNotes ? h("div", { style: { fontSize: 13, lineHeight: 1.6, marginBottom: (r.approvalReviewMedia || []).length > 0 ? 8 : 0 } }, r.approvalReviewNotes) : null,
+            (r.approvalReviewMedia || []).length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 } }, r.approvalReviewMedia.map((f, idx) => h("div", { key: idx, style: { borderRadius: 10, overflow: "hidden", border: `1px solid ${COLORS.border}`, aspectRatio: "1" } },
+              f.kind === "image" ? h("img", { src: f.dataUrl, onClick: () => openImageLightbox(f.dataUrl), style: { width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" } }) : f.kind === "video" ? h("video", { src: f.dataUrl, controls: true, style: { width: "100%", height: "100%", objectFit: "cover" } }) : f.kind === "audio" ? h("div", { style: { width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: COLORS.bg, gap: 4 } }, h(Emoji, { size: 20 }, "\u{1F3A4}"), h("audio", { src: f.dataUrl, controls: true, style: { width: "90%", height: 24 } })) : h("a", { href: f.dataUrl, target: "_blank", rel: "noreferrer", style: { width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg } }, h(Emoji, { size: 22 }, "\u{1F4C4}"))
+            ))) : null
+          ) : null,
           r.technicalReviewStatus === "\u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644" && (r.technicalReviewNotes || (r.technicalReviewMedia || []).length > 0) ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
             h("div", { style: { fontSize: 12, fontWeight: 700, color: COLORS.danger, marginBottom: 6 } }, "\u{1F504} \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u0637\u0644\u0628 \u062A\u0639\u062F\u064A\u0644:"),
             r.technicalReviewNotes ? h("div", { style: { fontSize: 13, lineHeight: 1.6, marginBottom: (r.technicalReviewMedia || []).length > 0 ? 8 : 0 } }, r.technicalReviewNotes) : null,
@@ -4629,35 +4641,43 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
       ) : null,
       activeStage === "approval" ? h("div", null,
         r.technicalReviewStatus !== "\u0645\u0639\u062A\u0645\u062F" ? h(EmptyHint, { text: "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u0623\u0648\u0644\u0627\u064B" }) :
-        r.clientApproved ? h("div", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645 \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F") :
+        r.clientApproved ? h("div", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u2705 \u062A\u0645 \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0645\u0647\u0646\u062F\u0633") :
         h(React.Fragment, null,
-          canMarkClientMeeting ? h(React.Fragment, null,
-            h("label", { style: labelStyle }, "\u0645\u0648\u0639\u062F \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A \u2014 \u064A\u0638\u0647\u0631 \u0641\u064A \u0627\u0644\u062A\u0642\u0648\u064A\u0645 \u0627\u0644\u0645\u0648\u062D\u062F)"),
+          h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14, marginBottom: 16 } },
+            h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 8, color: COLORS.muted } }, "\u{1F4D0} \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0646\u0647\u0627\u0626\u064A \u0627\u0644\u0645\u0631\u0641\u0648\u0639 \u0645\u0646 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A"),
+            r.engineeringFile ? h("a", { href: r.engineeringFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 8, textDecoration: "none" } }, h(Emoji, { size: 13 }, "\u{1F4CE}"), r.engineeringFile.name) : h("div", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 8 } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0644\u0641 \u0645\u0631\u0641\u0648\u0639"),
+            r.engineeringNotes ? h("div", { style: { fontSize: 13, lineHeight: 1.6 } }, r.engineeringNotes) : h("div", { style: { fontSize: 12, color: COLORS.muted } }, "\u0645\u0641\u064A\u0634 \u0645\u0644\u0627\u062D\u0638\u0627\u062A")
+          ),
+          canEngineerApprove ? h(React.Fragment, null,
+            h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F (\u0627\u062E\u062A\u064A\u0627\u0631\u064A \u2014 \u064A\u0638\u0647\u0631 \u0641\u064A \u0627\u0644\u062A\u0642\u0648\u064A\u0645 \u0627\u0644\u0645\u0648\u062D\u062F)"),
             h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
               h("input", { style: { ...fieldStyle, flex: 1 }, type: "date", value: meetingDateInput, onChange: (e) => setMeetingDateInput(e.target.value) }),
               h("button", { onClick: () => onUpdate({ meetingDate: meetingDateInput }), style: { padding: "0 16px", borderRadius: 10, border: `1px solid ${COLORS.border}`, background: COLORS.goldSoft, color: COLORS.ink, fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u062D\u0641\u0638")
-            )
-          ) : null,
-          canMarkClientMeeting ? h("button", { onClick: markClientApproved, style: { width: "100%", background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u062F \u0627\u0644\u0639\u0645\u064A\u0644") : null
+            ),
+            h(TechnicalReviewControls, { onApprove: markClientApproved, onSendBack: sendBackFromApproval, approveLabel: "\u2705 \u0627\u0639\u062A\u0645\u0627\u062F", sendLabel: "\u0625\u0631\u0633\u0627\u0644 \u0644\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A" })
+          ) : h(EmptyHint, { text: "\u0641\u064A \u0627\u0646\u062A\u0638\u0627\u0631 \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0645\u0647\u0646\u062F\u0633" })
         )
       ) : null
     );
   }
   if (showTimeline) {
-    const STAGE_LABELS = { showroom: "1\u200F. \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644", engineering: "2\u200F. \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", technical: "3\u200F. \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", approval: "4\u200F. \u0627\u062C\u062A\u0645\u0627\u0639 \u0648\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0639\u0645\u064A\u0644" };
+    const STAGE_LABELS = { showroom: "1\u200F. \u0627\u062E\u062A\u064A\u0627\u0631\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644", engineering: "2\u200F. \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", technical: "3\u200F. \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", approval: "4\u200F. \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0645\u0647\u0646\u062F\u0633" };
     const timeline = r.stageTimeline || [];
     const summary = {};
     ["showroom", "engineering", "technical", "approval"].forEach((stage) => {
       const events = timeline.filter((e) => e.stage === stage);
       const entries = events.filter((e) => e.event === "entered");
       let totalMs = 0;
+      const visits = [];
       entries.forEach((entry, i) => {
         const entryIdx = timeline.indexOf(entry);
         const closingEvent = timeline.slice(entryIdx + 1).find((e) => e.stage === stage && (e.event === "done" || e.event === "sent_back"));
         const endAt = closingEvent ? closingEvent.at : (i === entries.length - 1 ? (/* @__PURE__ */ new Date()).toISOString() : null);
-        if (endAt) totalMs += new Date(endAt) - new Date(entry.at);
+        const durationMs = endAt ? new Date(endAt) - new Date(entry.at) : null;
+        if (durationMs) totalMs += durationMs;
+        visits.push({ at: entry.at, endAt: closingEvent ? closingEvent.at : null, durationMs, ongoing: !closingEvent, isReturn: i > 0 });
       });
-      summary[stage] = { firstEntered: entries[0] ? entries[0].at : null, revisions: Math.max(0, entries.length - 1), totalMs, done: events.some((e) => e.event === "done") };
+      summary[stage] = { firstEntered: entries[0] ? entries[0].at : null, revisions: Math.max(0, entries.length - 1), totalMs, done: events.some((e) => e.event === "done"), visits };
     });
     const fmtDur = (ms) => { const days = ms / 86400000; return days >= 1 ? days.toFixed(1) + " \u064A\u0648\u0645" : Math.max(1, Math.round(ms / 3600000)) + " \u0633\u0627\u0639\u0629"; };
     return h("div", null,
@@ -4675,7 +4695,12 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
           s.firstEntered ? h("div", { style: { fontSize: 12, color: COLORS.muted, display: "flex", flexDirection: "column", gap: 3 } },
             h("span", null, "\u0628\u062F\u0623: " + formatLocalDateTime(s.firstEntered)),
             h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0648\u0642\u062A: " + fmtDur(s.totalMs)),
-            s.revisions > 0 ? h("span", { style: { color: COLORS.danger, fontWeight: 700 } }, "\u{1F504} \u0631\u062C\u0639 " + s.revisions + " \u0645\u0631\u0629") : null
+            s.revisions > 0 ? h("span", { style: { color: COLORS.danger, fontWeight: 700 } }, "\u{1F504} \u0631\u062C\u0639 " + s.revisions + " \u0645\u0631\u0629") : null,
+            s.visits.length > 0 ? h("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${COLORS.border}`, display: "flex", flexDirection: "column", gap: 4 } },
+              s.visits.map((v, idx) => h("div", { key: idx, style: { fontSize: 11, color: v.isReturn ? COLORS.danger : COLORS.muted } },
+                (v.isReturn ? "\u{1F504} \u0631\u062C\u0639 \u0648\u0628\u062F\u0623 \u0645\u0646 \u062C\u062F\u064A\u062F: " : "\u{1F539} \u0628\u062F\u0623: ") + formatLocalDateTime(v.at) + (v.durationMs !== null ? " \u2014 \u0627\u0633\u062A\u063A\u0631\u0642 " + fmtDur(v.durationMs) : " \u2014 \u0644\u0633\u0629 \u0634\u063A\u0627\u0644\u0629")
+              ))
+            ) : null
           ) : h("div", { style: { fontSize: 12, color: COLORS.muted } }, "\u2014")
         );
       }))
@@ -4705,7 +4730,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
     showAddOrder ? h(NewOrderModal, { engineerName: myDisplayName, existingCategories: [], onClose: () => setShowAddOrder(false), onSave: (o) => { onOpenOrder(o, r.id); setShowAddOrder(false); } }) : null
   );
 }
-function TechnicalReviewControls({ onApprove, onSendBack }) {
+function TechnicalReviewControls({ onApprove, onSendBack, sendLabel, approveLabel }) {
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState("");
   const [media, setMedia] = useState([]);
@@ -4735,11 +4760,11 @@ function TechnicalReviewControls({ onApprove, onSendBack }) {
         h(Emoji, { size: 15 }, "\u2795"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0636\u0627\u0641\u0629 \u0635\u0648\u0631\u0629/\u0641\u064A\u062F\u064A\u0648/\u062A\u0633\u062C\u064A\u0644 \u0635\u0648\u062A\u064A",
         h("input", { type: "file", accept: "image/*,video/*,audio/*", multiple: true, disabled: busy, style: { display: "none" }, onChange: (e) => addMedia(e.target.files) })
       ),
-      h("button", { disabled: !note.trim(), style: primaryBtn(!note.trim()), onClick: () => onSendBack(note.trim(), media) }, "\u0625\u0631\u0633\u0627\u0644 \u0644\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A")
+      h("button", { disabled: !note.trim(), style: primaryBtn(!note.trim()), onClick: () => onSendBack(note.trim(), media) }, sendLabel || "\u0625\u0631\u0633\u0627\u0644 \u0644\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A")
     );
   }
   return h("div", { style: { display: "flex", gap: 8 } },
-    h("button", { onClick: onApprove, style: { flex: 1, background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u0645\u0648\u0627\u0641\u0642"),
+    h("button", { onClick: onApprove, style: { flex: 1, background: COLORS.green, color: "#fff", border: "none", borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, approveLabel || "\u2705 \u0645\u0648\u0627\u0641\u0642"),
     h("button", { onClick: () => setShowNote(true), style: { flex: 1, background: "#fff", color: COLORS.gold, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F504} \u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644")
   );
 }
