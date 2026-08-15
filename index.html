@@ -4156,11 +4156,14 @@ function TechnicalOfficeDrawingsModal({ order, onUpdate, onClose }) {
 function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBack }) {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState("active");
+  const [mainView, setMainView] = useState("before");
   const [drawingsFor, setDrawingsFor] = useState(null);
+  const preScoped = orders.filter((o) => o.approved && !o.distributionHandled && isTechnicalOfficeCategory(o.category));
   const scoped = orders.filter((o) => o.approved && o.distributionHandled && isTechnicalOfficeCategory(o.category));
   const isFinished = (o) => o.technicalOfficeStatus === "\u062A\u0645" || o.technicalOfficeStatus === "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C";
   const byTab = scoped.filter((o) => tab === "active" ? !isFinished(o) : isFinished(o));
   const filtered = byTab.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.deliveryDate || "9999").localeCompare(b.deliveryDate || "9999"));
+  const preFiltered = preScoped.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.deliveryDate || "9999").localeCompare(b.deliveryDate || "9999"));
   const piecesFor = (o) => pieces.filter((p) => p.customerName === o.clientName && isTechnicalOfficePieceType(p.pieceType));
   const activeCount = scoped.filter((o) => !isFinished(o)).length;
   const finishedCount = scoped.filter((o) => isFinished(o)).length;
@@ -4201,6 +4204,16 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
     });
     exportToExcel("\u0627\u0644\u0645\u0643\u062A\u0628-\u0627\u0644\u0641\u0646\u064A", [{ name: "\u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A", rows }]);
   };
+  const preExportPdf = () => {
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062A. \u0628\u062F\u0621", "\u062A. \u0627\u0646\u062A\u0647\u0627\u0621"];
+    const dataRows = preFiltered.map((o) => [o.clientName || "\u2014", o.category || "\u2014", o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623", o.technicalOfficeStartDate || "\u2014", o.technicalOfficeEndDate || "\u2014"]);
+    printAsPdf("\u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0641\u0646\u064A \u2014 \u0642\u0628\u0644 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", headers, dataRows);
+  };
+  const preExportExcel = () => {
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062A. \u0628\u062F\u0621", "\u062A. \u0627\u0646\u062A\u0647\u0627\u0621"]];
+    preFiltered.forEach((o) => rows.push([o.clientName || "\u2014", o.category || "\u2014", o.technicalOfficeStatus || "\u0644\u0645 \u064A\u0628\u062F\u0623", o.technicalOfficeStartDate || "\u2014", o.technicalOfficeEndDate || "\u2014"]));
+    exportToExcel("\u0627\u0644\u0645\u0643\u062A\u0628-\u0627\u0644\u0641\u0646\u064A-\u0642\u0628\u0644-\u0627\u0644\u062A\u0648\u0632\u064A\u0639", [{ name: "\u0642\u0628\u0644 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", rows }]);
+  };
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -4208,6 +4221,31 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
     ),
     h("p", { style: { fontSize: 12, color: COLORS.muted, padding: "10px 16px 0" } }, "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u062E\u0634\u0628\u064A\u0627\u062A/\u0627\u0644\u062C\u064A\u0628\u0648\u0631\u062F/\u0627\u0644\u0645\u0633\u0637\u062D\u0627\u062A \u0627\u0644\u0644\u064A \u0639\u062F\u062A التوزيع \u2014 \u0642\u0637\u0639 \u062E\u0634\u0628\u064A\u0627\u062A/\u0645\u0633\u0637\u062D\u0627\u062A/\u062C\u064A\u0628\u0648\u0631\u062F \u0641\u0642\u0637"),
     h("div", { style: { padding: 16 } },
+      h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+        h("button", { onClick: () => setMainView("before"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mainView === "before" ? COLORS.teal : COLORS.border}`, background: mainView === "before" ? "#EAF1F1" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F4CB} \u0642\u0628\u0644 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 (" + preScoped.length + ")"),
+        h("button", { onClick: () => setMainView("after"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mainView === "after" ? COLORS.gold : COLORS.border}`, background: mainView === "after" ? COLORS.goldSoft : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F4E6} \u0628\u0639\u062F \u0627\u0644\u062A\u0648\u0632\u064A\u0639 (" + scoped.length + ")")
+      ),
+      mainView === "before" ? h("div", null,
+        preScoped.length > 0 ? h("input", { style: { ...fieldStyle, marginBottom: 12 }, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+        preFiltered.length > 0 ? h(ExportButtons, { onExcel: preExportExcel, onPdf: preExportPdf }) : null,
+        preFiltered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0633\u0647 \u0645\u0648\u0632\u0651\u0639\u0629" }) :
+        h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+          h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 720 } },
+            h("thead", null, h("tr", null, ["\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062A. \u0628\u062F\u0621", "\u062A. \u0627\u0646\u062A\u0647\u0627\u0621"].map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+            h("tbody", null, preFiltered.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0641\u062A\u062D") : h("span", { style: { fontSize: 11, color: COLORS.muted } }, "\u2014")),
+              h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, o.clientName || "\u2014"),
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, o.category || "\u2014"),
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("select", { value: o.technicalOfficeStatus || "", onChange: (e) => setStatus(o, e.target.value), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+                h("option", { value: "" }, "\u0644\u0645 \u064A\u0628\u062F\u0623"),
+                ["\u062C\u0627\u0631\u064A", "\u062A\u0645", "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C"].map((s) => h("option", { key: s, value: s }, s))
+              )),
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", { type: "date", value: o.technicalOfficeStartDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeStartDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", { type: "date", value: o.technicalOfficeEndDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeEndDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }))
+            )))
+          )
+        )
+      ) : h("div", null,
       h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
         h("button", { onClick: () => setTab("active"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "active" ? COLORS.gold : COLORS.border}`, background: tab === "active" ? COLORS.goldSoft : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F528} \u062C\u0627\u0631\u064A (" + activeCount + ")"),
         h("button", { onClick: () => setTab("finished"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "finished" ? COLORS.green : COLORS.border}`, background: tab === "finished" ? "#E8F0E4" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2705 \u062A\u0645 (" + finishedCount + ")")
@@ -4260,6 +4298,7 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
           )
         );
       }))
+      )
     ),
     drawingsOrder ? h(TechnicalOfficeDrawingsModal, { order: drawingsOrder, onUpdate: (patch) => onUpdate(drawingsOrder.id, patch), onClose: () => setDrawingsFor(null) }) : null
   );
@@ -4368,7 +4407,12 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u2014"),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, fmtDateTime(o.inRevisionAt)),
           h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, isAdminUser && subTab !== "revisions" ? h("input", { type: "datetime-local", value: toLocalDateTimeInput(o.reviewDate), onChange: (e) => setReviewDateManually(o, e.target.value), style: { fontSize: 11.5, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } }) : fmtDateTime(o.reviewDate)),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, subTab === "revisions" ? ((o.revisionNote || o.revisionFile) ? h(Emoji, { size: 15, color: COLORS.gold }, "\u{1F4DD}") : "\u2014") : ((o.revisionNote || o.revisionFile) ? h("button", { onClick: () => setRevisingOrder(o), style: { ...iconBtnStyle, color: COLORS.gold } }, h(Emoji, { size: 15 }, "\u{1F4DD}")) : (isAdminUser ? h("button", { onClick: () => setRevisingOrder(o), style: { fontSize: 11, color: COLORS.teal, background: "transparent", border: "none", cursor: "pointer" } }, "+ \u0625\u0636\u0627\u0641\u0629") : "\u2014"))),
+          h("td", { style: { padding: "9px 10px", maxWidth: 240, minWidth: 160, whiteSpace: "normal", cursor: (o.revisionNote || o.revisionFile || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (o.revisionNote || o.revisionFile || isAdminUser) setRevisingOrder(o); } },
+            (o.revisionNote || o.revisionFile) ? h("div", null,
+              o.revisionNote ? h("div", { style: { fontSize: 12, color: COLORS.ink, lineHeight: 1.5 } }, o.revisionNote) : null,
+              o.revisionFile ? h("a", { href: o.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: o.revisionNote ? 4 : 0, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), o.revisionFile.name || "\u0645\u0631\u0641\u0642") : null
+            ) : (subTab !== "revisions" && isAdminUser ? h("span", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700 } }, "+ \u0625\u0636\u0627\u0641\u0629") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u2014"))
+          ),
           h("td", { style: { padding: "9px 10px" } }, subTab === "revisions" ? h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, o.reviewStatus || "\u2014") : h("select", { value: o.reviewStatus || "", disabled: !isAdminUser, onChange: (e) => setReview(o, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
             h("option", { value: "" }, "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"),
             h("option", { value: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" }, "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644"),
@@ -7057,7 +7101,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
       order.createdBy ? h("div", { style: { fontSize: 11.5, color: order.approved ? COLORS.green : COLORS.muted, fontWeight: 600, marginTop: 2 } }, order.approved ? "\u2705 \u0645\u0639\u062A\u0645\u062F" : "\u23F3 \u0644\u0645 \u064A\u0639\u062A\u0645\u062F") : null
     ),
     canEdit ? h("button", { onClick: () => setShowEditOrder(true), style: iconBtnStyle, title: "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" }, h(Emoji, { size: 17 }, "\u270F\uFE0F")) : null,
-    canEdit ? h("button", { onClick: () => setConfirmDelete(true), style: iconBtnStyle }, h(Emoji, { size: 17, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null,
+    isAdminUser ? h("button", { onClick: () => setConfirmDelete(true), style: iconBtnStyle }, h(Emoji, { size: 17, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null,
     onOpenNotifPanel ? h("button", { onClick: onOpenNotifPanel, style: { ...iconBtnStyle, position: "relative" }, title: "\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062A" },
       h(Emoji, { size: 17 }, "\u{1F514}"),
       unreadCount > 0 ? h("span", { style: { position: "absolute", top: 0, insetInlineEnd: 0, background: COLORS.danger, color: "#fff", fontSize: 9.5, fontWeight: 700, borderRadius: 999, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" } }, unreadCount > 9 ? "9+" : unreadCount) : null
@@ -8586,7 +8630,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   );
 }
 
-function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statusOnly }) {
+function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, canEditDeadline, isAdminUser, statusOnly }) {
   const [editingDates, setEditingDates] = useState(false);
   const [editingCore, setEditingCore] = useState(false);
   const [pendingUpholsteryChoice, setPendingUpholsteryChoice] = useState(false);
@@ -8734,7 +8778,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, isAdminUser, statu
             return h("span", { style: { fontSize: 11, fontWeight: 700, color: clr } }, lbl);
           })() : null
         ),
-        h("input", { style: fieldStyle, type: "date", disabled: !canEdit || statusOnly, value: piece.agreedDeadline || "", onChange: (e) => updateField("agreedDeadline", e.target.value) })
+        h("input", { style: fieldStyle, type: "date", disabled: !(canEditDeadline !== undefined ? canEditDeadline : canEdit) || statusOnly, value: piece.agreedDeadline || "", onChange: (e) => updateField("agreedDeadline", e.target.value) })
       )
     ),
     (piece.manufacturingEntity === "\u0645\u0635\u0631" && piece.currentLocation === "\u0627\u0644\u0634\u062D\u0646") ? h("div", null,
@@ -8882,7 +8926,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
     })
   );
 }
-function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations }) {
+function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -8985,11 +9029,11 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     ) : null,
     renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
-      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser, statusOnly })
+      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn, isAdminUser, statusOnly, siblingLocations }) {
+function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles }) {
   const [scope, setScope] = useState(null);
   const [query, setQuery] = useState("");
   const [openPiece, setOpenPiece] = useState(null);
@@ -9046,13 +9090,13 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
       ) : null,
       renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
-        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), isAdminUser, statusOnly })
+        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
     );
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations });
+    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
   }
 
   return h("div", null,
@@ -9211,7 +9255,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
     ),
     viewMode === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc) })
+        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles })
     ) : (
       archiveEntries.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0624\u0631\u0634\u0641\u0629 \u0644ـ" + activeLoc + " \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
         h(LocationArchiveTable, { entries: archiveEntries, activeLoc })
