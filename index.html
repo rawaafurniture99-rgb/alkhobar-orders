@@ -5706,22 +5706,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [fArrivalStatus, setFArrivalStatus] = useState("");
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [selectedShipments, setSelectedShipments] = useState([]);
-  const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
-  const dammamSupplierNames = new Set([...((productionSuppliers && productionSuppliers["الدمام"]) || []), ...((upholsterySuppliers && upholsterySuppliers["الدمام"]) || [])]);
-  const egyptOnlySupplierNames = Array.from(new Set([...((productionSuppliers && productionSuppliers["مصر"]) || []), ...((upholsterySuppliers && upholsterySuppliers["مصر"]) || [])])).filter((n) => !dammamSupplierNames.has(n));
-  const customerOrderCounts = {};
-  orders.forEach((o) => { const key = norm(o.clientName); if (key) customerOrderCounts[key] = (customerOrderCounts[key] || 0) + 1; });
-  const sofaPiecesForOrder = (o) => {
-    const key = norm(o.clientName);
-    if (!key) return [];
-    const multiOrder = (customerOrderCounts[key] || 0) > 1;
-    return (pieces || []).filter((p) => isSofaType(p.pieceType) && norm(p.customerName) === key && (!multiOrder || p.customerDeliveryDate === o.deliveryDate));
-  };
-  const distributedToEgypt = (o) => {
-    const matching = sofaPiecesForOrder(o);
-    if (matching.length > 0) return matching.some((p) => egyptOnlySupplierNames.includes(p.currentLocation));
-    return o.manufacturingLocation === "\u0645\u0635\u0631";
-  };
+  const distributedToEgypt = (o) => o.manufacturingLocation === "\u0645\u0635\u0631";
   const rows = [];
   orders.forEach((o) => {
     if (!distributedToEgypt(o)) return;
@@ -6821,7 +6806,9 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   const [fStatus, setFStatus] = useState("");
   const [fFabric, setFFabric] = useState("");
   const [fTag, setFTag] = useState("");
-  const statusOptions = Array.from(new Set(orders.map((o) => orderStatusLabel(o))));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+  const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
+  const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const tagOptions = Array.from(new Set(orders.flatMap((o) => o.tags || []).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
 
@@ -6832,7 +6819,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   });
   scoped = scoped.filter((o) => {
     if (fCategory && o.category !== fCategory) return false;
-    if (fStatus && orderStatusLabel(o) !== fStatus) return false;
+    if (fStatus && liveStatus(o) !== fStatus) return false;
     if (fTag && !(o.tags || []).includes(fTag)) return false;
     if (fFabric) {
       if (fFabric === "\u0641\u0627\u0631\u063A") { if (o.fabricShippingStatus) return false; }
@@ -6936,7 +6923,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
               h("div", { style: { fontSize: 13.5, fontWeight: 600 } }, (o.orderCode ? "[" + o.orderCode + "] " : "") + (o.category || "\u2014")),
               h("div", { style: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, h(Emoji, { size: 11 }, "\u{1F4C5}"), o.deliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E")
             ),
-            h("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, orderStatusLabel(o))
+            h("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, liveStatus(o))
           )))
         );
       }))
