@@ -236,6 +236,10 @@ async function uploadToStorage(file, folder) {
   if (!cfg || !cfg.cloudName || cfg.cloudName === "YOUR_CLOUD_NAME" || !cfg.uploadPreset || cfg.uploadPreset === "YOUR_UPLOAD_PRESET") {
     throw new Error("Cloudinary \u0645\u0634 \u0645\u0636\u0628\u0648\u0637: \u0644\u0627\u0632\u0645 \u062A\u062D\u0637\u064A cloud name \u0648 upload preset \u0641\u064A window.CLOUDINARY_CONFIG");
   }
+  const CHUNK_THRESHOLD = 100 * 1024 * 1024;
+  if (file.size > CHUNK_THRESHOLD) {
+    return uploadToStorageChunked(file, cfg);
+  }
   const formData = new FormData();
   formData.append("file", file);
   formData.append("upload_preset", cfg.uploadPreset);
@@ -249,6 +253,32 @@ async function uploadToStorage(file, folder) {
   }
   const data = await res.json();
   return { url: data.secure_url, path: data.public_id };
+}
+async function uploadToStorageChunked(file, cfg) {
+  const CHUNK_SIZE = 20 * 1024 * 1024;
+  const uploadId = "chunk-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+  const total = file.size;
+  let start = 0;
+  let lastData = null;
+  while (start < total) {
+    const end = Math.min(start + CHUNK_SIZE, total);
+    const chunk = file.slice(start, end);
+    const formData = new FormData();
+    formData.append("file", chunk, file.name);
+    formData.append("upload_preset", cfg.uploadPreset);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {
+      method: "POST",
+      headers: { "X-Unique-Upload-Id": uploadId, "Content-Range": `bytes ${start}-${end - 1}/${total}` },
+      body: formData
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error("Cloudinary upload failed (" + res.status + "): " + errText);
+    }
+    lastData = await res.json();
+    start = end;
+  }
+  return { url: lastData.secure_url, path: lastData.public_id };
 }
 async function fileToAttachment(file, folder) {
   const isImage = file.type && file.type.startsWith("image/");
@@ -1168,10 +1198,12 @@ function App() {
         g.pieces.slice(1).forEach((p) => piecesColRef().doc(p.id).update({ deadlineLastReminderDate: today }).catch((e) => console.error("deadline flag sync failed", e)));
         const emails = Array.from(new Set(g.pieces.flatMap((p) => productionEmailsForLocation(p.currentLocation))));
         const pieceCountSuffix = g.pieces.length > 1 ? " (" + g.pieces.length + " قطعة)" : "";
+        const matchOrder = orders.find((o) => (o.clientName || "").trim() === (g.customerName || "").trim());
         notify({
           toEmails: emails,
           title: (late ? "⚠️ أوردر متأخر عن الموعد المتفق عليه بـ " + arabicDaysPhrase(Math.abs(g.d)) : g.d === 0 ? "⏰ أوردر موعده المتفق عليه اليوم" : "⏰ أوردر قريب من الموعد المتفق عليه — باقي " + arabicDaysPhrase(g.d)) + pieceCountSuffix,
           body: (g.customerName || "—") + " - " + Array.from(g.locations).join("، "),
+          orderId: matchOrder ? matchOrder.id : "",
           kind: "deadline"
         });
       }).catch((e) => console.error("deadline reminder transaction failed", e));
@@ -1263,10 +1295,12 @@ function App() {
       const ready = pieceIsReady(p);
       if (!ready || p.readyNotified || readyNotifiedSessionRef.current.has(p.id)) return;
       readyNotifiedSessionRef.current.add(p.id);
+      const matchOrder = orders.find((o) => (o.clientName || "").trim() === (p.customerName || "").trim());
       notify({
         toEmails: emailsWithTabAccess("deliveries"),
         title: "\u{1F69A} \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645",
         body: (p.customerName || "\u2014") + " - " + (p.pieceType || "\u2014"),
+        orderId: matchOrder ? matchOrder.id : "",
         kind: "ready-for-delivery"
       });
       piecesColRef().doc(p.id).update({ readyNotified: true }).catch((e) => console.error("ready flag failed", e));
@@ -2023,7 +2057,7 @@ function App() {
             h("div", { style: { marginTop: 8, marginBottom: 4 } },
               h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 } },
                 h(NavTile, { key: "pre-approval", active: false, onClick: () => setHomeDrilldown({ type: "pre-approval" }), emoji: "\u{1F5D2}\uFE0F", label: "\u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F" }),
-                h(NavTile, { key: "eng-reports", active: false, onClick: () => setHomeDrilldown({ type: "eng-reports" }), emoji: "\u{1F4CA}", label: "\u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A" })
+                h(NavTile, { key: "eng-reports", active: false, onClick: () => setHomeDrilldown({ type: "eng-reports" }), emoji: "\u{1F4BB}", label: "\u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A" })
               )
             ),
             TILE_GROUPS.map((group) => {
@@ -2080,12 +2114,16 @@ function App() {
       notifications.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0644\u0633\u0629" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, notifications.map((n) => {
         const isRead = (n.readBy || []).includes(user && user.email);
+        const resolved = isNotificationResolved(n, orders);
         return h("div", {
           key: n.id,
           onClick: () => openNotification(n),
-          style: { background: isRead ? COLORS.bg : COLORS.goldSoft, border: `1px solid ${isRead ? COLORS.border : COLORS.gold}`, borderRadius: 10, padding: 10, cursor: "pointer" }
+          style: { background: resolved ? COLORS.bg : (isRead ? COLORS.bg : COLORS.goldSoft), border: `1px solid ${resolved ? COLORS.border : (isRead ? COLORS.border : COLORS.gold)}`, borderRadius: 10, padding: 10, cursor: "pointer", opacity: resolved ? 0.6 : 1 }
         },
-          h("div", { style: { fontWeight: 700, fontSize: 13 } }, n.title),
+          h("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+            h("div", { style: { fontWeight: 700, fontSize: 13, textDecoration: resolved ? "line-through" : "none", color: resolved ? COLORS.muted : COLORS.ink } }, n.title),
+            resolved ? h("span", { style: { fontSize: 10, fontWeight: 700, color: COLORS.green, background: "#E8F3E4", borderRadius: 6, padding: "1px 6px", whiteSpace: "nowrap" } }, "✅ اتحل") : null
+          ),
           n.body ? h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, n.body) : null,
           h("div", { style: { fontSize: 10.5, color: COLORS.muted, marginTop: 4 } }, formatLocalDateTime(n.createdAt))
         );
@@ -2746,14 +2784,14 @@ function SectionHeader({ emoji, title }) {
 function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
   const [busy, setBusy] = useState(false);
   const [warning, setWarning] = useState("");
-  const MAX_BYTES = 25 * 1024 * 1024;
+  const MAX_BYTES = 200 * 1024 * 1024;
   const handleFile = async (e) => {
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!f) return;
     setWarning("");
     if (f.size > MAX_BYTES) {
-      setWarning("\u0627\u0644\u0645\u0644\u0641 \u062F\u0647 \u0623\u0643\u0628\u0631 \u0645\u0646 25 \u0645\u064A\u062C\u0627\u0628\u0627\u064A\u062A \u0648\u0645\u0634 \u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0641\u0639\u0647. \u0627\u062E\u062A\u0627\u0631\u064A \u0645\u0644\u0641 \u0623\u0635\u063A\u0631.");
+      setWarning("\u0627\u0644\u0645\u0644\u0641 \u062F\u0647 \u0623\u0643\u0628\u0631 \u0645\u0646 200 \u0645\u064A\u062C\u0627\u0628\u0627\u064A\u062A \u0648\u0645\u0634 \u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0641\u0639\u0647. \u0627\u062E\u062A\u0627\u0631\u064A \u0645\u0644\u0641 \u0623\u0635\u063A\u0631.");
       return;
     }
     setBusy(true);
@@ -4374,30 +4412,64 @@ function RevisionNoteModal({ order, onClose, onSave }) {
 function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, onNotify, emailsWithTabAccess }) {
   const [revisingOrder, setRevisingOrder] = useState(null);
   const [subTab, setSubTab] = useState("review");
-  const queue = orders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629");
-  const pendingQueue = queue.filter((o) => o.reviewStatus !== "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644");
-  const revisionQueue = queue.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644");
+  const queue = orders.filter((o) => o.createdBy && o.reviewStatus !== "تمت المراجعة");
+  const pendingQueue = queue.filter((o) => o.reviewStatus !== "يوجد تعديل");
+  const revisionQueue = queue.filter((o) => o.reviewStatus === "يوجد تعديل");
   const activeQueue = subTab === "revisions" ? revisionQueue : pendingQueue;
   const sorted = activeQueue.slice().sort((a, b) => (a.enteredAt || "").localeCompare(b.enteredAt || ""));
-  const fmtDateTime = (iso) => iso ? formatLocalDateTime(iso) : "\u2014";
-  const statusLabel = (o) => (o.editCount || 0) === 0 ? "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F" : "\u0628\u0639\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644 " + o.editCount;
+  const fmtDateTime = (iso) => iso ? formatLocalDateTime(iso) : "—";
+  const statusLabel = (o) => (o.editCount || 0) === 0 ? "أوردر جديد" : "بعد التعديل " + o.editCount;
+  const departmentsFor = (o) => detectOrderDepartments(o.category);
+  const deptData = (o, d) => (o.departmentReviews && o.departmentReviews[d]) || {};
+  const deptStatusOf = (o, d) => deptData(o, d).reviewStatus || "";
   const setReview = (o, val) => {
     const patch = { reviewStatus: val };
-    if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") {
+    if (val === "يوجد تعديل") {
       patch.inRevisionAt = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = false;
-      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644", orderId: o.id, kind: "revision" });
-    } else if (val === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629") {
+      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل", orderId: o.id, kind: "revision" });
+    } else if (val === "تمت المراجعة") {
       patch.reviewDate = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = true;
       if (!o.distributionHandled) patch.distributionHandled = false;
       if (!o.materialsHandled) patch.materialsHandled = false;
-      if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "\u0623\u0648\u0631\u062F\u0631 \u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0648\u0632\u064A\u0639 \u0648\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0627\u062A\u0639\u062A\u0645\u062F", orderId: o.id, kind: "approved" });
+      if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
     } else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
-    if (val === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") setRevisingOrder(o);
+    if (val === "يوجد تعديل") setRevisingOrder({ order: o, dept: null });
+  };
+  const setDeptReview = (o, d, val) => {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const existing = deptData(o, d);
+    const deptPatch = { reviewStatus: val };
+    if (val === "يوجد تعديل") deptPatch.inRevisionAt = now;
+    if (val === "تمت المراجعة") deptPatch.reviewDate = now;
+    const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...existing, ...deptPatch } };
+    const allDepts = departmentsFor(o);
+    const statuses = allDepts.map((dep) => (newDepartmentReviews[dep] || {}).reviewStatus || "");
+    let overall = "";
+    if (statuses.length && statuses.every((s) => s === "تمت المراجعة")) overall = "تمت المراجعة";
+    else if (statuses.some((s) => s === "يوجد تعديل")) overall = "يوجد تعديل";
+    const patch = { departmentReviews: newDepartmentReviews, reviewStatus: overall };
+    if (overall === "تمت المراجعة") {
+      patch.reviewDate = now; patch.approved = true;
+      if (!o.distributionHandled) patch.distributionHandled = false;
+      if (!o.materialsHandled) patch.materialsHandled = false;
+      if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
+    } else if (overall === "يوجد تعديل") {
+      patch.inRevisionAt = now; patch.approved = false;
+      const flaggedNames = allDepts.filter((dep) => (newDepartmentReviews[dep] || {}).reviewStatus === "يوجد تعديل").join("، ");
+      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل — " + flaggedNames, orderId: o.id, kind: "revision" });
+    } else { patch.approved = false; }
+    onUpdateOrder(o.id, patch);
+    if (val === "يوجد تعديل") setRevisingOrder({ order: o, dept: d });
   };
   const setReviewDateManually = (o, localDateTime) => {
     if (!localDateTime) return;
     onUpdateOrder(o.id, { reviewDate: new Date(localDateTime).toISOString() });
+  };
+  const setDeptReviewDateManually = (o, d, localDateTime) => {
+    if (!localDateTime) return;
+    const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), reviewDate: new Date(localDateTime).toISOString() } };
+    onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews });
   };
   const toLocalDateTimeInput = (iso) => {
     if (!iso) return "";
@@ -4406,7 +4478,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     const pad = (n) => String(n).padStart(2, "0");
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
   };
-  const cols = ["", "\u0627\u0644\u0643\u0648\u062F", "\u062A\u0627\u0631\u064A\u062E \u062F\u062E\u0648\u0644 \u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"];
+  const cols = ["", "الكود", "تاريخ دخول القسم", "الحالة", "اسم العميل", "نوع الأوردر", "اسم المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم"];
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fCategory, setFCategory] = useState("");
@@ -4419,68 +4491,123 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     if (fEngineer && ((emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy) !== fEngineer) return false;
     return true;
   });
-  const exportRows = () => filtered.map((o) => [o.orderCode || "\u2014", fmtDateTime(o.enteredAt), statusLabel(o), o.clientName || "\u2014", o.category || "\u2014", (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u2014", fmtDateTime(o.inRevisionAt), fmtDateTime(o.reviewDate), o.reviewStatus || "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"]);
+  const buildDeptRowsForOrder = (o) => {
+    const allDepts = departmentsFor(o);
+    if (allDepts.length === 0) return [null];
+    if (subTab === "revisions") {
+      const flagged = allDepts.filter((d) => deptStatusOf(o, d) === "يوجد تعديل");
+      return flagged.length ? flagged : allDepts;
+    }
+    return allDepts;
+  };
+  const exportRowsFlat = () => filtered.flatMap((o) => buildDeptRowsForOrder(o).map((d) => {
+    const status = d === null ? (o.reviewStatus || "") : deptStatusOf(o, d);
+    const inRevAt = d === null ? o.inRevisionAt : deptData(o, d).inRevisionAt;
+    const revDate = d === null ? o.reviewDate : deptData(o, d).reviewDate;
+    const noteData = d === null ? o : deptData(o, d);
+    return [o.orderCode || "—", fmtDateTime(o.enteredAt), statusLabel(o), o.clientName || "—", o.category || "—", (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "—", d === null ? "—" : d, noteData.revisionNote || "", status === "يوجد تعديل" ? fmtDateTime(inRevAt) : (status === "تمت المراجعة" ? fmtDateTime(revDate) : "—"), status || "لم يراجع"];
+  }));
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u0643\u0648\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062F\u062E\u0648\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"]].concat(exportRows());
-    exportToExcel("\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", [{ name: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", rows }]);
+    const rows = [["الكود", "تاريخ الدخول", "الحالة", "اسم العميل", "نوع الأوردر", "المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم"]].concat(exportRowsFlat());
+    exportToExcel("المراجعة", [{ name: "المراجعة", rows }]);
   };
   const exportPdf = () => {
-    printAsPdf("\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", ["\u0627\u0644\u0643\u0648\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062F\u062E\u0648\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0641\u064A \u0627\u0644\u062A\u0639\u062F\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"], exportRows());
+    printAsPdf("المراجعة", ["الكود", "تاريخ الدخول", "الحالة", "اسم العميل", "نوع الأوردر", "المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم"], exportRowsFlat());
+  };
+  const sharedCell = (content, isFirst, rowSpan) => isFirst ? h("td", { rowSpan, style: { padding: "9px 10px", verticalAlign: "top", whiteSpace: "nowrap" } }, content) : null;
+  const dateStatusCell = (o, d) => {
+    const status = d === null ? (o.reviewStatus || "") : deptStatusOf(o, d);
+    const inRevAt = d === null ? o.inRevisionAt : deptData(o, d).inRevisionAt;
+    const revDate = d === null ? o.reviewDate : deptData(o, d).reviewDate;
+    if (status === "يوجد تعديل") return h("span", { style: { fontSize: 11.5, color: COLORS.gold, whiteSpace: "nowrap" } }, "طلب تعديل: " + fmtDateTime(inRevAt));
+    if (status === "تمت المراجعة") return isAdminUser && subTab !== "revisions" ? h("input", { type: "datetime-local", value: toLocalDateTimeInput(revDate), onChange: (e) => d === null ? setReviewDateManually(o, e.target.value) : setDeptReviewDateManually(o, d, e.target.value), style: { fontSize: 11.5, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } }) : h("span", { style: { whiteSpace: "nowrap" } }, fmtDateTime(revDate));
+    return h("span", { style: { fontSize: 12, color: COLORS.muted } }, "—");
+  };
+  const editNoteCell = (o, d) => {
+    const data = d === null ? o : deptData(o, d);
+    const hasContent = data.revisionNote || data.revisionFile;
+    const canAdd = subTab !== "revisions" && isAdminUser;
+    return h("td", { style: { padding: "9px 10px", maxWidth: 220, minWidth: 150, whiteSpace: "normal", cursor: (hasContent || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (hasContent || isAdminUser) setRevisingOrder({ order: o, dept: d }); } },
+      hasContent ? h("div", null,
+        data.revisionNote ? h("div", { style: { fontSize: 12, color: COLORS.ink, lineHeight: 1.5 } }, data.revisionNote) : null,
+        data.revisionFile ? h("a", { href: data.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: data.revisionNote ? 4 : 0, textDecoration: "none" } }, h(Emoji, { size: 11 }, "📎"), data.revisionFile.name || "مرفق") : null
+      ) : (canAdd ? h("span", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700 } }, "+ إضافة") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "—"))
+    );
+  };
+  const statusCell = (o, d) => {
+    const status = d === null ? (o.reviewStatus || "") : deptStatusOf(o, d);
+    if (subTab === "revisions") return h("td", { style: { padding: "9px 10px" } }, h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, status || "—"));
+    return h("td", { style: { padding: "9px 10px" } }, h("select", { value: status, disabled: !isAdminUser, onChange: (e) => d === null ? setReview(o, e.target.value) : setDeptReview(o, d, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+      h("option", { value: "" }, "لم يراجع"),
+      h("option", { value: "يوجد تعديل" }, "يوجد تعديل"),
+      h("option", { value: "تمت المراجعة" }, "تمت المراجعة")
+    ));
   };
   return h("div", null,
-    h(SectionHeader, { emoji: "\u{1F9FE}", title: "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" }),
+    h(SectionHeader, { emoji: "🧾", title: "المراجعة" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
-      h(TabButton, { active: subTab === "review", onClick: () => setSubTab("review"), emoji: "\u{1F9FE}", label: "\u0645\u0631\u0627\u062C\u0639\u0629 (" + pendingQueue.length + ")" }),
-      h(TabButton, { active: subTab === "revisions", onClick: () => setSubTab("revisions"), emoji: "\u270F\uFE0F", label: "\u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A (" + revisionQueue.length + ")" })
+      h(TabButton, { active: subTab === "review", onClick: () => setSubTab("review"), emoji: "🧾", label: "مراجعة (" + pendingQueue.length + ")" }),
+      h(TabButton, { active: subTab === "revisions", onClick: () => setSubTab("revisions"), emoji: "✏️", label: "التعديلات (" + revisionQueue.length + ")" })
     ),
-    sorted.length > 0 ? h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
+    sorted.length > 0 ? h("input", { style: fieldStyle, placeholder: "ابحثي باسم العميل...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
     sorted.length > 0 ? h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
-      h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631"),
+      h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "✕ " : "⚙️ ") + "فلتر"),
       h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf })
     ) : null,
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
-        h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"),
+        h("label", { style: labelStyle }, "القسم"),
         h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
+          h("option", { value: "" }, "الكل"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
         )
       ),
       h("div", null,
-        h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0647\u0646\u062F\u0633"),
+        h("label", { style: labelStyle }, "المهندس"),
         h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fEngineer, onChange: (e) => setFEngineer(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), engineerOptions.map((e2) => h("option", { key: e2, value: e2 }, e2))
+          h("option", { value: "" }, "الكل"), engineerOptions.map((e2) => h("option", { key: e2, value: e2 }, e2))
         )
       )
     ) : null,
-    filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0637\u0627\u0628\u0642\u0629" }) :
+    filtered.length === 0 ? h(EmptyHint, { text: "مفيش أوردرات مطابقة" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1130 } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1200 } },
         h("thead", null, h("tr", null, cols.map((c, idx) => h("th", { key: idx, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-        h("tbody", null, filtered.map((o) => h("tr", { key: o.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
-          h("td", { style: { padding: "9px 10px" } }, o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641") : h("span", { style: { fontSize: 11, color: COLORS.muted, whiteSpace: "nowrap" } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0644\u0641")),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.gold } }, o.orderCode || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", cursor: "pointer", color: COLORS.teal, fontWeight: 600 }, onClick: () => onOpen(o.id) }, fmtDateTime(o.enteredAt)),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)),
-          h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, o.clientName || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, o.category || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u2014"),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, fmtDateTime(o.inRevisionAt)),
-          h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, isAdminUser && subTab !== "revisions" ? h("input", { type: "datetime-local", value: toLocalDateTimeInput(o.reviewDate), onChange: (e) => setReviewDateManually(o, e.target.value), style: { fontSize: 11.5, padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } }) : fmtDateTime(o.reviewDate)),
-          h("td", { style: { padding: "9px 10px", maxWidth: 240, minWidth: 160, whiteSpace: "normal", cursor: (o.revisionNote || o.revisionFile || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (o.revisionNote || o.revisionFile || isAdminUser) setRevisingOrder(o); } },
-            (o.revisionNote || o.revisionFile) ? h("div", null,
-              o.revisionNote ? h("div", { style: { fontSize: 12, color: COLORS.ink, lineHeight: 1.5 } }, o.revisionNote) : null,
-              o.revisionFile ? h("a", { href: o.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: o.revisionNote ? 4 : 0, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), o.revisionFile.name || "\u0645\u0631\u0641\u0642") : null
-            ) : (subTab !== "revisions" && isAdminUser ? h("span", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700 } }, "+ \u0625\u0636\u0627\u0641\u0629") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u2014"))
-          ),
-          h("td", { style: { padding: "9px 10px" } }, subTab === "revisions" ? h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, o.reviewStatus || "\u2014") : h("select", { value: o.reviewStatus || "", disabled: !isAdminUser, onChange: (e) => setReview(o, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
-            h("option", { value: "" }, "\u0644\u0645 \u064A\u0631\u0627\u062C\u0639"),
-            h("option", { value: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" }, "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644"),
-            h("option", { value: "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" }, "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")
-          ))
-        )))
+        h("tbody", null, filtered.flatMap((o) => {
+          const deptRows = buildDeptRowsForOrder(o);
+          return deptRows.map((d, idx) => {
+            const isFirst = idx === 0;
+            const rowSpan = deptRows.length;
+            return h("tr", { key: o.id + "-" + (d || "single") + "-" + idx, style: { borderBottom: `1px solid ${COLORS.border}` } },
+              sharedCell(o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", textDecoration: "none" } }, h(Emoji, { size: 12 }, "📎"), "فتح الملف") : h("span", { style: { fontSize: 11, color: COLORS.muted, whiteSpace: "nowrap" } }, "لا يوجد ملف"), isFirst, rowSpan),
+              sharedCell(h("span", { style: { fontWeight: 700, color: COLORS.gold } }, o.orderCode || "—"), isFirst, rowSpan),
+              sharedCell(h("span", { style: { cursor: "pointer", color: COLORS.teal, fontWeight: 600 }, onClick: () => onOpen(o.id) }, fmtDateTime(o.enteredAt)), isFirst, rowSpan),
+              sharedCell(h("span", { style: { fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)), isFirst, rowSpan),
+              sharedCell(h("span", { style: { fontWeight: 700 } }, o.clientName || "—"), isFirst, rowSpan),
+              sharedCell(o.category || "—", isFirst, rowSpan),
+              sharedCell((emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "—", isFirst, rowSpan),
+              h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 600 } }, d === null ? "—" : d),
+              editNoteCell(o, d),
+              h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, dateStatusCell(o, d)),
+              statusCell(o, d)
+            );
+          });
+        }))
       )
     ),
-    revisingOrder ? h(RevisionNoteModal, { order: revisingOrder, onClose: () => setRevisingOrder(null), onSave: (patch) => { onUpdateOrder(revisingOrder.id, patch); setRevisingOrder(null); } }) : null
+    revisingOrder ? h(RevisionNoteModal, {
+      order: revisingOrder.dept ? { revisionNote: deptData(revisingOrder.order, revisingOrder.dept).revisionNote, revisionFile: deptData(revisingOrder.order, revisingOrder.dept).revisionFile } : revisingOrder.order,
+      onClose: () => setRevisingOrder(null),
+      onSave: (patch) => {
+        if (revisingOrder.dept) {
+          const o = revisingOrder.order, d = revisingOrder.dept;
+          const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), ...patch } };
+          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews });
+        } else {
+          onUpdateOrder(revisingOrder.order.id, patch);
+        }
+        setRevisingOrder(null);
+      }
+    }) : null
   );
 }
 function AddPreApprovalModal({ onClose, onSave }) {
@@ -4652,14 +4779,18 @@ function EngineeringReportsPage({ records, designerReports, engineeringReference
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
-      h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, "\u{1F4CA} \u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A")
+      h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, "\u{1F4BB} \u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A")
     ),
-    h("div", { style: { display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" } },
-      h("button", { onClick: () => setTab("table"), style: { flex: "1 1 45%", padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "table" ? COLORS.gold : COLORS.border}`, background: tab === "table" ? COLORS.goldSoft : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u{1F4CB} \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A"),
-      h("button", { onClick: () => setTab("daily"), style: { flex: "1 1 45%", padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "daily" ? COLORS.teal : COLORS.border}`, background: tab === "daily" ? "#EAF1F1" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u{1F4C5} \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u064A\u0648\u0645\u064A\u0629"),
-      h("button", { onClick: () => setTab("delayed"), style: { flex: "1 1 45%", padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "delayed" ? COLORS.danger : COLORS.border}`, background: tab === "delayed" ? "#FBEAE6" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u23F1\uFE0F \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629 (" + overThreshold.length + ")"),
-      h("button", { onClick: () => setTab("refs"), style: { flex: "1 1 45%", padding: "9px 0", borderRadius: 10, border: `1px solid ${tab === "refs" ? COLORS.teal : COLORS.border}`, background: tab === "refs" ? "#EAF1F1" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 12, cursor: "pointer" } }, "\u{1F4CE} \u0642\u0648\u0627\u0644\u0628 \u0648\u0645\u0631\u0627\u062C\u0639")
-    ),
+    h("div", { style: { display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" } }, [
+      { key: "table", emoji: "\u{1F4CB}", label: "\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A" },
+      { key: "daily", emoji: "\u{1F4C5}", label: "\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u064A\u0648\u0645\u064A\u0629" },
+      { key: "delayed", emoji: "\u23F1\uFE0F", label: "\u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629 (" + overThreshold.length + ")" },
+      { key: "refs", emoji: "\u{1F4CE}", label: "\u0642\u0648\u0627\u0644\u0628 \u0648\u0645\u0631\u0627\u062C\u0639" }
+    ].map((t) => h("button", {
+      key: t.key,
+      onClick: () => setTab(t.key),
+      style: { flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: `1px solid ${tab === t.key ? COLORS.gold : COLORS.border}`, background: tab === t.key ? COLORS.goldSoft : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }
+    }, h(Emoji, { size: 14 }, t.emoji), t.label))),
     tab === "table" ? h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
       designerOptions.length > 0 ? h("select", { style: fieldStyle, value: designerFilter, onChange: (e) => setDesignerFilter(e.target.value) },
@@ -5199,7 +5330,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
     currentList.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(currentList), onPdf: () => exportPdf(currentList) }) : null,
     currentList.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, currentList.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
-    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }); if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
+    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }); if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
   );
 }
 function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
@@ -5554,9 +5685,24 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [selectedShipments, setSelectedShipments] = useState([]);
   const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
+  const dammamSupplierNames = new Set([...((productionSuppliers && productionSuppliers["الدمام"]) || []), ...((upholsterySuppliers && upholsterySuppliers["الدمام"]) || [])]);
+  const egyptOnlySupplierNames = Array.from(new Set([...((productionSuppliers && productionSuppliers["مصر"]) || []), ...((upholsterySuppliers && upholsterySuppliers["مصر"]) || [])])).filter((n) => !dammamSupplierNames.has(n));
+  const customerOrderCounts = {};
+  orders.forEach((o) => { const key = norm(o.clientName); if (key) customerOrderCounts[key] = (customerOrderCounts[key] || 0) + 1; });
+  const sofaPiecesForOrder = (o) => {
+    const key = norm(o.clientName);
+    if (!key) return [];
+    const multiOrder = (customerOrderCounts[key] || 0) > 1;
+    return (pieces || []).filter((p) => isSofaType(p.pieceType) && norm(p.customerName) === key && (!multiOrder || p.customerDeliveryDate === o.deliveryDate));
+  };
+  const distributedToEgypt = (o) => {
+    const matching = sofaPiecesForOrder(o);
+    if (matching.length > 0) return matching.some((p) => egyptOnlySupplierNames.includes(p.currentLocation));
+    return o.manufacturingLocation === "\u0645\u0635\u0631";
+  };
   const rows = [];
   orders.forEach((o) => {
-    if (o.manufacturingLocation !== "\u0645\u0635\u0631") return;
+    if (!distributedToEgypt(o)) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
       if (m.pieceCategory && m.pieceCategory !== "\u0643\u0646\u0628") return;
@@ -5564,8 +5710,12 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
     });
   });
   rows.sort((a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99"));
+  const queryNorm = normalizeDigits(query.trim()).toLowerCase();
   const filteredRows = rows.filter((r) => {
-    if (query.trim() && !r.clientName.includes(query.trim())) return false;
+    if (queryNorm) {
+      const hay = normalizeDigits([r.clientName, r.companyName, r.itemCode].filter(Boolean).join(" ")).toLowerCase();
+      if (!hay.includes(queryNorm)) return false;
+    }
     if (fAvailability && r.availability !== fAvailability) return false;
     if (fShipStatus === "__unset__" && r.fabricShippingStatus) return false;
     if (fShipStatus && fShipStatus !== "__unset__" && r.fabricShippingStatus !== fShipStatus) return false;
@@ -5606,7 +5756,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
     ),
     subTab === "list" ? h(React.Fragment, null,
       h("div", null,
-        h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+        h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u062E\u0627\u0645\u0629...", value: query, onChange: (e) => setQuery(e.target.value) }),
         h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
           h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631"),
           filteredRows.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0646\u062C\u064A\u062F-\u0645\u0635\u0631", [{ name: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631", rows: [listCols].concat(listExportRows()) }]), onPdf: () => printAsPdf("\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631", listCols, listExportRows()) }) : null
@@ -7260,6 +7410,28 @@ function GlobalSuppliersPage({ orders }) {
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, suppliers.map((s) => /* @__PURE__ */ React.createElement("div", { key: s.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 18, fontWeight: 700 } }, s.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.green, fontWeight: 700 } }, "\u0639\u0646\u062F\u0647\u0627 \u0634\u063A\u0644")), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 6 } }, s.orders.map((o, idx) => /* @__PURE__ */ React.createElement("div", { key: idx, style: { fontSize: 13, color: COLORS.muted, borderTop: idx > 0 ? `1px dashed ${COLORS.border}` : "none", paddingTop: idx > 0 ? 6 : 0 } }, /* @__PURE__ */ React.createElement("strong", { style: { color: COLORS.ink } }, o.title), " \u2014 ", o.clientName, o.pieceCount > 0 && ` \xB7 ${o.pieceCount} \u0642\u0637\u0639\u0629`, o.stages.length > 0 && ` \xB7 ${o.stages.join("\u060C ")}`))))));
 }
 const DEFAULT_ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u062A\u0646\u062C\u064A\u062F", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
+const DEPARTMENT_KEYWORDS = ["كنب", "مسطحات", "جيبورد", "ستائر", "تنجيد", "خشبيات", "سجاد", "مخدات"];
+function isNotificationResolved(n, orders) {
+  if (!n.orderId) return false;
+  const o = orders.find((x) => x.id === n.orderId);
+  if (!o) return true;
+  if (o.archived) return true;
+  if (n.kind === "materials-deadline") return !!o.materialsHandled;
+  if (n.kind === "distribution-deadline") return !!o.distributionHandled;
+  return false;
+}
+function detectOrderDepartments(category) {
+  return DEPARTMENT_KEYWORDS.filter((k) => (category || "").includes(k));
+}
+function departmentReviewsAfterResubmit(order) {
+  const departments = detectOrderDepartments(order.category);
+  if (!departments.length || !order.departmentReviews) return order.departmentReviews;
+  const next = { ...order.departmentReviews };
+  departments.forEach((d) => {
+    if (next[d] && next[d].reviewStatus === "يوجد تعديل") next[d] = { ...next[d], reviewStatus: "" };
+  });
+  return next;
+}
 const DEFAULT_FABRIC_COMPANIES = ["\u064A\u0648\u0631\u0643", "D3", "\u0627\u0644\u0643\u064A\u0644\u0627\u0646\u064A \u062C\u0646\u0648\u0628 \u0627\u0644\u0628\u0644\u0627\u062F", "\u0627\u0644\u0646\u0633\u0627\u062C", "\u0631\u0648\u0639\u0629 \u0627\u0644\u0645\u062C\u0627\u0644\u0633", "\u0645\u062F\u0631\u064A\u062F \u0633\u064A\u062A\u064A", "level one", "finesse", "fiberguard"];
 const NEW_ORDER_DRAFT_KEY = "alkhobar_new_order_draft";
 function loadNewOrderDraft() {
@@ -7420,7 +7592,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   );
   const editOrderModal = showEditOrder && h(NewOrderModal, { existing: order, onClose: () => setShowEditOrder(false), onSave: (patch) => {
     if (order.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") {
-      onUpdate({ ...patch, reviewStatus: "", editCount: (order.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() });
+      onUpdate({ ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(order), editCount: (order.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() });
       if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (order.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((order.editCount || 0) + 1), orderId: order.id, kind: "resubmit" });
     } else if (isAdminUser) {
       onUpdate(patch);
@@ -8825,12 +8997,6 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   const [newSupplierName, setNewSupplierName] = useState("");
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   useEffect(() => { setSupplierName((productionSuppliers[entity] || [])[0] || ""); }, [entity, productionSuppliers]);
-  useEffect(() => {
-    const name = customerName.trim();
-    if (!name) return;
-    const match = orders.find((o) => (o.clientName || "").trim() === name && o.manufacturingLocation);
-    if (match && ENTITIES.includes(match.manufacturingLocation)) setEntity(match.manufacturingLocation);
-  }, [customerName, orders]);
   if (!canEdit) {
     return h("div", null, h(SectionHeader, { emoji: "📦", title: "التوزيع" }), h(EmptyHint, { text: "مالكيش صلاحية إضافة توزيع جديد. تقدري تشوفي أقسام الإنتاج والإنتاج الكامل بس." }));
   }
