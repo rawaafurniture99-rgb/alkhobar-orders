@@ -1859,8 +1859,8 @@ function App() {
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k) }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
-        tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
-        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
+        tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
+        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
         )
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -1977,7 +1977,10 @@ function App() {
         const nearDeliveryNames = Array.from(new Set(activeOrders.filter((o) => {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
-          return d !== null && d >= 1 && d <= 5;
+          if (d === null || d < 1 || d > 5) return false;
+          const orderPieces = productionPieces.filter((p) => p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
+          if (orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return false;
+          return true;
         }).map((o) => o.clientName).filter(Boolean)));
         const readyNames = Array.from(new Set(productionPieces.filter(pieceIsReady).map((p) => p.customerName).filter(Boolean)));
         const delayedCount = new Set(productionPieces.filter((p) => {
@@ -2829,20 +2832,22 @@ function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
   };
   return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, label && /* @__PURE__ */ React.createElement("label", { style: labelStyle }, label), warning && /* @__PURE__ */ React.createElement("p", { style: { color: COLORS.danger, fontSize: 12.5, margin: "0 0 6px" } }, warning), file ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } }, file.kind === "image" ? /* @__PURE__ */ React.createElement("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F4C4}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name), /* @__PURE__ */ React.createElement("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")), /* @__PURE__ */ React.createElement("button", { onClick: onRemove, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))) : /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641", /* @__PURE__ */ React.createElement("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" } })));
 }
-function CustomersList({ orders, onOpen, emailToName }) {
+function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fCategory, setFCategory] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fTag, setFTag] = useState("");
-  const statusOptions = Array.from(new Set(orders.map((o) => orderStatusLabel(o))));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+  const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
+  const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const tagOptions = Array.from(new Set(orders.flatMap((o) => o.tags || []).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const map = {};
   orders.forEach((o) => {
     if (query.trim() && !(o.clientName || "").includes(query.trim())) return;
     if (fCategory && o.category !== fCategory) return;
-    if (fStatus && orderStatusLabel(o) !== fStatus) return;
+    if (fStatus && liveStatus(o) !== fStatus) return;
     if (fTag && !(o.tags || []).includes(fTag)) return;
     const key = (o.clientName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
     if (!map[key]) map[key] = { name: key, engineerName: "", orders: [] };
@@ -2877,7 +2882,7 @@ function CustomersList({ orders, onOpen, emailToName }) {
   if (customers.length === 0) {
     return /* @__PURE__ */ React.createElement("div", null, filterPanel, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "60px 20px", color: COLORS.muted } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 34, opacity: 0.6, marginBottom: 10 } }, "\u{1F465}"), /* @__PURE__ */ React.createElement("p", { style: { ...display, fontSize: 20, margin: "0 0 4px", color: COLORS.ink } }, "\u0644\u0627 \u064A\u0648\u062C\u062F \u0639\u0645\u0644\u0627\u0621"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13.5, margin: 0 } }, "\u062C\u0631\u0651\u0628\u064A \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0628\u062D\u062B \u0623\u0648 \u0627\u0644\u0641\u0644\u062A\u0631")));
   }
-  return /* @__PURE__ */ React.createElement("div", null, filterPanel, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, customers.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, c.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.muted } }, c.orders.length, " \u0623\u0648\u0631\u062F\u0631")), c.engineerName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F477}"), c.engineerName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, c.orders.map((o) => /* @__PURE__ */ React.createElement("button", { key: o.id, onClick: () => onOpen(o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, (o.orderCode ? "[" + o.orderCode + "] " : "") + (o.title || "\u0623\u0648\u0631\u062F\u0631 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, orderStatusLabel(o)))))))));
+  return /* @__PURE__ */ React.createElement("div", null, filterPanel, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, customers.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: 14 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, c.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: COLORS.muted } }, c.orders.length, " \u0623\u0648\u0631\u062F\u0631")), c.engineerName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: COLORS.muted, marginTop: 3, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F477}"), c.engineerName), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6, borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8 } }, c.orders.map((o) => /* @__PURE__ */ React.createElement("button", { key: o.id, onClick: () => onOpen(o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0", textAlign: "right" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, (o.orderCode ? "[" + o.orderCode + "] " : "") + (o.title || "\u0623\u0648\u0631\u062F\u0631 \u0628\u062F\u0648\u0646 \u0627\u0633\u0645")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 600 } }, liveStatus(o)))))))));
 }
 function TrashPage({ orders, onBack, onRestore, onDeleteForever }) {
   const [confirmId, setConfirmId] = useState(null);
@@ -3508,7 +3513,8 @@ function buildAssistantAnswer(q, ctx) {
     const code = codeMatch[0].toUpperCase().replace(/^AK-?/, "AK-");
     const ord = active.find((o) => (o.orderCode || "").toUpperCase() === code);
     if (!ord) return "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631 \u0628\u0627\u0644\u0643\u0648\u062F " + code + ".";
-    return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + orderStatusLabel(ord) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || (emailToName && emailToName[ord.createdBy]) || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
+    const ordPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (ord.clientName || "").trim() && (!p.customerDeliveryDate || !ord.deliveryDate || p.customerDeliveryDate === ord.deliveryDate));
+    return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + computeOrderPiecesStatusLabel(ordPieces, orderStatusLabel(ord)) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || (emailToName && emailToName[ord.createdBy]) || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
   }
   if (has("متأخر", "اتأخر", "تأخير") && has("تصنيع", "قطعة", "قطع", "إنتاج", "مصنع")) {
     const late = pieces.filter((p) => p.agreedDeadline && p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && p.status !== "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" && pieceDeadlineDiff(p) !== null && pieceDeadlineDiff(p) < 0);
@@ -3757,7 +3763,7 @@ const REPORT_SOURCES = {
       { key: "engineerName", label: "\u0627\u0644\u0645\u0647\u0646\u062F\u0633" },
       { key: "enteredAt", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0636\u0627\u0641\u0629", fmt: (v) => v ? v.slice(0, 10) : "" },
       { key: "deliveryDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645" },
-      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row) => orderStatusLabel(row) },
+      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => (p.customerName || "").trim() === (row.clientName || "").trim() && (!p.customerDeliveryDate || !row.deliveryDate || p.customerDeliveryDate === row.deliveryDate)), orderStatusLabel(row)) },
       { key: "approved", label: "\u0645\u0639\u062A\u0645\u062F\u061F", fmt: (v) => v ? "\u0646\u0639\u0645" : "\u0644\u0627" },
       { key: "sellingPrice", label: "\u0627\u0644\u0633\u0639\u0631" },
       { key: "amountPaid", label: "\u0627\u0644\u0645\u062F\u0641\u0648\u0639" },
@@ -3942,8 +3948,20 @@ function SystemHealthCheckPage({ orders, pieces, onBack, onOpenOrder }) {
           results.noCode.length > 0 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, results.noCode.slice(0, 10).map((o) => h("button", { key: o.id, onClick: () => onOpenOrder(o.id), style: { fontSize: 11, padding: "3px 9px", borderRadius: 999, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, o.clientName || "\u2014"))) : null
         ),
         h(CheckRow, { ok: results.dupeCodes.length === 0, title: "\u0623\u0643\u0648\u0627\u062F \u0645\u0643\u0631\u0631\u0629", detail: results.dupeCodes.length === 0 ? "\u0643\u0644 \u0627\u0644\u0623\u0643\u0648\u0627\u062F \u0641\u0631\u064A\u062F\u0629" : results.dupeCodes.map(([c]) => c).join("\u060C ") + " \u2014 \u0645\u0643\u0631\u0631\u0629" }),
-        h(CheckRow, { ok: results.orphanPieces.length === 0, title: "\u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0628\u062F\u0648\u0646 \u0623\u0648\u0631\u062F\u0631 \u0645\u0637\u0627\u0628\u0642", detail: results.orphanPieces.length === 0 ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639 \u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u062C\u0648\u062F\u0629" : results.orphanPieces.length + " \u0642\u0637\u0639\u0629 \u0627\u0633\u0645 \u0639\u0645\u064A\u0644\u0647\u0627 \u0645\u0634 \u0645\u0637\u0627\u0628\u0642 \u0623\u064A \u0623\u0648\u0631\u062F\u0631 \u062D\u0627\u0644\u064A \u2014 \u0631\u0627\u062C\u0639\u064A \u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0641\u064A \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }),
-        h(CheckRow, { ok: results.noPieceOrders.length === 0, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u0632\u0651\u0639\u0629 \u0628\u062F\u0648\u0646 \u0642\u0637\u0639", detail: results.noPieceOrders.length === 0 ? "\u0643\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u064A\u0647\u0627 \u0642\u0637\u0639 \u2014 \u064A\u0639\u0646\u064A \u0642\u0633\u0645 \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0641\u064A \u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A \u0647\u064A\u0638\u0647\u0631 \u0635\u062D \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" : results.noPieceOrders.length + " \u0623\u0648\u0631\u062F\u0631 \u0645\u0639\u062A\u0645\u062F \u0648\u0645\u0648\u0632\u0651\u0639 \u0628\u062F\u0648\u0646 \u0623\u064A \u0642\u0637\u0639\u0629 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629 \u2014 \u0647\u0630\u0648\u0644\u0627\u0621 \u0644\u0646 \u064A\u0638\u0647\u0631 \u0644\u0647\u0645 \u0642\u0633\u0645 \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0641\u064A \u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A \u0644\u062D\u062F \u0645\u0627 \u064A\u062A\u0648\u0632\u0651\u0639 \u0644\u0647\u0645 \u0642\u0637\u0639" }),
+        h(CheckRow, { ok: results.orphanPieces.length === 0, title: "\u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0628\u062F\u0648\u0646 \u0623\u0648\u0631\u062F\u0631 \u0645\u0637\u0627\u0628\u0642", detail: results.orphanPieces.length === 0 ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639 \u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u062C\u0648\u062F\u0629" : results.orphanPieces.length + " \u0642\u0637\u0639\u0629 \u0627\u0633\u0645 \u0639\u0645\u064A\u0644\u0647\u0627 \u0645\u0634 \u0645\u0637\u0627\u0628\u0642 \u0623\u064A \u0623\u0648\u0631\u062F\u0631 \u062D\u0627\u0644\u064A \u2014 \u0627\u0636\u063A\u0637\u064A \u0639\u0644\u0649 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644\u062A\u0635\u062D\u064A\u062D \u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" },
+          results.orphanPieces.length > 0 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, results.orphanPieces.slice(0, 15).map((p) => h("button", { key: p.id, onClick: () => {
+            const next = window.prompt("\u062A\u0635\u062D\u064A\u062D \u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0644\u0644\u0642\u0637\u0639\u0629 (" + (p.pieceType || "\u2014") + ")", p.customerName || "");
+            if (next === null) return;
+            const trimmed = next.trim();
+            if (!trimmed) return;
+            piecesColRef().doc(p.id).update({ customerName: trimmed }).then(() => {
+              setResults((r) => r ? { ...r, orphanPieces: r.orphanPieces.filter((x) => x.id !== p.id) } : r);
+            }).catch((e) => window.alert("\u062A\u0639\u0630\u0631 \u0627\u0644\u062A\u0639\u062F\u064A\u0644: " + e.message));
+          }, style: { fontSize: 11, padding: "3px 9px", borderRadius: 999, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, (p.customerName || "\u2014") + " \u00B7 " + (p.pieceType || "\u2014")))) : null
+        ),
+        h(CheckRow, { ok: results.noPieceOrders.length === 0, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0648\u0632\u0651\u0639\u0629 \u0628\u062F\u0648\u0646 \u0642\u0637\u0639", detail: results.noPieceOrders.length === 0 ? "\u0643\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u064A\u0647\u0627 \u0642\u0637\u0639 \u2014 \u064A\u0639\u0646\u064A \u0642\u0633\u0645 \u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629 \u0641\u064A \u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A \u0647\u064A\u0638\u0647\u0631 \u0635\u062D \u0644\u0643\u0644 \u0627\u0644\u0639\u0645\u0644\u0627\u0621" : results.noPieceOrders.length + " \u0623\u0648\u0631\u062F\u0631 \u0645\u0639\u062A\u0645\u062F \u0648\u0645\u0648\u0632\u0651\u0639 \u0628\u062F\u0648\u0646 \u0623\u064A \u0642\u0637\u0639\u0629 \u0625\u0646\u062A\u0627\u062C \u0645\u0633\u062C\u0644\u0629 \u2014 \u0627\u0636\u063A\u0637\u064A \u0639\u0644\u0649 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0644\u0641\u062A\u062D\u0647" },
+          results.noPieceOrders.length > 0 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } }, results.noPieceOrders.slice(0, 15).map((o) => h("button", { key: o.id, onClick: () => onOpenOrder(o.id), style: { fontSize: 11, padding: "3px 9px", borderRadius: 999, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, (o.clientName || "\u2014") + (o.orderCode ? " \u00B7 " + o.orderCode : "")))) : null
+        ),
         h("div", { style: { fontSize: 12.5, fontWeight: 700, margin: "16px 0 8px", color: COLORS.muted } }, "\u0635\u0644\u0627\u062D\u064A\u0629 \u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0644\u0643\u0644 \u0642\u0633\u0645"),
         results.collectionResults.map((c) => h(CheckRow, { key: c.key, ok: c.ok, title: c.label, detail: c.ok ? "\u0627\u0644\u0642\u0631\u0627\u0621\u0629 \u0634\u063A\u0627\u0644\u0629" : "\u0641\u0634\u0644: " + c.error }))
       )
@@ -3983,7 +4001,7 @@ function CustomReportPage({ orders, pieces, onBack }) {
   const rows = generated ? buildRows() : [];
   const headers = activeFields.map((f) => f.label);
   const dataRows = rows.map((r) => activeFields.map((f) => {
-    const v = f.fmt ? f.fmt(r[f.key], r) : r[f.key];
+    const v = f.fmt ? f.fmt(r[f.key], r, pieces) : r[f.key];
     return v === undefined || v === null ? "" : String(v);
   }));
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
@@ -5237,7 +5255,7 @@ function TechnicalReviewControls({ onApprove, onSendBack, sendLabel, approveLabe
     h("button", { onClick: () => setShowNote(true), style: { flex: 1, background: "#fff", color: COLORS.gold, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F504} \u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644")
   );
 }
-function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails }) {
+function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails }) {
   const [tab, setTab] = useState("pending");
   const [selectedEngineer, setSelectedEngineer] = useState(null);
   const [monthFilter, setMonthFilter] = useState("");
@@ -5304,7 +5322,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
       h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
       h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
       h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + orderStatusLabel(o)),
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate)), orderStatusLabel(o))),
       o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
     )
   );
@@ -5510,7 +5528,7 @@ function TopRequestedMaterialsPage({ orders }) {
     )
   );
 }
-function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub, emailToName }) {
+function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub, emailToName }) {
   const [view, setView] = useState(null);
   const [summarySearch, setSummarySearch] = useState("");
   const [rollupSearch, setRollupSearch] = useState("");
@@ -5625,7 +5643,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEd
       )))
     ) : view === "byOrder" ? h(React.Fragment, null,
       h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0639\u0645\u064A\u0644 \u0648\u0627\u062E\u062A\u0627\u0631\u064A \u0623\u0648\u0631\u062F\u0631\u0647 \u2014 \u0647\u062A\u0648\u0635\u0644\u064A \u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0635\u0641\u062D\u0629 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0643\u0644 \u062A\u0641\u0627\u0635\u064A\u0644\u0647\u0627 (\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628\u060C \u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F\u060C \u0627\u0644\u0635\u0648\u0631\u0629\u060C \u0627\u0644\u0645\u0644\u0641\u0627\u062A) \u2014 \u062A\u0642\u0631\u064A\u0631 \u0645\u0641\u0635\u0644 \u0644\u0643\u0644 \u0623\u0648\u0631\u062F\u0631 \u0644\u0648\u062D\u062F\u0647"),
-      h(CustomersList, { orders, onOpen: onOpenOrder, emailToName })
+      h(CustomersList, { orders, onOpen: onOpenOrder, emailToName, pieces })
     ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder: (!canEditSub || canEditSub("byType")) ? onUpdateOrder : null }) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
@@ -6308,7 +6326,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   const fastestSuppliers = allSupplierAverages.filter((s) => s.count >= 2).sort((a, b) => a.avg - b.avg).slice(0, 3);
   const maxSupplierAvg = Math.max(1, ...supplierAverages.map((s) => s.avg));
   const atRiskCustomers = Array.from(new Set(pieces.filter((p) => {
-    if (!p.customerDeliveryDate || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646") return false;
+    if (!p.customerDeliveryDate || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") return false;
     const d = daysUntil(p.customerDeliveryDate);
     return d !== null && d <= 5;
   }).sort((a, b) => daysUntil(a.customerDeliveryDate) - daysUntil(b.customerDeliveryDate)).map((p) => p.customerName).filter(Boolean)));
@@ -6350,7 +6368,10 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   );
   const exportFullBackup = () => {
     const orderRows = [["\u0627\u0644\u0642\u0633\u0645", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
-    orders.forEach((o) => orderRows.push([o.category || "", o.clientName || "", o.dateReceived || "", o.deliveryDate || "", orderStatusLabel(o), o.fabricShippingStatus || ""]));
+    orders.forEach((o) => {
+      const oPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+      orderRows.push([o.category || "", o.clientName || "", o.dateReceived || "", o.deliveryDate || "", computeOrderPiecesStatusLabel(oPieces, orderStatusLabel(o)), o.fabricShippingStatus || ""]);
+    });
     const pieceRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639/\u0627\u0644\u0645\u0648\u0642\u0639", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
     pieces.forEach((p) => pieceRows.push([p.customerName || "", p.status || "", p.pieceType || "", p.size || "", p.pieceCount || "", p.description || "", p.manufacturingEntity || "", p.currentLocation || "", p.customerDeliveryDate || "", p.agreedDeadline || "", isSofaType(p.pieceType) ? (p.fabricShippingStatus || "") : ""]));
     const materialRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0648\u0635\u0641/\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u062A\u0648\u0627\u0641\u0631"]];
@@ -6406,7 +6427,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
     atRiskCustomers.length > 0 ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.danger}`, borderRadius: 14, padding: 16, marginBottom: 16 } },
       h("div", { style: { ...display, fontSize: 16, fontWeight: 700, marginBottom: 12, color: COLORS.danger, display: "flex", alignItems: "center", gap: 6 } }, h(Emoji, { size: 16 }, "\u26A0\uFE0F"), "\u0645\u0648\u0627\u0639\u064A\u062F \u0645\u062D\u062A\u0627\u062C\u0629 \u0645\u062A\u0627\u0628\u0639\u0629"),
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, atRiskCustomers.slice(0, 8).map((name) => {
-        const custPieces = pieces.filter((p) => p.customerName === name && p.customerDeliveryDate && p.status !== "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" && p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646");
+        const custPieces = pieces.filter((p) => p.customerName === name && p.customerDeliveryDate && p.status !== "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" && p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
         const soonest = custPieces.map((p) => daysUntil(p.customerDeliveryDate)).filter((d) => d !== null).sort((a, b) => a - b)[0];
         const urgent = soonest !== undefined && soonest <= 2;
         return h("div", { key: name, onClick: () => setSelectedCustomer(name), style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.bg, borderRadius: 10, padding: "8px 12px", cursor: "pointer" } },
