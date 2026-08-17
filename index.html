@@ -1277,16 +1277,30 @@ function App() {
       const d = daysUntil(o.deliveryDate);
       if (d === null || d < 1 || d > 5) return;
       const orderPieces = productionPieces.filter((p) => p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
+      const alreadyDelivered = orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
+      if (alreadyDelivered) {
+        nearDeliveryNotifiedSessionRef.current.add(o.id);
+        updateOrder(o.id, { nearDeliveryNotified: true });
+        return;
+      }
       const locations = Array.from(new Set(orderPieces.map((p) => p.currentLocation).filter(Boolean)));
       nearDeliveryNotifiedSessionRef.current.add(o.id);
-      notify({
-        toEmails: [o.createdBy, ...productionEmailsForLocations(locations)].filter(Boolean),
-        title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2014 \u0628\u0627\u0642\u064A " + arabicDaysPhrase(d),
-        body: (o.clientName || "\u2014") + " - " + (o.category || "\u2014"),
-        orderId: o.id,
-        kind: "near-delivery"
-      });
-      updateOrder(o.id, { nearDeliveryNotified: true });
+      const ref = ordersColRef().doc(o.id);
+      db.runTransaction((tx) => tx.get(ref).then((snap) => {
+        const data = snap.data() || {};
+        if (data.nearDeliveryNotified) return false;
+        tx.update(ref, { nearDeliveryNotified: true });
+        return true;
+      })).then((won) => {
+        if (!won) return;
+        notify({
+          toEmails: [o.createdBy, ...productionEmailsForLocations(locations)].filter(Boolean),
+          title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2014 \u0628\u0627\u0642\u064A " + arabicDaysPhrase(d),
+          body: (o.clientName || "\u2014") + " - " + (o.category || "\u2014"),
+          orderId: o.id,
+          kind: "near-delivery"
+        });
+      }).catch((e) => console.error("near-delivery reminder transaction failed", e));
     });
   }, [dataLoaded, orders, productionPieces, access, tick]);
   useEffect(() => {
@@ -1296,14 +1310,22 @@ function App() {
       if (!ready || p.readyNotified || readyNotifiedSessionRef.current.has(p.id)) return;
       readyNotifiedSessionRef.current.add(p.id);
       const matchOrder = orders.find((o) => (o.clientName || "").trim() === (p.customerName || "").trim());
-      notify({
-        toEmails: emailsWithTabAccess("deliveries"),
-        title: "\u{1F69A} \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645",
-        body: (p.customerName || "\u2014") + " - " + (p.pieceType || "\u2014"),
-        orderId: matchOrder ? matchOrder.id : "",
-        kind: "ready-for-delivery"
-      });
-      piecesColRef().doc(p.id).update({ readyNotified: true }).catch((e) => console.error("ready flag failed", e));
+      const ref = piecesColRef().doc(p.id);
+      db.runTransaction((tx) => tx.get(ref).then((snap) => {
+        const data = snap.data() || {};
+        if (data.readyNotified) return false;
+        tx.update(ref, { readyNotified: true });
+        return true;
+      })).then((won) => {
+        if (!won) return;
+        notify({
+          toEmails: emailsWithTabAccess("deliveries"),
+          title: "\u{1F69A} \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645",
+          body: (p.customerName || "\u2014") + " - " + (p.pieceType || "\u2014"),
+          orderId: matchOrder ? matchOrder.id : "",
+          kind: "ready-for-delivery"
+        });
+      }).catch((e) => console.error("ready-for-delivery reminder transaction failed", e));
     });
   }, [dataLoaded, productionPieces, tick]);
   const persistField = useCallback((field, value) => {
@@ -2114,7 +2136,7 @@ function App() {
       notifications.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0644\u0633\u0629" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, notifications.map((n) => {
         const isRead = (n.readBy || []).includes(user && user.email);
-        const resolved = isNotificationResolved(n, orders);
+        const resolved = isNotificationResolved(n, orders, productionPieces);
         return h("div", {
           key: n.id,
           onClick: () => openNotification(n),
@@ -4556,7 +4578,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     ) : null,
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
-        h("label", { style: labelStyle }, "القسم"),
+        h("label", { style: labelStyle }, "نوع الأوردر"),
         h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
           h("option", { value: "" }, "الكل"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
         )
@@ -7411,13 +7433,17 @@ function GlobalSuppliersPage({ orders }) {
 }
 const DEFAULT_ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u062A\u0646\u062C\u064A\u062F", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
 const DEPARTMENT_KEYWORDS = ["كنب", "مسطحات", "جيبورد", "ستائر", "تنجيد", "خشبيات", "سجاد", "مخدات"];
-function isNotificationResolved(n, orders) {
+function isNotificationResolved(n, orders, productionPieces) {
   if (!n.orderId) return false;
   const o = orders.find((x) => x.id === n.orderId);
   if (!o) return true;
   if (o.archived) return true;
   if (n.kind === "materials-deadline") return !!o.materialsHandled;
   if (n.kind === "distribution-deadline") return !!o.distributionHandled;
+  if ((n.kind === "near-delivery" || n.kind === "deadline" || n.kind === "ready-for-delivery") && productionPieces) {
+    const matching = productionPieces.filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim());
+    if (matching.length > 0 && matching.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return true;
+  }
   return false;
 }
 function detectOrderDepartments(category) {
