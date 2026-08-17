@@ -1806,8 +1806,8 @@ function App() {
       initialSection: selectedOrderSection
     }) : homeDrilldown ? h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null),
       h("div", { style: { padding: 16 } },
-        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder }) :
-        homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder }) :
+        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder }) :
+        homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k), canEditSub: (k) => canEditSubTab("pricing", k), myRoles, mySupplierScope }) :
@@ -1848,7 +1848,7 @@ function App() {
       ),
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         !canSeeTab(tab) ? null : h(React.Fragment, null,
-        tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k) }),
+        tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k) }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
         tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
@@ -1856,11 +1856,11 @@ function App() {
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
-        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, onUpdateOrder: updateOrder }),
+        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k) }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
         tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
-        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
+        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
         )
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -2829,7 +2829,7 @@ function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
   };
   return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, label && /* @__PURE__ */ React.createElement("label", { style: labelStyle }, label), warning && /* @__PURE__ */ React.createElement("p", { style: { color: COLORS.danger, fontSize: 12.5, margin: "0 0 6px" } }, warning), file ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } }, file.kind === "image" ? /* @__PURE__ */ React.createElement("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F4C4}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name), /* @__PURE__ */ React.createElement("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")), /* @__PURE__ */ React.createElement("button", { onClick: onRemove, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))) : /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641", /* @__PURE__ */ React.createElement("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" } })));
 }
-function CustomersList({ orders, onOpen }) {
+function CustomersList({ orders, onOpen, emailToName }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fCategory, setFCategory] = useState("");
@@ -2846,7 +2846,7 @@ function CustomersList({ orders, onOpen }) {
     if (fTag && !(o.tags || []).includes(fTag)) return;
     const key = (o.clientName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
     if (!map[key]) map[key] = { name: key, engineerName: "", orders: [] };
-    if (o.engineerName) map[key].engineerName = o.engineerName;
+    if (o.createdBy || o.engineerName) map[key].engineerName = o.engineerName || (emailToName && emailToName[o.createdBy]) || "";
     map[key].orders.push(o);
   });
   const customers = Object.values(map).sort((a, b) => a.name.localeCompare(b.name, "ar"));
@@ -3508,7 +3508,7 @@ function buildAssistantAnswer(q, ctx) {
     const code = codeMatch[0].toUpperCase().replace(/^AK-?/, "AK-");
     const ord = active.find((o) => (o.orderCode || "").toUpperCase() === code);
     if (!ord) return "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631 \u0628\u0627\u0644\u0643\u0648\u062F " + code + ".";
-    return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + orderStatusLabel(ord) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
+    return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + orderStatusLabel(ord) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || (emailToName && emailToName[ord.createdBy]) || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
   }
   if (has("متأخر", "اتأخر", "تأخير") && has("تصنيع", "قطعة", "قطع", "إنتاج", "مصنع")) {
     const late = pieces.filter((p) => p.agreedDeadline && p.status !== "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" && p.status !== "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" && pieceDeadlineDiff(p) !== null && pieceDeadlineDiff(p) < 0);
@@ -4506,11 +4506,11 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const [fCategory, setFCategory] = useState("");
   const [fEngineer, setFEngineer] = useState("");
   const categoryOptions = Array.from(new Set(sorted.map((o) => o.category).filter(Boolean)));
-  const engineerOptions = Array.from(new Set(sorted.map((o) => (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy).filter(Boolean)));
+  const engineerOptions = Array.from(new Set(sorted.map((o) => o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy).filter(Boolean)));
   const filtered = sorted.filter((o) => {
     if (query.trim() && !(o.clientName || "").includes(query.trim())) return false;
     if (fCategory && o.category !== fCategory) return false;
-    if (fEngineer && ((emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy) !== fEngineer) return false;
+    if (fEngineer && (o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy) !== fEngineer) return false;
     return true;
   });
   const buildDeptRowsForOrder = (o) => {
@@ -4527,7 +4527,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     const inRevAt = d === null ? o.inRevisionAt : deptData(o, d).inRevisionAt;
     const revDate = d === null ? o.reviewDate : deptData(o, d).reviewDate;
     const noteData = d === null ? o : deptData(o, d);
-    return [o.orderCode || "—", fmtDateTime(o.enteredAt), statusLabel(o), o.clientName || "—", o.category || "—", (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "—", d === null ? "—" : d, noteData.revisionNote || "", status === "يوجد تعديل" ? fmtDateTime(inRevAt) : (status === "تمت المراجعة" ? fmtDateTime(revDate) : "—"), status || "لم يراجع"];
+    return [o.orderCode || "—", fmtDateTime(o.enteredAt), statusLabel(o), o.clientName || "—", o.category || "—", o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy || "—", d === null ? "—" : d, noteData.revisionNote || "", status === "يوجد تعديل" ? fmtDateTime(inRevAt) : (status === "تمت المراجعة" ? fmtDateTime(revDate) : "—"), status || "لم يراجع"];
   }));
   const exportExcel = () => {
     const rows = [["الكود", "تاريخ الدخول", "الحالة", "اسم العميل", "نوع الأوردر", "المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم"]].concat(exportRowsFlat());
@@ -4606,7 +4606,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
               sharedCell(h("span", { style: { fontWeight: (o.editCount || 0) > 0 ? 700 : 400, color: (o.editCount || 0) > 0 ? COLORS.gold : COLORS.ink } }, statusLabel(o)), isFirst, rowSpan),
               sharedCell(h("span", { style: { fontWeight: 700 } }, o.clientName || "—"), isFirst, rowSpan),
               sharedCell(o.category || "—", isFirst, rowSpan),
-              sharedCell((emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "—", isFirst, rowSpan),
+              sharedCell(o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy || "—", isFirst, rowSpan),
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 600 } }, d === null ? "—" : d),
               editNoteCell(o, d),
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, dateStatusCell(o, d)),
@@ -4683,7 +4683,7 @@ function PreApprovalHubPage({ records, myEmail, myDisplayName, isReviewer, myRol
         h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
           h("div", null,
             h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, r.clientName),
-            isReviewer ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u{1F477} " + ((emailToName && emailToName[r.createdBy]) || r.engineerName || r.createdBy)) : null
+            isReviewer ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u{1F477} " + (r.engineerName || (emailToName && emailToName[r.createdBy]) || r.createdBy)) : null
           ),
           h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
             h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, color: st.color, background: st.bg, whiteSpace: "nowrap" } }, st.label),
@@ -5245,7 +5245,7 @@ function MyOrdersPage({ orders, myEmail, isAdminUser, onOpen, onUpdateOrder, ema
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
-  const resolveName = (o) => (emailToName && emailToName[o.createdBy]) || o.engineerName || o.createdBy || "\u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641";
+  const resolveName = (o) => o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy || "\u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641";
   const byDeliveryDate = (a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99");
   const scoped = isAdminUser ? orders.filter((o) => o.createdBy) : orders.filter((o) => o.createdBy && myEmail && o.createdBy === myEmail);
   const categoryOptions = Array.from(new Set(scoped.map((o) => o.category).filter(Boolean)));
@@ -5510,7 +5510,7 @@ function TopRequestedMaterialsPage({ orders }) {
     )
   );
 }
-function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub }) {
+function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub, emailToName }) {
   const [view, setView] = useState(null);
   const [summarySearch, setSummarySearch] = useState("");
   const [rollupSearch, setRollupSearch] = useState("");
@@ -5625,7 +5625,7 @@ function MaterialsHubPage({ orders, onOpenOrder, onUpdateOrder, canSeeSub, canEd
       )))
     ) : view === "byOrder" ? h(React.Fragment, null,
       h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0639\u0645\u064A\u0644 \u0648\u0627\u062E\u062A\u0627\u0631\u064A \u0623\u0648\u0631\u062F\u0631\u0647 \u2014 \u0647\u062A\u0648\u0635\u0644\u064A \u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0635\u0641\u062D\u0629 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0643\u0644 \u062A\u0641\u0627\u0635\u064A\u0644\u0647\u0627 (\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628\u060C \u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F\u060C \u0627\u0644\u0635\u0648\u0631\u0629\u060C \u0627\u0644\u0645\u0644\u0641\u0627\u062A) \u2014 \u062A\u0642\u0631\u064A\u0631 \u0645\u0641\u0635\u0644 \u0644\u0643\u0644 \u0623\u0648\u0631\u062F\u0631 \u0644\u0648\u062D\u062F\u0647"),
-      h(CustomersList, { orders, onOpen: onOpenOrder })
+      h(CustomersList, { orders, onOpen: onOpenOrder, emailToName })
     ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder: (!canEditSub || canEditSub("byType")) ? onUpdateOrder : null }) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
@@ -6162,7 +6162,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
     )
   );
 }
-function TodayQueuePage({ pieces, orders, onUpdateOrder }) {
+function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [query, setQuery] = useState("");
   const [locFilter, setLocFilter] = useState("");
@@ -6181,7 +6181,7 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder }) {
   const locations = Object.keys(byLocation).sort((a, b) => byLocation[b].length - byLocation[a].length);
   const distinctCustomers = new Set(todayPieces.map((p) => p.customerName).filter(Boolean)).size;
   if (selectedCustomer) {
-    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder });
+    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder, emailToName });
   }
   const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0643\u0627\u0646"];
   const exportRows = () => todayPieces.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014"]);
@@ -6318,7 +6318,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
     return { order: o, remaining: c.sellingPrice - paid, daysLeft: o.paymentDueDate ? daysUntil(o.paymentDueDate) : null };
   }).filter((x) => x.remaining > 0 && x.daysLeft !== null && x.daysLeft <= 3).sort((a, b) => a.daysLeft - b.daysLeft);
   if (selectedCustomer) {
-    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder });
+    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder, emailToName });
   }
   const thisMonthPrefix = todayStr().slice(0, 7);
   const engineerOrders = {};
@@ -6608,7 +6608,7 @@ function ActivityLogPage({ log, emailToName }) {
 function countUniqueCustomers(orderList) {
   return new Set(orderList.map((o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") + "||" + (o.deliveryDate || ""))).size;
 }
-function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePendingCustomer, onUpdateOrder, canSeeSub, canEditSub }) {
+function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePendingCustomer, onUpdateOrder, canSeeSub, canEditSub, emailToName }) {
   const [filterKey, setFilterKey] = useState(null);
   const [query, setQuery] = useState("");
 
@@ -6655,10 +6655,10 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
   );
 
   if (filterKey && filterKey.type === "customer") {
-    return h(CustomerProfilePage, { orders, pieces, name: filterKey.name, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder });
+    return h(CustomerProfilePage, { orders, pieces, name: filterKey.name, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder, emailToName });
   }
   if (filterKey && filterKey.type === "full-detail") {
-    return h(AllCustomersDetailPage, { orders, pieces, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder });
+    return h(AllCustomersDetailPage, { orders, pieces, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder, emailToName });
   }
   if (filterKey && filterKey.type === "all") {
     return h(AllCustomersTabsPage, { orders, pieces, onBack: () => setFilterKey(null), onOpenCustomer: (name) => setFilterKey({ type: "customer", name }), onOpenOrder: onOpen, canSeeSub, canEditSub });
@@ -6929,11 +6929,11 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
       }))
   );
 }
-function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder, onUpdateOrder }) {
+function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder, onUpdateOrder, emailToName }) {
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
   if (selected) {
-    return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder, onUpdateOrder });
+    return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder, onUpdateOrder, emailToName });
   }
   const filtered = names.filter((n) => !query.trim() || n.includes(query.trim()));
   return h("div", null,
@@ -7142,7 +7142,7 @@ function DeliveryDelaysPage({ pieces, onBack, onUpdate, canEdit, isAdminUser }) 
     )
   );
 }
-function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateOrder }) {
+function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateOrder, emailToName }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState("");
@@ -7221,7 +7221,7 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
           const matchingOrder = custOrders.find((o) => o.deliveryDate === p.customerDeliveryDate) || null;
           return h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "4px 12px" } },
             detailRow("\u{1F3F7}\uFE0F", "\u0643\u0648\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", matchingOrder && matchingOrder.orderCode),
-            detailRow("\u{1F477}", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", matchingOrder && matchingOrder.engineerName),
+            detailRow("\u{1F477}", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", matchingOrder && (matchingOrder.engineerName || (emailToName && emailToName[matchingOrder.createdBy]))),
             detailRow("\u{1F195}", "\u062A\u0627\u0631\u064A\u062E \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", matchingOrder && matchingOrder.enteredAt ? formatLocalDateTime(matchingOrder.enteredAt) : null),
             detailRow("\u2705", "\u062A\u0627\u0631\u064A\u062E \u0625\u062A\u0645\u0627\u0645 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", matchingOrder && matchingOrder.reviewDate ? formatLocalDateTime(matchingOrder.reviewDate) : null),
             detailRow("\u{1F69A}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", p.customerDeliveryDate),
@@ -7252,7 +7252,7 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
     }))
   );
 }
-function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpdateOrder }) {
+function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpdateOrder, emailToName }) {
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState("");
   const [fType, setFType] = useState("");
@@ -7351,7 +7351,7 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
           const receivedDate = matchingOrder ? matchingOrder.dateReceived : "";
           return h("div", { key: dateKey, style: { marginBottom: 16 } },
             h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } },
-              h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey, matchingOrder && matchingOrder.orderCode ? h("span", { style: { fontSize: 11, color: COLORS.muted, fontWeight: 700 } }, "\u00B7 " + matchingOrder.orderCode) : null, matchingOrder && matchingOrder.engineerName ? h("span", { style: { fontSize: 11, color: COLORS.muted, fontWeight: 700 } }, "\u00B7 \u{1F477} " + matchingOrder.engineerName) : null),
+              h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey, matchingOrder && matchingOrder.orderCode ? h("span", { style: { fontSize: 11, color: COLORS.muted, fontWeight: 700 } }, "\u00B7 " + matchingOrder.orderCode) : null, matchingOrder && (matchingOrder.engineerName || (emailToName && emailToName[matchingOrder.createdBy])) ? h("span", { style: { fontSize: 11, color: COLORS.muted, fontWeight: 700 } }, "\u00B7 \u{1F477} " + (matchingOrder.engineerName || (emailToName && emailToName[matchingOrder.createdBy]))) : null),
               h("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                 matchingOrder && matchingOrder.manufacturingOrderFile ? h("a", { href: matchingOrder.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, h(Emoji, { size: 11 }, "\u{1F4CE}"), "\u0627\u0644\u0645\u0644\u0641") : null,
                 matchingOrder && onUpdateOrder ? h("button", {
