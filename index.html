@@ -2162,7 +2162,7 @@ function App() {
       persistAccess(next);
       setShowTeam(false);
     } }),
-    showRoles && access && h(RolesManagementModal, { access, productionSuppliers, onClose: () => setShowRoles(false), onSave: (next) => {
+    showRoles && access && h(RolesManagementModal, { access, productionSuppliers, upholsterySuppliers, onClose: () => setShowRoles(false), onSave: (next) => {
       persistAccess(next);
       setShowRoles(false);
     } }),
@@ -10196,7 +10196,7 @@ function FullProductionPage({ pieces }) {
   );
 }
 
-function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) {
+function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers, onClose, onSave }) {
   const [members, setMembers] = useState(() => {
     const base = (access.members && access.members.length) ? access.members : [];
     const baseEmails = new Set(base.map((m) => m.email));
@@ -10205,11 +10205,18 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   });
   const [newEmail, setNewEmail] = useState("");
   const [expandedEmail, setExpandedEmail] = useState(null);
+  const combinedLocationsByEntity = {};
+  Object.keys(productionSuppliers || {}).forEach((en) => {
+    combinedLocationsByEntity[en] = Array.from(new Set([...(productionSuppliers[en] || []), ...((upholsterySuppliers || {})[en] || [])]));
+  });
+  Object.keys(upholsterySuppliers || {}).forEach((en) => {
+    if (!combinedLocationsByEntity[en]) combinedLocationsByEntity[en] = Array.from(new Set(upholsterySuppliers[en] || []));
+  });
   const supplierNameCounts = {};
-  Object.values(productionSuppliers || {}).forEach((names) => (names || []).forEach((n) => { supplierNameCounts[n] = (supplierNameCounts[n] || 0) + 1; }));
+  Object.values(combinedLocationsByEntity).forEach((names) => names.forEach((n) => { supplierNameCounts[n] = (supplierNameCounts[n] || 0) + 1; }));
   const allSupplierOptionsRaw = [];
-  Object.entries(productionSuppliers || {}).forEach(([en, names]) => {
-    (names || []).forEach((n) => {
+  Object.entries(combinedLocationsByEntity).forEach(([en, names]) => {
+    names.forEach((n) => {
       const ambiguous = supplierNameCounts[n] > 1;
       allSupplierOptionsRaw.push(ambiguous ? { value: en + "::" + n, label: n + " (" + en + ")" } : { value: n, label: n });
     });
