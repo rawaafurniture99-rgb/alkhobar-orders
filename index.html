@@ -1488,6 +1488,20 @@ function App() {
   };
   const updateProductionPiece = (piece) => {
     const prevPiece = productionPieces.find((p) => p.id === piece.id);
+    if (piece.splitGroupId && piece.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" && (!prevPiece || prevPiece.status !== "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645")) {
+      const siblings = productionPieces.filter((p) => p.splitGroupId === piece.splitGroupId && p.id !== piece.id);
+      if (siblings.length > 0 && siblings.every((s) => s.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645")) {
+        const mergedCosts = { ...(piece.costs || {}) };
+        const mergedStages = { ...(piece.stages || {}) };
+        siblings.forEach((s) => {
+          if (s.costs) Object.keys(s.costs).forEach((k) => { if (mergedCosts[k] === void 0) mergedCosts[k] = s.costs[k]; });
+          if (s.stages) Object.keys(s.stages).forEach((k) => { if (mergedStages[k] === void 0) mergedStages[k] = s.stages[k]; });
+        });
+        piece = { ...piece, costs: mergedCosts, stages: mergedStages, pieceCount: piece.splitOriginalCount || piece.pieceCount, splitGroupId: "", splitOriginalCount: "" };
+        siblings.forEach((s) => persistRecordWrite(piecesColRef().doc(s.id).delete()));
+        logActivity("\u062F\u0645\u062C \u0623\u062C\u0632\u0627\u0621 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644ـ" + piece.customerName + " \u0628\u0639\u062F \u0627\u0643\u062A\u0645\u0627\u0644 \u0643\u0644 \u0627\u0644\u0623\u062C\u0632\u0627\u0621 \u2014 \u0627\u0644\u0639\u062F\u062F \u0631\u062C\u0639 " + piece.pieceCount);
+      }
+    }
     if (prevPiece && piece.currentLocation && piece.currentLocation !== prevPiece.currentLocation) {
       const now = (/* @__PURE__ */ new Date()).toISOString();
       const history = (piece.locationHistory || prevPiece.locationHistory || []).map((h) => h.leftAt ? h : { ...h, leftAt: now });
@@ -1768,6 +1782,9 @@ function App() {
   if (!dataLoaded) {
     return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A\u0643..." });
   }
+  if (!isOwner && myRoles.length === 1 && myRoles.includes("supplier")) {
+    return h(SupplierPortalPage, { pieces: productionPieces, mySupplierScope, onUpdate: updateProductionPiece, onSignOut: () => auth.signOut() });
+  }
   const SECTION_TITLE = tab === "review" ? "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"
     : tab === "my-orders" ? "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A"
     : tab === "customers" ? "\u0627\u0644\u0639\u0645\u0644\u0627\u0621"
@@ -1806,8 +1823,8 @@ function App() {
       initialSection: selectedOrderSection
     }) : homeDrilldown ? h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null),
       h("div", { style: { padding: 16 } },
-        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder }) :
-        homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder }) :
+        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
+        homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k), canEditSub: (k) => canEditSubTab("pricing", k), myRoles, mySupplierScope }) :
@@ -1848,15 +1865,15 @@ function App() {
       ),
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         !canSeeTab(tab) ? null : h(React.Fragment, null,
-        tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k) }),
-        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
+        tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
+        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production") }),
-        tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder }),
+        tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
-        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder }),
+        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k) }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
         tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
@@ -6180,7 +6197,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
     )
   );
 }
-function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName }) {
+function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [query, setQuery] = useState("");
   const [locFilter, setLocFilter] = useState("");
@@ -6199,7 +6216,7 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName }) {
   const locations = Object.keys(byLocation).sort((a, b) => byLocation[b].length - byLocation[a].length);
   const distinctCustomers = new Set(todayPieces.map((p) => p.customerName).filter(Boolean)).size;
   if (selectedCustomer) {
-    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder, emailToName });
+    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces });
   }
   const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0643\u0627\u0646"];
   const exportRows = () => todayPieces.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014"]);
@@ -6230,7 +6247,7 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName }) {
       )
   );
 }
-function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminUser, onUpdateOrder }) {
+function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminUser, onUpdateOrder, onUpdatePiece, canBulkUpdatePieces }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const now = /* @__PURE__ */ new Date();
   const thisMonthKey = now.toISOString().slice(0, 7);
@@ -6336,7 +6353,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
     return { order: o, remaining: c.sellingPrice - paid, daysLeft: o.paymentDueDate ? daysUntil(o.paymentDueDate) : null };
   }).filter((x) => x.remaining > 0 && x.daysLeft !== null && x.daysLeft <= 3).sort((a, b) => a.daysLeft - b.daysLeft);
   if (selectedCustomer) {
-    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder, emailToName });
+    return h(CustomerProfilePage, { orders, pieces, name: selectedCustomer, onBack: () => setSelectedCustomer(null), onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces });
   }
   const thisMonthPrefix = todayStr().slice(0, 7);
   const engineerOrders = {};
@@ -6629,7 +6646,7 @@ function ActivityLogPage({ log, emailToName }) {
 function countUniqueCustomers(orderList) {
   return new Set(orderList.map((o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") + "||" + (o.deliveryDate || ""))).size;
 }
-function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePendingCustomer, onUpdateOrder, canSeeSub, canEditSub, emailToName }) {
+function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePendingCustomer, onUpdateOrder, canSeeSub, canEditSub, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
   const [filterKey, setFilterKey] = useState(null);
   const [query, setQuery] = useState("");
 
@@ -6676,7 +6693,7 @@ function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePe
   );
 
   if (filterKey && filterKey.type === "customer") {
-    return h(CustomerProfilePage, { orders, pieces, name: filterKey.name, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder, emailToName });
+    return h(CustomerProfilePage, { orders, pieces, name: filterKey.name, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces });
   }
   if (filterKey && filterKey.type === "full-detail") {
     return h(AllCustomersDetailPage, { orders, pieces, onBack: () => setFilterKey(null), onOpenOrder: onOpen, onUpdateOrder, emailToName });
@@ -6950,11 +6967,11 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
       }))
   );
 }
-function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder, onUpdateOrder, emailToName }) {
+function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onOpenOrder, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
   if (selected) {
-    return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder, onUpdateOrder, emailToName });
+    return h(CustomerProfilePage, { orders, pieces, name: selected, onBack: () => setSelected(null), onOpenOrder, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces });
   }
   const filtered = names.filter((n) => !query.trim() || n.includes(query.trim()));
   return h("div", null,
@@ -7273,10 +7290,15 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
     }))
   );
 }
-function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpdateOrder, emailToName }) {
+function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState("");
   const [fType, setFType] = useState("");
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState([]);
+  const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
+  const canBulkUpdate = !!(canBulkUpdatePieces && onUpdatePiece);
+  const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
   const customerOrders = orders.filter((o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") === name)
     .slice().sort((a, b) => (a.dateReceived || "").localeCompare(b.dateReceived || ""));
   const allCustomerPieces = (pieces || []).filter((p) => p.customerName === name)
@@ -7337,10 +7359,35 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
         style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.teal, textDecoration: "none" }
       }, h(Emoji, { size: 14 }, "\u{1F4C4}"), (o.category || o.title || "\u0623\u0648\u0631\u062F\u0631") + (o.dateReceived ? " \u2014 " + o.dateReceived : ""))))
     ) : null,
-    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px" } },
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px", flexWrap: "wrap", gap: 8 } },
       h("div", { style: { ...display, fontSize: 15, fontWeight: 700 } }, "\u062A\u0641\u0627\u0635\u064A\u0644 \u0642\u0637\u0639 \u0627\u0644\u0625\u0646\u062A\u0627\u062C"),
-      allCustomerPieces.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: addLinkStyle }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null
+      h("div", { style: { display: "flex", gap: 10 } },
+        (canBulkUpdate && allCustomerPieces.length > 0) ? h("button", { onClick: () => { setBulkMode((v) => !v); setBulkSelected([]); }, style: { ...addLinkStyle, color: bulkMode ? COLORS.danger : COLORS.teal } }, bulkMode ? "\u2715 \u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A\u062F" : "\u2611\uFE0F \u062A\u062D\u062F\u064A\u062F \u062C\u0645\u0627\u0639\u064A") : null,
+        allCustomerPieces.length > 0 ? h("button", { onClick: () => setShowFilters(!showFilters), style: addLinkStyle }, (showFilters ? "\u2715 " : "\u2699\uFE0F ") + "\u0641\u0644\u062A\u0631") : null
+      )
     ),
+    bulkMode ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 10, marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("span", { style: { fontSize: 12.5, color: COLORS.muted } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629 \u0645\u0646 \u0623\u0635\u0644 " + customerPieces.length),
+        h("button", { onClick: () => setBulkSelected(bulkSelected.length === customerPieces.length ? [] : customerPieces.map((p) => p.id)), style: { ...addLinkStyle, marginTop: 0 } }, bulkSelected.length === customerPieces.length ? "\u0625\u0644\u063A\u0627\u0621 \u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0643\u0644" : "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0643\u0644")
+      ),
+      h("div", { style: { display: "flex", gap: 8 } },
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+        h("button", {
+          disabled: bulkSelected.length === 0,
+          onClick: () => {
+            if (!window.confirm("\u062A\u062D\u062F\u064A\u062B \u062D\u0627\u0644\u0629 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkStatus + "\"\u061F")) return;
+            bulkSelected.forEach((id) => {
+              const piece = allCustomerPieces.find((p) => p.id === id);
+              if (piece) onUpdatePiece(applyPieceStatusChange(piece, bulkStatus));
+            });
+            setBulkSelected([]);
+            setBulkMode(false);
+          },
+          style: { ...primaryBtn(bulkSelected.length === 0), width: "auto", padding: "8px 14px" }
+        }, "\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062D\u0627\u0644\u0629")
+      )
+    ) : null,
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
@@ -7383,7 +7430,11 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
                 matchingOrder && onOpenOrder ? h("button", { onClick: () => onOpenOrder(matchingOrder.id), style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 11 }, "\u{1F4C2}"), "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
               )
             ),
-            h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, dateGroups[dateKey].map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14, padding: "6px 14px" } },
+            h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, dateGroups[dateKey].map((p) => h("div", { key: p.id, onClick: bulkMode ? () => toggleBulkSelect(p.id) : void 0, style: { background: bulkMode && bulkSelected.includes(p.id) ? COLORS.goldSoft : COLORS.surface, border: `1px solid ${bulkMode && bulkSelected.includes(p.id) ? COLORS.gold : COLORS.border}`, borderRadius: 14, padding: "6px 14px", cursor: bulkMode ? "pointer" : "default" } },
+              bulkMode ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${COLORS.bg}` } },
+                h("input", { type: "checkbox", checked: bulkSelected.includes(p.id), onChange: () => toggleBulkSelect(p.id), style: { width: 16, height: 16 } }),
+                h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, (p.pieceType || "\u2014") + " \u2014 " + (p.status || "\u2014"))
+              ) : null,
               detailRow("\u{1F464}", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", name),
               detailRow("\u{1F3F7}\uFE0F", "\u0643\u0648\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", matchingOrder && matchingOrder.orderCode),
               detailRow("\u{1F4C5}", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 (\u0628\u0639\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629)", receivedDate),
@@ -7592,7 +7643,7 @@ function OrderPiecesStatusModal({ orderPieces, onClose }) {
       return h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
         h("div", null,
           h("div", { style: { fontSize: 13, fontWeight: 700 } }, (p.pieceType || "\u2014") + (p.description ? " \u2014 " + p.description : "")),
-          h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 2 } }, (p.supplierName || p.currentLocation || "\u2014") + (p.size ? " \u00B7 " + p.size : ""))
+          h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 2 } }, (p.currentLocation || p.supplierName || "\u2014") + (p.size ? " \u00B7 " + p.size : ""))
         ),
         h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap", background: delivered ? "#E8F0E4" : COLORS.goldSoft, color: delivered ? COLORS.green : COLORS.gold } }, orderPieceStatusText(p))
       );
@@ -8852,7 +8903,7 @@ const DEFAULT_UPHOLSTERY_SUPPLIERS = { "مصر": ["التنجيد"], "الدما
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
-const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
 const SUB_TABS_CONFIG = {
   customers: [
     { key: "files-payment", label: "\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u0648\u0627\u0644\u0633\u062F\u0627\u062F" }
@@ -9012,7 +9063,7 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLa
     )))
   );
 }
-function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder }) {
+function DistributionEntryPage({ pieces, productionSuppliers, upholsterySuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder }) {
   const [editingPiece, setEditingPiece] = useState(null);
   const [entity, setEntity] = useState(ENTITIES[0]);
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
@@ -9066,7 +9117,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
     });
   const distExportRows = () => {
     const rows = [];
-    customerNames.forEach((name) => (byCustomer[name] || []).forEach((p) => rows.push([name, p.pieceType || "\u2014", p.manufacturingEntity || "\u2014", p.supplierName || "\u2014", p.pieceCount || "\u2014", p.status || "\u2014"])));
+    customerNames.forEach((name) => (byCustomer[name] || []).forEach((p) => rows.push([name, p.pieceType || "\u2014", p.manufacturingEntity || "\u2014", p.currentLocation || p.supplierName || "\u2014", p.pieceCount || "\u2014", p.status || "\u2014"])));
     return rows;
   };
   const distExportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0648\u0631\u062F", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629"];
@@ -9086,7 +9137,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
         h("div", { key: p.id, onClick: () => setEditingPiece(p), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
           h("div", null,
             h("div", { style: { fontWeight: 700 } }, p.pieceType),
-            h("div", { style: { fontSize: 12, color: COLORS.muted } }, p.manufacturingEntity + " \u00B7 " + p.supplierName + " \u00B7 " + p.pieceCount + " \u0642\u0637\u0639\u0629 \u00B7 " + (p.status || "\u2014"))
+            h("div", { style: { fontSize: 12, color: COLORS.muted } }, p.manufacturingEntity + " \u00B7 " + (p.currentLocation || p.supplierName) + " \u00B7 " + p.pieceCount + " \u0642\u0637\u0639\u0629 \u00B7 " + (p.status || "\u2014"))
           ),
           h("button", { onClick: (e) => { e.stopPropagation(); if (window.confirm("\u0647\u062A\u062D\u0630\u0641\u064A \u0627\u0644\u0642\u0637\u0639\u0629 \u062F\u064A\u061F \u0645\u064A\u0646\u0641\u0639\u0634 \u062A\u0631\u062C\u0639\u064A\u0647\u0627 \u062A\u0627\u0646\u064A.")) onDelete(p.id); }, style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
         )
@@ -9130,8 +9181,11 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
             h("button", { style: { ...primaryBtn(false), width: 80 }, onClick: () => { if (newSupplierName.trim()) { onAddSupplier(entity, newSupplierName.trim()); setSupplierName(newSupplierName.trim()); setNewSupplierName(""); setShowAddSupplier(false); } } }, "إضافة")
           ),
       isSofaType(pieceType) ? h(React.Fragment, null,
-        h("label", { style: labelStyle }, "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F"),
-        h("input", { style: fieldStyle, value: upholsteryLocation, onChange: (e) => setUpholsteryLocation(e.target.value), placeholder: "\u0627\u0633\u0645 \u062C\u0647\u0629/\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F (\u0644\u0644\u0643\u0646\u0628 \u0641\u0642\u0637)" })
+        h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0645\u0642\u0635\u0648\u062F \u0644\u0644\u062A\u0646\u062C\u064A\u062F (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
+        h("select", { style: fieldStyle, value: upholsteryLocation, onChange: (e) => setUpholsteryLocation(e.target.value) },
+          h("option", { value: "" }, "\u062A\u062D\u062F\u062F \u0644\u0627\u062D\u0642\u064B\u0627 \u0639\u0646\u062F \u0627\u0644\u062A\u062D\u0648\u064A\u0644 \u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F"),
+          ((upholsterySuppliers && upholsterySuppliers[entity]) || []).map((s) => h("option", { key: s, value: s }, s))
+        )
       ) : null,
       h(FileAttachField, { label: "\u0635\u0648\u0631\u0629 \u0627\u0644\u0642\u0637\u0639\u0629", file: image, onChange: setImage, onRemove: () => setImage(null), folder: "production-pieces" }),
       h("button", { style: primaryBtn(false), onClick: submit }, "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0642\u0637\u0639\u0629")
@@ -9158,39 +9212,61 @@ function DistributionEntryPage({ pieces, productionSuppliers, onAdd, onUpdate, o
   );
 }
 
-function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, canEditDeadline, isAdminUser, statusOnly }) {
+function SplitPieceModal({ piece, upholsteryOptions, onClose, onConfirm }) {
+  const targetOptions = ["\u0625\u0644\u0649 \u0627\u0644\u062F\u0647\u0627\u0646", "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0625\u0644\u0649 \u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646"];
+  const makeDefaultPart = () => ({ qty: String(piece.pieceCount || 1), target: targetOptions[0], supplier: "" });
+  const [numParts, setNumParts] = useState(2);
+  const [parts, setParts] = useState([makeDefaultPart(), makeDefaultPart()]);
+  useEffect(() => {
+    setParts((prev) => {
+      const next = prev.slice(0, numParts);
+      while (next.length < numParts) next.push(makeDefaultPart());
+      return next;
+    });
+  }, [numParts]);
+  const updatePart = (i, patch) => setParts((prev) => prev.map((p, idx) => idx === i ? { ...p, ...patch } : p));
+  const valid = parts.every((p) => Number(p.qty) > 0 && p.target && (p.target !== "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" || upholsteryOptions.length <= 1 || p.supplier));
+  return h(Modal, { title: "\u{1F500} \u0623\u062C\u0632\u0627\u0621 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644\u062C\u0647\u0627\u062A \u0645\u062E\u062A\u0644\u0641\u0629", onClose },
+    h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 10 } }, "\u0644\u0644\u0642\u0637\u0639 \u0627\u0644\u0644\u064A \u0645\u062D\u062A\u0627\u062C\u0629 \u062A\u062A\u062D\u0631\u0643 \u0644\u0623\u0643\u062A\u0631 \u0645\u0646 \u062C\u0647\u0629 \u0641\u064A \u0646\u0641\u0633 \u0627\u0644\u0648\u0642\u062A (\u0632\u064A \u062C\u0632\u0621 \u0627\u0644\u062E\u0634\u0628 \u0644\u0644\u062F\u0647\u0627\u0646 \u0648\u062C\u0632\u0621 \u0627\u0644\u0642\u0645\u0627\u0634 \u0644\u0644\u062A\u0646\u062C\u064A\u062F) \u2014 \u0643\u0644 \u062C\u0647\u0629 \u0628\u062A\u0627\u062E\u062F \u0646\u0633\u062E\u062A\u0647\u0627 \u0645\u0646 \u0627\u0644\u0642\u0637\u0639\u0629 \u0628\u0646\u0641\u0633 \u0627\u0644\u0639\u062F\u062F \u0627\u0644\u0623\u0635\u0644\u064A \u0625\u0644\u0627 \u0644\u0648 \u0639\u062F\u0651\u0644\u062A\u064A"),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      [2, 3].map((n) => h("button", { key: n, onClick: () => setNumParts(n), style: { flex: 1, padding: "8px 0", borderRadius: 10, border: `1px solid ${numParts === n ? COLORS.gold : COLORS.border}`, background: numParts === n ? COLORS.goldSoft : "#fff", fontWeight: 700, cursor: "pointer" } }, n + " \u062C\u0647\u0627\u062A"))
+    ),
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, parts.map((p, i) => h("div", { key: i, style: { background: COLORS.bg, borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 } },
+      h("div", { style: { fontSize: 12, fontWeight: 700, color: COLORS.muted } }, "\u0627\u0644\u062C\u0632\u0621 " + (i + 1)),
+      h("div", { style: { display: "flex", gap: 8 } },
+        h("input", { type: "number", min: 1, style: { ...fieldStyle, marginBottom: 0, flex: 1 }, placeholder: "\u0627\u0644\u0639\u062F\u062F", value: p.qty, onChange: (e) => updatePart(i, { qty: e.target.value }) }),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 2 }, value: p.target, onChange: (e) => updatePart(i, { target: e.target.value, supplier: "" }) },
+          targetOptions.map((t) => h("option", { key: t, value: t }, t))
+        )
+      ),
+      (p.target === "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" && upholsteryOptions.length > 1) ? h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: p.supplier, onChange: (e) => updatePart(i, { supplier: e.target.value }) },
+        h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A \u0645\u0648\u0631\u062F \u0627\u0644\u062A\u0646\u062C\u064A\u062F..."),
+        upholsteryOptions.map((s) => h("option", { key: s, value: s }, s))
+      ) : null
+    ))),
+    h("button", { disabled: !valid, onClick: () => onConfirm(parts.map((p) => ({ qty: Number(p.qty), target: p.target, supplier: p.supplier }))), style: { ...primaryBtn(!valid), marginTop: 4 } }, "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0625\u0631\u0633\u0627\u0644")
+  );
+}
+function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEditDeadline, isAdminUser, statusOnly }) {
   const [editingDates, setEditingDates] = useState(false);
   const [editingCore, setEditingCore] = useState(false);
+  const [showSplit, setShowSplit] = useState(false);
   const [pendingUpholsteryChoice, setPendingUpholsteryChoice] = useState(false);
   const [chosenUpholsterySupplier, setChosenUpholsterySupplier] = useState("");
   const upholsteryOptions = (CURRENT_UPHOLSTERY_SUPPLIERS && CURRENT_UPHOLSTERY_SUPPLIERS[piece.manufacturingEntity]) || [];
   const handleStatusChange = (newStatus, specificTarget) => {
     if (!canEdit) return;
-    if (newStatus === "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" && !specificTarget && upholsteryOptions.length > 1) {
-      setChosenUpholsterySupplier(upholsteryOptions[0]);
-      setPendingUpholsteryChoice(true);
-      return;
+    const preChosenUpholstery = (piece.upholsteryLocation && piece.upholsteryLocation !== "\u2014" && piece.upholsteryLocation !== "-") ? piece.upholsteryLocation : "";
+    if (newStatus === "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" && !specificTarget) {
+      if (preChosenUpholstery) {
+        specificTarget = preChosenUpholstery;
+      } else if (upholsteryOptions.length > 1) {
+        setChosenUpholsterySupplier(upholsteryOptions[0]);
+        setPendingUpholsteryChoice(true);
+        return;
+      }
     }
-    const p = { ...piece, stages: { ...(piece.stages || {}) } };
-    const prevLocation = piece.currentLocation;
-    const currentStageKey = resolveStageKey(piece.currentLocation);
-    p.status = newStatus;
-    if (newStatus === "\u062C\u0627\u0631\u0649") {
-      p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), start: (p.stages[currentStageKey] && p.stages[currentStageKey].start) || todayStr() };
-    }
-    if (newStatus === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C") {
-      p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), end: (p.stages[currentStageKey] && p.stages[currentStageKey].end) || todayStr() };
-    }
-    if (STATUS_TARGET[newStatus]) {
-      const target = specificTarget || STATUS_TARGET[newStatus];
-      const stageKey = resolveStageKey(target);
-      p.currentLocation = target;
-      p.status = "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621";
-      p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "", receivedAt: (/* @__PURE__ */ new Date()).toISOString() };
-      p.agreedDeadline = "";
-      p.deadlineLastReminderDate = "";
-    }
-    onUpdate(p);
+    onUpdate(applyPieceStatusChange(piece, newStatus, specificTarget));
   };
   const updateField = (field, value) => { if (canEdit) onUpdate({ ...piece, [field]: value }); };
   const updateStageDate = (stage, which, value) => { if (!canEdit) return; onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stage]: { ...((piece.stages || {})[stage] || {}), [which]: value } } }); };
@@ -9239,6 +9315,29 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, canEditDeadline, i
       nearDeadline ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: "#fff3d6", borderRadius: 999, padding: "3px 9px" } }, "قرّب الموعد") : null
     ),
     (canEdit && !statusOnly) ? h("button", { onClick: () => setEditingCore((v) => !v), style: { fontSize: 12, color: COLORS.gold, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, editingCore ? "\u0625\u062E\u0641\u0627\u0621 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A" : "\u270F\uFE0F \u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0642\u0637\u0639\u0629") : null,
+    (canEdit && !statusOnly && onAddPiece) ? h("button", { onClick: () => setShowSplit(true), style: { fontSize: 12, color: COLORS.teal, background: "transparent", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "6px 0", cursor: "pointer", fontWeight: 700 } }, "\u{1F500} \u0623\u062C\u0632\u0627\u0621 \u0627\u0644\u0642\u0637\u0639\u0629 \u0644\u062C\u0647\u0627\u062A \u0645\u062E\u062A\u0644\u0641\u0629 (\u062F\u0647\u0627\u0646 + \u062A\u0646\u062C\u064A\u062F...)") : null,
+    showSplit ? h(SplitPieceModal, {
+      piece, upholsteryOptions, onClose: () => setShowSplit(false),
+      onConfirm: (parts) => {
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const splitGroupId = uid();
+        const originalCount = piece.pieceCount;
+        const applyMove = (base, target) => {
+          const stageKey = resolveStageKey(target);
+          const stages = { ...(base.stages || {}) };
+          stages[stageKey] = { ...(stages[stageKey] || {}), receivedFrom: base.currentLocation || "", receivedAt: now };
+          return { ...base, currentLocation: target, status: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621", stages, agreedDeadline: "", deadlineLastReminderDate: "", splitGroupId, splitOriginalCount: originalCount };
+        };
+        const resolveTarget = (part) => part.target === "\u0625\u0644\u0649 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" ? (part.supplier || STATUS_TARGET[part.target]) : STATUS_TARGET[part.target];
+        const first = parts[0];
+        onUpdate({ ...applyMove(piece, resolveTarget(first)), pieceCount: first.qty });
+        parts.slice(1).forEach((part) => {
+          const clone = applyMove({ ...piece, id: uid(), pieceCount: part.qty, createdAt: now }, resolveTarget(part));
+          onAddPiece(clone);
+        });
+        setShowSplit(false);
+      }
+    }) : null,
     editingCore ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6, background: COLORS.bg, borderRadius: 8, padding: 8 } },
       h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
       h("input", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.customerName, onChange: (e) => updateField("customerName", e.target.value) }),
@@ -9274,7 +9373,11 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, canEditDeadline, i
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.arrivalDate || "", onChange: (e) => updateField("arrivalDate", e.target.value) }))
       ),
       isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))), h("div", { style: { display: "flex", gap: 8 } }, h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingDate || "", onChange: (e) => updateField("fabricShippingDate", e.target.value) })), h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalDate || "", onChange: (e) => updateField("fabricArrivalDate", e.target.value) }))), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalStatus || "", onChange: (e) => updateField("fabricArrivalStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))) : null,
-      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, value: (piece.upholsteryLocation === "\u2014" || piece.upholsteryLocation === "-") ? "" : (piece.upholsteryLocation || ""), onChange: (e) => updateField("upholsteryLocation", e.target.value) })) : null,
+      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0645\u0642\u0635\u0648\u062F \u0644\u0644\u062A\u0646\u062C\u064A\u062F"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: (piece.upholsteryLocation === "\u2014" || piece.upholsteryLocation === "-") ? "" : (piece.upholsteryLocation || ""), onChange: (e) => updateField("upholsteryLocation", e.target.value || "\u2014") },
+        h("option", { value: "" }, "\u062A\u062D\u062F\u062F \u0644\u0627\u062D\u0642\u064B\u0627"),
+        upholsteryOptions.map((s) => h("option", { key: s, value: s }, s)),
+        (piece.upholsteryLocation && piece.upholsteryLocation !== "\u2014" && piece.upholsteryLocation !== "-" && !upholsteryOptions.includes(piece.upholsteryLocation)) ? h("option", { key: piece.upholsteryLocation, value: piece.upholsteryLocation }, piece.upholsteryLocation + " (\u0642\u062F\u064A\u0645)") : null
+      )) : null,
       isWoodType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.metersCount || "", onChange: (e) => updateField("metersCount", e.target.value) })) : null,
       h("label", { style: labelStyle }, "\u0635\u0648\u0631\u0629 \u0627\u0644\u0642\u0637\u0639\u0629"),
       h("input", { type: "file", accept: "image/*", onChange: async (e) => {
@@ -9343,6 +9446,39 @@ function PieceBoardCard({ piece, onUpdate, onDelete, canEdit, canEditDeadline, i
   );
 }
 
+function SupplierPortalPage({ pieces, mySupplierScope, onUpdate, onSignOut }) {
+  const [showDelivered, setShowDelivered] = useState(false);
+  const myPieces = (pieces || []).filter((p) => mySupplierScope.includes(p.currentLocation));
+  const activePieces = myPieces.filter((p) => p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
+  const deliveredPieces = myPieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
+  const list = showDelivered ? deliveredPieces : activePieces;
+  const sorted = list.slice().sort((a, b) => {
+    const da = pieceDeadlineDiff(a);
+    const db = pieceDeadlineDiff(b);
+    if (da === null && db === null) return 0;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  });
+  return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink, padding: 16 } },
+    h(GlobalStyle, null),
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } },
+      h("div", null,
+        h("div", { style: { fontSize: 20, fontWeight: 700 } }, "\u{1F44B} " + (mySupplierScope[0] || "\u0627\u0644\u0645\u0648\u0631\u062F")),
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, activePieces.length + " \u0642\u0637\u0639\u0629 \u0639\u0646\u062F\u0643 \u062F\u0644\u0648\u0642\u062A\u064A")
+      ),
+      h("button", { onClick: onSignOut, style: { fontSize: 12.5, color: COLORS.danger, background: "transparent", border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0633\u062C\u064A\u0644 \u062E\u0631\u0648\u062C")
+    ),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+      h(TabButton, { active: !showDelivered, onClick: () => setShowDelivered(false), emoji: "\u{1F4E6}", label: "\u0627\u0644\u062D\u0627\u0644\u064A\u0629 (" + activePieces.length + ")" }),
+      h(TabButton, { active: showDelivered, onClick: () => setShowDelivered(true), emoji: "\u2705", label: "\u0627\u0644\u0645\u064F\u0633\u0644َّ\u0645\u0629 (" + deliveredPieces.length + ")" })
+    ),
+    sorted.length === 0 ? h(EmptyHint, { text: showDelivered ? "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0633\u0644َّ\u0645\u0629 \u0644\u0633\u0647" : "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0639\u0646\u062F\u0643 \u062F\u0644\u0648\u0642\u062A\u064A" }) :
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+      sorted.map((p) => h(PieceBoardCard, { key: p.id, piece: p, onUpdate, canEdit: !showDelivered, canEditDeadline: false, isAdminUser: false, statusOnly: true }))
+    )
+  );
+}
 function countDistinctOrders(piecesAtLocation) {
   const seen = new Set();
   piecesAtLocation.forEach((p) => {
@@ -9351,7 +9487,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
+function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
   const [entity, setEntity] = useState((deepLink && deepLink.entity) || null);
   useEffect(() => { if (deepLink && onConsumeDeepLink) onConsumeDeepLink(); }, []);
   if (!entity) {
@@ -9362,7 +9498,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers,
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -9377,6 +9513,28 @@ function resolveStageKey(loc) {
   const all = [].concat(...Object.values(CURRENT_UPHOLSTERY_SUPPLIERS || {}));
   if (all.includes(loc)) return "\u062A\u0646\u062C\u064A\u062F";
   return "\u0646\u062C\u0627\u0631\u0629";
+}
+function applyPieceStatusChange(piece, newStatus, specificTarget) {
+  const p = { ...piece, stages: { ...(piece.stages || {}) } };
+  const prevLocation = piece.currentLocation;
+  const currentStageKey = resolveStageKey(piece.currentLocation);
+  p.status = newStatus;
+  if (newStatus === "\u062C\u0627\u0631\u0649") {
+    p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), start: (p.stages[currentStageKey] && p.stages[currentStageKey].start) || todayStr() };
+  }
+  if (newStatus === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C") {
+    p.stages[currentStageKey] = { ...(p.stages[currentStageKey] || {}), end: (p.stages[currentStageKey] && p.stages[currentStageKey].end) || todayStr() };
+  }
+  if (STATUS_TARGET[newStatus]) {
+    const target = specificTarget || STATUS_TARGET[newStatus];
+    const stageKey = resolveStageKey(target);
+    p.currentLocation = target;
+    p.status = "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621";
+    p.stages[stageKey] = { ...(p.stages[stageKey] || {}), receivedFrom: prevLocation || "", receivedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    p.agreedDeadline = "";
+    p.deadlineLastReminderDate = "";
+  }
+  return p;
 }
 function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection) {
   const dateGroups = {};
@@ -9454,7 +9612,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
     })
   );
 }
-function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
+function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -9557,11 +9715,11 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, can
     ) : null,
     renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
-      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
+      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles }) {
+function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles }) {
   const [scope, setScope] = useState(null);
   const [query, setQuery] = useState("");
   const [openPiece, setOpenPiece] = useState(null);
@@ -9618,13 +9776,13 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
       ) : null,
       renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
-        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
+        h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
     );
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
+    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
   }
 
   return h("div", null,
@@ -9638,7 +9796,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, canEditFn,
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
@@ -9710,13 +9868,13 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
-  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete,
+  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddPiece,
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
     myRoles, mySupplierScope, onBack: () => setStageKey(null), deepLink, canEditStage: !canEditSub || canEditSub(group.key) });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack, deepLink, canEditStage }) {
+function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack, deepLink, canEditStage }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
   const [showAdd, setShowAdd] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
@@ -9783,7 +9941,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
     ),
     viewMode === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles })
+        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles })
     ) : (
       archiveEntries.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0624\u0631\u0634\u0641\u0629 \u0644ـ" + activeLoc + " \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
         h(LocationArchiveTable, { entries: archiveEntries, activeLoc })
@@ -10108,8 +10266,8 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
             h("input", { type: "checkbox", checked: !!m.receivesAllNotifications, onChange: () => updateMember(m.email, { receivesAllNotifications: !m.receivesAllNotifications }), style: { display: "none" } }),
             h(Emoji, { size: 13 }, "\u{1F514}"), "\u064A\u0633\u062A\u0642\u0628\u0644 \u0643\u0644 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0632\u064A \u0627\u0644\u0645\u062F\u064A\u0631)"
           ) : null,
-          ((m.permittedTabs || []).includes("production-board") || (m.permittedTabs || []).includes("pricing")) ? h(React.Fragment, null,
-            h("div", { style: { fontSize: 11, color: COLORS.muted, marginBottom: 4 } }, "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0624\u064A\u0629 \u0628\u064A\u0627\u0646\u0627\u062A\u0647\u0645 \u0641\u064A \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0648\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A (\u0627\u062A\u0631\u0643\u064A\u0647 \u0641\u0627\u0631\u063A\u064B\u0627 \u0644\u0625\u0638\u0647\u0627\u0631 \u0643\u0644 \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646)"),
+          (((m.permittedTabs || []).includes("production-board") || (m.permittedTabs || []).includes("pricing")) || roles.includes("supplier")) ? h(React.Fragment, null,
+            h("div", { style: { fontSize: 11, color: COLORS.muted, marginBottom: 4 } }, roles.includes("supplier") ? "\u062D\u062F\u062F\u064A \u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0644\u064A \u0647\u064A\u0634\u0648\u0641 \u0642\u0637\u0639\u0647 \u0628\u0633 (\u0645\u0648\u0631\u062F \u0648\u0627\u062D\u062F \u0644\u0644\u062D\u0633\u0627\u0628 \u062F\u0647)" : "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0624\u064A\u0629 \u0628\u064A\u0627\u0646\u0627\u062A\u0647\u0645 \u0641\u064A \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0648\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A (\u0627\u062A\u0631\u0643\u064A\u0647 \u0641\u0627\u0631\u063A\u064B\u0627 \u0644\u0625\u0638\u0647\u0627\u0631 \u0643\u0644 \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646)"),
             h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((s) =>
               h("label", { key: s, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(s) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(s) ? COLORS.goldSoft : "#fff" } },
                 h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(s), onChange: () => toggleScope(m.email, s), style: { display: "none" } }), s)
