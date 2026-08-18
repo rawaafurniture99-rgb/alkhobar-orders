@@ -387,11 +387,26 @@ function stagesForPieceType(pieceType) {
 }
 const PACKING_STAGES = ["\u062A\u063A\u0644\u064A\u0641", "\u0634\u062D\u0646", "\u0646\u0642\u0644 \u0648\u062A\u0631\u0643\u064A\u0628"];
 const INDIRECT_COST_STAGES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F"];
+function scopeEntryMatches(entry, location, entity) {
+  if (!entry || !location) return false;
+  const sep = entry.indexOf("::");
+  if (sep !== -1) {
+    const en = entry.slice(0, sep);
+    const loc = entry.slice(sep + 2);
+    return en === entity && loc === location;
+  }
+  return entry === location;
+}
+function scopeCoversLocation(scope, location, entity) {
+  if (!scope || scope.length === 0) return true;
+  if (!location) return false;
+  return scope.some((entry) => scopeEntryMatches(entry, location, entity));
+}
 function pieceMatchesSupplierScope(piece, scope) {
   if (!scope || scope.length === 0) return true;
-  if (scope.includes(piece.currentLocation)) return true;
+  if (scopeCoversLocation(scope, piece.currentLocation, piece.manufacturingEntity)) return true;
   const costs = piece.costs || {};
-  return ["\u0646\u062C\u0627\u0631\u0629", "\u062A\u0646\u062C\u064A\u062F"].some((s) => costs[s] && costs[s].supplierName && scope.includes(costs[s].supplierName));
+  return ["\u0646\u062C\u0627\u0631\u0629", "\u062A\u0646\u062C\u064A\u062F"].some((s) => costs[s] && costs[s].supplierName && scopeCoversLocation(scope, costs[s].supplierName, piece.manufacturingEntity));
 }
 function pieceCostTotal(piece) {
   const costs = piece.costs || {};
@@ -1162,12 +1177,12 @@ function App() {
     if (!dataLoaded || !access) return;
     if ((/* @__PURE__ */ new Date()).getHours() < 10) return;
     const today = todayStr();
-    const productionEmailsForLocation = (location) => {
+    const productionEmailsForLocation = (location, entity) => {
       const emails = new Set();
       (access.members || []).forEach((m) => {
         if (!memberHasRole(m, "production")) return;
         const scope = m.supplierScope || [];
-        if (scope.length === 0 || scope.includes(location)) emails.add(m.email);
+        if (scopeCoversLocation(scope, location, entity)) emails.add(m.email);
       });
       return Array.from(emails);
     };
@@ -1196,7 +1211,7 @@ function App() {
       })).then((won) => {
         if (!won) return;
         g.pieces.slice(1).forEach((p) => piecesColRef().doc(p.id).update({ deadlineLastReminderDate: today }).catch((e) => console.error("deadline flag sync failed", e)));
-        const emails = Array.from(new Set(g.pieces.flatMap((p) => productionEmailsForLocation(p.currentLocation))));
+        const emails = Array.from(new Set(g.pieces.flatMap((p) => productionEmailsForLocation(p.currentLocation, p.manufacturingEntity))));
         const pieceCountSuffix = g.pieces.length > 1 ? " (" + g.pieces.length + " قطعة)" : "";
         const matchOrder = orders.find((o) => (o.clientName || "").trim() === (g.customerName || "").trim());
         notify({
@@ -1263,12 +1278,12 @@ function App() {
   }, [dataLoaded, orders, productionPieces, tick]);
   useEffect(() => {
     if (!dataLoaded || !access) return;
-    const productionEmailsForLocations = (locations) => {
+    const productionEmailsForLocations = (locPairs) => {
       const emails = new Set();
       (access.members || []).forEach((m) => {
         if (!memberHasRole(m, "production")) return;
         const scope = m.supplierScope || [];
-        if (scope.length === 0 || scope.some((s) => locations.includes(s))) emails.add(m.email);
+        if (scope.length === 0 || locPairs.some((lp) => scopeCoversLocation(scope, lp.location, lp.entity))) emails.add(m.email);
       });
       return Array.from(emails);
     };
@@ -1284,6 +1299,7 @@ function App() {
         return;
       }
       const locations = Array.from(new Set(orderPieces.map((p) => p.currentLocation).filter(Boolean)));
+      const locPairs = orderPieces.filter((p) => p.currentLocation).map((p) => ({ location: p.currentLocation, entity: p.manufacturingEntity }));
       nearDeliveryNotifiedSessionRef.current.add(o.id);
       const ref = ordersColRef().doc(o.id);
       db.runTransaction((tx) => tx.get(ref).then((snap) => {
@@ -1294,7 +1310,7 @@ function App() {
       })).then((won) => {
         if (!won) return;
         notify({
-          toEmails: [o.createdBy, ...productionEmailsForLocations(locations)].filter(Boolean),
+          toEmails: [o.createdBy, ...productionEmailsForLocations(locPairs)].filter(Boolean),
           title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2014 \u0628\u0627\u0642\u064A " + arabicDaysPhrase(d),
           body: (o.clientName || "\u2014") + " - " + (o.category || "\u2014"),
           orderId: o.id,
@@ -1531,6 +1547,7 @@ function App() {
     const batch = db.batch();
     batch.update(workspaceDocRef(), { [`productionSuppliers.${entity}`]: nextList });
     productionPieces.forEach((p) => {
+      if (p.manufacturingEntity !== entity) return;
       if (p.supplierName === oldName || p.currentLocation === oldName) {
         const patch = {};
         if (p.supplierName === oldName) patch.supplierName = trimmed;
@@ -1538,9 +1555,14 @@ function App() {
         batch.update(piecesColRef().doc(p.id), patch);
       }
     });
-    const affectedMembers = (access && access.members || []).some((m) => (m.supplierScope || []).includes(oldName));
+    const renameScopeEntry = (s) => {
+      if (s === entity + "::" + oldName) return entity + "::" + trimmed;
+      if (s === oldName) return trimmed;
+      return s;
+    };
+    const affectedMembers = (access && access.members || []).some((m) => (m.supplierScope || []).some((s) => s === oldName || s === entity + "::" + oldName));
     if (affectedMembers) {
-      const nextMembers = (access.members || []).map((m) => (m.supplierScope || []).includes(oldName) ? { ...m, supplierScope: m.supplierScope.map((s) => s === oldName ? trimmed : s) } : m);
+      const nextMembers = (access.members || []).map((m) => (m.supplierScope || []).some((s) => s === oldName || s === entity + "::" + oldName) ? { ...m, supplierScope: m.supplierScope.map(renameScopeEntry) } : m);
       batch.update(accessDocRef(), { members: nextMembers });
     }
     persistRecordWrite(batch.commit());
@@ -1560,6 +1582,7 @@ function App() {
     const batch = db.batch();
     batch.update(workspaceDocRef(), { [`upholsterySuppliers.${entity}`]: nextList });
     productionPieces.forEach((p) => {
+      if (p.manufacturingEntity !== entity) return;
       if (p.supplierName === oldName || p.currentLocation === oldName) {
         const patch = {};
         if (p.supplierName === oldName) patch.supplierName = trimmed;
@@ -1567,9 +1590,14 @@ function App() {
         batch.update(piecesColRef().doc(p.id), patch);
       }
     });
-    const affectedMembers2 = (access && access.members || []).some((m) => (m.supplierScope || []).includes(oldName));
+    const renameScopeEntry2 = (s) => {
+      if (s === entity + "::" + oldName) return entity + "::" + trimmed;
+      if (s === oldName) return trimmed;
+      return s;
+    };
+    const affectedMembers2 = (access && access.members || []).some((m) => (m.supplierScope || []).some((s) => s === oldName || s === entity + "::" + oldName));
     if (affectedMembers2) {
-      const nextMembers = (access.members || []).map((m) => (m.supplierScope || []).includes(oldName) ? { ...m, supplierScope: m.supplierScope.map((s) => s === oldName ? trimmed : s) } : m);
+      const nextMembers = (access.members || []).map((m) => (m.supplierScope || []).some((s) => s === oldName || s === entity + "::" + oldName) ? { ...m, supplierScope: m.supplierScope.map(renameScopeEntry2) } : m);
       batch.update(accessDocRef(), { members: nextMembers });
     }
     persistRecordWrite(batch.commit());
@@ -9458,7 +9486,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
 
 function SupplierPortalPage({ pieces, mySupplierScope, onUpdate, onSignOut }) {
   const [showDelivered, setShowDelivered] = useState(false);
-  const myPieces = (pieces || []).filter((p) => mySupplierScope.includes(p.currentLocation));
+  const myPieces = (pieces || []).filter((p) => scopeCoversLocation(mySupplierScope, p.currentLocation, p.manufacturingEntity));
   const activePieces = myPieces.filter((p) => p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
   const deliveredPieces = myPieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
   const list = showDelivered ? deliveredPieces : activePieces;
@@ -9827,7 +9855,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
   const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
   const scopeApplies = !myRoles.includes("admin") && mySupplierScope && mySupplierScope.length > 0;
   let visibleStageGroups = scopeApplies
-    ? STAGE_GROUPS.filter((g) => g.special || g.locations.some((loc) => mySupplierScope.includes(loc)))
+    ? STAGE_GROUPS.filter((g) => g.special || g.locations.some((loc) => scopeCoversLocation(mySupplierScope, loc, entity)))
     : STAGE_GROUPS;
   if (canSeeSub) visibleStageGroups = visibleStageGroups.filter((g) => g.special || canSeeSub(g.key));
   if (!stageKey) {
@@ -9889,10 +9917,10 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
   const [showAdd, setShowAdd] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
   const [viewMode, setViewMode] = useState("current");
-  const canEditPiece = (p) => canEditStage && (myRoles.includes("admin") || (myRoles.includes("production") && mySupplierScope.includes(p.currentLocation)));
+  const canEditPiece = (p) => canEditStage && (myRoles.includes("admin") || (myRoles.includes("production") && scopeCoversLocation(mySupplierScope, p.currentLocation, entity)));
   const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
   const scopeApplies = !myRoles.includes("admin") && mySupplierScope && mySupplierScope.length > 0;
-  const visibleLocations = scopeApplies ? group.locations.filter((loc) => mySupplierScope.includes(loc)) : group.locations;
+  const visibleLocations = scopeApplies ? group.locations.filter((loc) => scopeCoversLocation(mySupplierScope, loc, entity)) : group.locations;
   if (!activeLoc) {
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
@@ -10177,7 +10205,17 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   });
   const [newEmail, setNewEmail] = useState("");
   const [expandedEmail, setExpandedEmail] = useState(null);
-  const allSuppliers = Object.values(productionSuppliers || {}).flat();
+  const supplierNameCounts = {};
+  Object.values(productionSuppliers || {}).forEach((names) => (names || []).forEach((n) => { supplierNameCounts[n] = (supplierNameCounts[n] || 0) + 1; }));
+  const allSupplierOptionsRaw = [];
+  Object.entries(productionSuppliers || {}).forEach(([en, names]) => {
+    (names || []).forEach((n) => {
+      const ambiguous = supplierNameCounts[n] > 1;
+      allSupplierOptionsRaw.push(ambiguous ? { value: en + "::" + n, label: n + " (" + en + ")" } : { value: n, label: n });
+    });
+  });
+  const seenSupplierValues = new Set();
+  const allSuppliers = allSupplierOptionsRaw.filter((o) => { if (seenSupplierValues.has(o.value)) return false; seenSupplierValues.add(o.value); return true; });
   const updateMember = (email, patch) => setMembers(members.map((m) => (m.email === email ? { ...m, ...patch } : m)));
   const memberRoles = (m) => m.roles && m.roles.length ? m.roles : (m.role ? [m.role] : ["viewer"]);
   const addMember = () => {
@@ -10278,9 +10316,9 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
           ) : null,
           (((m.permittedTabs || []).includes("production-board") || (m.permittedTabs || []).includes("pricing")) || roles.includes("supplier")) ? h(React.Fragment, null,
             h("div", { style: { fontSize: 11, color: COLORS.muted, marginBottom: 4 } }, roles.includes("supplier") ? "\u062D\u062F\u062F\u064A \u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0644\u064A \u0647\u064A\u0634\u0648\u0641 \u0642\u0637\u0639\u0647 \u0628\u0633 (\u0645\u0648\u0631\u062F \u0648\u0627\u062D\u062F \u0644\u0644\u062D\u0633\u0627\u0628 \u062F\u0647)" : "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0624\u064A\u0629 \u0628\u064A\u0627\u0646\u0627\u062A\u0647\u0645 \u0641\u064A \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0648\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A (\u0627\u062A\u0631\u0643\u064A\u0647 \u0641\u0627\u0631\u063A\u064B\u0627 \u0644\u0625\u0638\u0647\u0627\u0631 \u0643\u0644 \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646)"),
-            h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((s) =>
-              h("label", { key: s, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(s) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(s) ? COLORS.goldSoft : "#fff" } },
-                h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(s), onChange: () => toggleScope(m.email, s), style: { display: "none" } }), s)
+            h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((opt) =>
+              h("label", { key: opt.value, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(opt.value) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(opt.value) ? COLORS.goldSoft : "#fff" } },
+                h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(opt.value), onChange: () => toggleScope(m.email, opt.value), style: { display: "none" } }), opt.label)
             ))
           ) : null,
           roles.includes("admin") || isOwnerRow ? h("p", { style: { fontSize: 11.5, color: COLORS.muted, margin: 0 } }, "🔓 عندها/عنده كل الأقسام تلقائي") : h(React.Fragment, null,
