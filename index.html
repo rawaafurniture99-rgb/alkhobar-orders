@@ -109,6 +109,7 @@ const body = { fontFamily: "'IBM Plex Sans Arabic', sans-serif" };
 const ORDER_CATEGORIES = ["\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0645\u0637\u0627\u0628\u062E", "\u063A\u0631\u0641 \u0646\u0648\u0645", "\u0633\u0641\u0631\u0629", "\u0623\u062E\u0631\u0649"];
 const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0645\u062D\u0631\u0643\u0627\u062A \u0643\u0647\u0631\u0628\u0627", "\u0623\u062E\u0631\u0649"];
 const MOTOR_TYPES = ["\u0645\u062D\u0631\u0643\u0627\u062A \u0643\u0647\u0631\u0628\u0627"];
+const QUOTE_MANUFACTURING_TYPES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F", "\u0646\u062C\u0627\u0631\u0629 + \u062F\u0647\u0627\u0646 + \u062A\u0646\u062C\u064A\u062F", "\u0646\u062C\u0627\u0631\u0629 + \u062A\u0646\u062C\u064A\u062F", "\u062E\u0627\u0645\u0627\u062A + \u062A\u0635\u0646\u064A\u0639", "\u062A\u0641\u0635\u064A\u0644"];
 const UNITS = ["\u0645\u062A\u0631", "\u0645\xB2", "\u0642\u0637\u0639\u0629", "\u0644\u0641\u0629", "\u0644\u0648\u062D", "\u0643\u062C\u0645"];
 const PIECE_UNITS = ["\u0633\u0645", "\u0645"];
 const MEASURED_TYPES = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637"];
@@ -7861,7 +7862,10 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   );
 }
 function pieceShortLabel(p) {
-  return (p.pieceType || "قطعة") + (p.description ? " - " + p.description : "");
+  const count = p.pieceCount || 1;
+  const desc = p.description || p.pieceType || "قطعة";
+  const size = p.size ? p.size.trim() : "";
+  return count + " / " + desc + (size ? " / " + size : "");
 }
 function CustomerStatementsHubPage({ orders, onBack, onOpenCustomer }) {
   const [viewMode, setViewMode] = useState("all");
@@ -7985,14 +7989,16 @@ function QuotesTab({ customerName, customerOrders, allQuotes, allApprovals, onAd
     decided.map(quoteCard),
     allApprovals.length > 0 ? h("div", { style: { marginTop: 22 } },
       h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "📌 عروض الأسعار المعتمدة للتصنيع"),
-      allApprovals.map((a) => h("div", { key: a.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
-        h("div", { style: { fontWeight: 700, fontSize: 13.5 } }, customerName + " " + orderLabel(a.orderId) + " — " + a.supplierName),
-        h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2, marginBottom: 6 } }, "عدد القطع: " + (a.items || []).length),
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, (a.items || []).map((it) => h("div", { key: it.pieceId, style: { fontSize: 12, display: "flex", justifyContent: "space-between", borderTop: `1px solid ${COLORS.bg}`, paddingTop: 4 } },
-          h("span", null, it.pieceLabel),
-          h("span", { style: { color: COLORS.muted } }, (it.finishType || "—") + " · " + (it.agreedDate || "—"))
-        )))
-      ))
+      allApprovals.map((a) => {
+        const totalPieces = (a.items || []).reduce((s, it) => s + (Number(it.pieceCount) || 1), 0);
+        return h("div", { key: a.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
+          h("div", { style: { fontWeight: 700, fontSize: 15, textAlign: "center" } }, a.supplierName),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, textAlign: "center", marginTop: 2, marginBottom: 8 } }, "عدد القطع: " + totalPieces + (a.agreedDate ? " · الموعد المتفق عليه: " + a.agreedDate : "")),
+          h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } }, (a.items || []).map((it) => h("div", { key: it.pieceId, style: { fontSize: 12, borderTop: `1px solid ${COLORS.bg}`, paddingTop: 4 } },
+            it.pieceLabel + " / " + (it.finishType || "\u2014") + " / " + (it.unitPrice ? Number(it.unitPrice).toLocaleString("en-US") : "\u2014") + " / " + Number(it.lineTotal || 0).toLocaleString("en-US")
+          )))
+        );
+      })
     ) : null
   );
 }
@@ -8034,7 +8040,10 @@ function AddSupplierQuoteModal({ customerOrders, piecesForOrder, onClose, onSave
       )
     ) : null,
     h("label", { style: labelStyle }, "نوع التصنيع"),
-    h("input", { style: fieldStyle, value: manufacturingType, onChange: (e) => setManufacturingType(e.target.value), placeholder: "مثال: يدوي / ماكينة" }),
+    h("select", { style: fieldStyle, value: manufacturingType, onChange: (e) => setManufacturingType(e.target.value) },
+      h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A"),
+      MANUFACTURING_TYPES.map((t) => h("option", { key: t, value: t }, t))
+    ),
     h("label", { style: labelStyle }, "مدة التصنيع (يوم)"),
     h("input", { type: "number", style: fieldStyle, value: durationDays, onChange: (e) => setDurationDays(e.target.value), placeholder: "0" }),
     h("div", { style: { display: "flex", gap: 10 } },
@@ -8055,17 +8064,30 @@ function ApproveQuoteModal({ quote, orderPieces, onClose, onSave }) {
   const [itemState, setItemState] = useState({});
   const [depositAmount, setDepositAmount] = useState("");
   const [depositDate, setDepositDate] = useState(todayStr());
+  const [agreedDate, setAgreedDate] = useState("");
   const setItem = (id, key, val) => setItemState((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [key]: val } }));
+  const lineTotal = (p) => (Number((itemState[p.id] && itemState[p.id].unitPrice) || 0) * (Number(p.pieceCount) || 1));
+  const grandTotal = items.reduce((s, p) => s + lineTotal(p), 0);
   return h(Modal, { title: "اعتماد عرض " + quote.supplierName, onClose },
-    h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.muted, marginBottom: 8 } }, "بيان البنود (التشطيب + الموعد)"),
+    h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.muted, marginBottom: 8 } }, "بيان البنود (نوع التشطيب / سعر القطعة / إجمالي البند)"),
     items.length === 0 ? h("div", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "لا توجد قطع مرتبطة") : items.map((p) => h("div", { key: p.id, style: { border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 8, marginBottom: 8 } },
       h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 6 } }, pieceShortLabel(p)),
       h("div", { style: { display: "flex", gap: 8 } },
-        h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, placeholder: "نوع التشطيب", value: (itemState[p.id] && itemState[p.id].finishType) || "", onChange: (e) => setItem(p.id, "finishType", e.target.value) }),
-        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: (itemState[p.id] && itemState[p.id].agreedDate) || "", onChange: (e) => setItem(p.id, "agreedDate", e.target.value) })
-      )
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: (itemState[p.id] && itemState[p.id].finishType) || "", onChange: (e) => setItem(p.id, "finishType", e.target.value) },
+          h("option", { value: "" }, "\u0646\u0648\u0639 \u0627\u0644\u062A\u0634\u0637\u064A\u0628"),
+          MANUFACTURING_TYPES.map((t) => h("option", { key: t, value: t }, t))
+        ),
+        h("input", { type: "number", style: { ...fieldStyle, marginBottom: 0, flex: 1 }, placeholder: "سعر القطعة", value: (itemState[p.id] && itemState[p.id].unitPrice) || "", onChange: (e) => setItem(p.id, "unitPrice", e.target.value) })
+      ),
+      h("div", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 700, marginTop: 6, textAlign: "left" } }, "إجمالي البند: " + lineTotal(p).toLocaleString("en-US") + " " + (quote.currency || "ريال"))
     )),
-    h("div", { style: { display: "flex", gap: 10, marginTop: 10 } },
+    items.length > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, borderTop: `1px solid ${COLORS.border}`, paddingTop: 8, marginBottom: 10 } },
+      h("span", null, "إجمالي عرض السعر"),
+      h("span", { style: { color: COLORS.gold } }, grandTotal.toLocaleString("en-US") + " " + (quote.currency || "ريال"))
+    ) : null,
+    h("label", { style: labelStyle }, "الموعد المتفق عليه"),
+    h("input", { type: "date", style: fieldStyle, value: agreedDate, onChange: (e) => setAgreedDate(e.target.value) }),
+    h("div", { style: { display: "flex", gap: 10, marginTop: 4 } },
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "دفعة تحت الحساب"), h("input", { type: "number", style: fieldStyle, value: depositAmount, onChange: (e) => setDepositAmount(e.target.value), placeholder: "0" })),
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الدفعة"), h("input", { type: "date", style: fieldStyle, value: depositDate, onChange: (e) => setDepositDate(e.target.value) }))
     ),
@@ -8073,10 +8095,11 @@ function ApproveQuoteModal({ quote, orderPieces, onClose, onSave }) {
     h("button", { style: primaryBtn(false), onClick: () => onSave({
       id: uid(), quoteId: quote.id, supplierName: quote.supplierName, scope: quote.scope,
       pieceIds: items.map((p) => p.id),
-      items: items.map((p) => ({ pieceId: p.id, pieceLabel: pieceShortLabel(p), finishType: (itemState[p.id] && itemState[p.id].finishType) || "", agreedDate: (itemState[p.id] && itemState[p.id].agreedDate) || "" })),
-      totalAmount: quote.totalPrice, currency: quote.currency,
+      items: items.map((p) => ({ pieceId: p.id, pieceLabel: pieceShortLabel(p), pieceCount: Number(p.pieceCount) || 1, finishType: (itemState[p.id] && itemState[p.id].finishType) || "", unitPrice: (itemState[p.id] && itemState[p.id].unitPrice) || "", lineTotal: lineTotal(p) })),
+      agreedDate,
+      totalAmount: grandTotal || quote.totalPrice, currency: quote.currency,
       depositAmount, depositPaid: false, depositDate,
-      balanceAmount: Math.max(0, (Number(quote.totalPrice) || 0) - (Number(depositAmount) || 0)),
+      balanceAmount: Math.max(0, (grandTotal || Number(quote.totalPrice) || 0) - (Number(depositAmount) || 0)),
       balancePaid: false, balancePaidDate: "",
       receivedFromSupplier: false, receivedDate: "",
       closed: false, closedDate: "",
@@ -8574,7 +8597,7 @@ function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
   },
     h("div", null,
       h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
-      h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, o.deliveryDate ? "\u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E")
+      h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, (o.deliveryDate ? "\u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E") + (o.category ? " \u00B7 " + o.category : ""))
     ),
     h(Emoji, { size: 13 }, "\u2039")
   );
@@ -9977,13 +10000,24 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
   const [fSupplier, setFSupplier] = useState("");
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
+  const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const canBulkEdit = isAdminUser || !statusOnly;
   const bulkMove = () => {
     if (!bulkTarget || bulkSelected.length === 0) return;
     if (!window.confirm("\u0646\u0642\u0644 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkTarget + "\"\u061F")) return;
     bulkSelected.forEach((id) => {
       const piece = pieces.find((p) => p.id === id);
       if (piece) onUpdate({ ...piece, currentLocation: bulkTarget });
+    });
+    setBulkSelected([]);
+  };
+  const bulkApplyStatus = () => {
+    if (bulkSelected.length === 0) return;
+    if (!window.confirm("\u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkStatus + "\"\u061F")) return;
+    bulkSelected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (piece) onUpdate({ ...piece, status: bulkStatus });
     });
     setBulkSelected([]);
   };
@@ -10063,12 +10097,17 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
         )
       )
     ) : null,
-    (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+    (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10 } },
       h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
       h("button", { onClick: bulkMove, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px" } }, "\u0646\u0642\u0644")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
+    (canBulkEdit && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+      h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
+    ) : null,
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
@@ -10080,7 +10119,18 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
   const [openPiece, setOpenPiece] = useState(null);
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
+  const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const canBulkEdit = isAdminUser || !statusOnly;
+  const bulkApplyStatus = () => {
+    if (bulkSelected.length === 0) return;
+    if (!window.confirm("\u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkStatus + "\"\u061F")) return;
+    bulkSelected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (piece) onUpdate({ ...piece, status: bulkStatus });
+    });
+    setBulkSelected([]);
+  };
   const bulkMove = () => {
     if (!bulkTarget || bulkSelected.length === 0) return;
     if (!window.confirm("\u0646\u0642\u0644 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkTarget + "\"\u061F")) return;
@@ -10124,12 +10174,17 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
     return h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
       filtered.length > 0 ? h(ExportButtons, { onExcel: searchExportExcel, onPdf: searchExportPdf }) : null,
-      (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10 } },
         h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
         h("button", { onClick: bulkMove, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px" } }, "\u0646\u0642\u0644")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
+      (canBulkEdit && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+        h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+        h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
+      ) : null,
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -10238,7 +10293,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
   const [newSupplierName, setNewSupplierName] = useState("");
   const [viewMode, setViewMode] = useState("current");
   const canEditPiece = (p) => canEditStage && (myRoles.includes("admin") || myRoles.includes("production"));
-  const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
+  const statusOnly = myRoles.includes("production") && !myRoles.includes("admin") && !canEditStage;
   const visibleLocations = group.locations;
   if (!activeLoc) {
     return h("div", null,
