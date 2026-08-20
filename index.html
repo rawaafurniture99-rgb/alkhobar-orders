@@ -107,7 +107,9 @@ const COLORS = new Proxy({}, { get(_t, prop) { return (currentThemeMode === "dar
 const display = { fontFamily: "'Markazi Text', serif" };
 const body = { fontFamily: "'IBM Plex Sans Arabic', sans-serif" };
 const ORDER_CATEGORIES = ["\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0645\u0637\u0627\u0628\u062E", "\u063A\u0631\u0641 \u0646\u0648\u0645", "\u0633\u0641\u0631\u0629", "\u0623\u062E\u0631\u0649"];
-const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0623\u062E\u0631\u0649"];
+const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0645\u062D\u0631\u0643\u0627\u062A \u0643\u0647\u0631\u0628\u0627", "\u0623\u062E\u0631\u0649"];
+const MOTOR_TYPES = ["\u0645\u062D\u0631\u0643\u0627\u062A \u0643\u0647\u0631\u0628\u0627"];
+const QUOTE_MANUFACTURING_TYPES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F", "\u0646\u062C\u0627\u0631\u0629 + \u062F\u0647\u0627\u0646 + \u062A\u0646\u062C\u064A\u062F", "\u062E\u0627\u0645\u0627\u062A + \u062A\u0635\u0646\u064A\u0639", "\u0646\u062C\u0627\u0631\u0629 + \u062A\u0646\u062C\u064A\u062F"];
 const UNITS = ["\u0645\u062A\u0631", "\u0645\xB2", "\u0642\u0637\u0639\u0629", "\u0644\u0641\u0629", "\u0644\u0648\u062D", "\u0643\u062C\u0645"];
 const PIECE_UNITS = ["\u0633\u0645", "\u0645"];
 const MEASURED_TYPES = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637"];
@@ -958,6 +960,8 @@ function App() {
   const emailToName = {};
   (access && access.members || []).forEach((m) => { if (m.name && m.name.trim()) emailToName[m.email] = m.name.trim(); });
   const mySupplierScope = myMember ? myMember.supplierScope || [] : [];
+  const myProductionAccess = (myMember && myMember.productionAccess) || {};
+  const isAdminForProduction = isOwner || hasRole("admin");
   const canEditDistribution = hasRole("admin") || hasRole("distributor");
   const canEditFullProduction = hasRole("admin");
   const canEditOrder = (o) => {
@@ -1177,12 +1181,12 @@ function App() {
     if (!dataLoaded || !access) return;
     if ((/* @__PURE__ */ new Date()).getHours() < 10) return;
     const today = todayStr();
-    const productionEmailsForLocation = (location, entity) => {
+    const productionEmailsForPiece = (piece) => {
       const emails = new Set();
+      const pageKey = pageKeyForPiece(piece);
       (access.members || []).forEach((m) => {
         if (!memberHasRole(m, "production")) return;
-        const scope = m.supplierScope || [];
-        if (scopeCoversLocation(scope, location, entity)) emails.add(m.email);
+        if (productionAccessLevel(m.productionAccess, piece.manufacturingEntity, pageKey, false) !== "none") emails.add(m.email);
       });
       return Array.from(emails);
     };
@@ -1211,7 +1215,7 @@ function App() {
       })).then((won) => {
         if (!won) return;
         g.pieces.slice(1).forEach((p) => piecesColRef().doc(p.id).update({ deadlineLastReminderDate: today }).catch((e) => console.error("deadline flag sync failed", e)));
-        const emails = Array.from(new Set(g.pieces.flatMap((p) => productionEmailsForLocation(p.currentLocation, p.manufacturingEntity))));
+        const emails = Array.from(new Set(g.pieces.flatMap((p) => productionEmailsForPiece(p))));
         const pieceCountSuffix = g.pieces.length > 1 ? " (" + g.pieces.length + " قطعة)" : "";
         const matchOrder = orders.find((o) => (o.clientName || "").trim() === (g.customerName || "").trim());
         notify({
@@ -1278,12 +1282,12 @@ function App() {
   }, [dataLoaded, orders, productionPieces, tick]);
   useEffect(() => {
     if (!dataLoaded || !access) return;
-    const productionEmailsForLocations = (locPairs) => {
+    const productionEmailsForPieces = (piecesArr) => {
       const emails = new Set();
       (access.members || []).forEach((m) => {
         if (!memberHasRole(m, "production")) return;
-        const scope = m.supplierScope || [];
-        if (scope.length === 0 || locPairs.some((lp) => scopeCoversLocation(scope, lp.location, lp.entity))) emails.add(m.email);
+        const matches = piecesArr.some((p) => productionAccessLevel(m.productionAccess, p.manufacturingEntity, pageKeyForPiece(p), false) !== "none");
+        if (matches) emails.add(m.email);
       });
       return Array.from(emails);
     };
@@ -1298,8 +1302,6 @@ function App() {
         updateOrder(o.id, { nearDeliveryNotified: true });
         return;
       }
-      const locations = Array.from(new Set(orderPieces.map((p) => p.currentLocation).filter(Boolean)));
-      const locPairs = orderPieces.filter((p) => p.currentLocation).map((p) => ({ location: p.currentLocation, entity: p.manufacturingEntity }));
       nearDeliveryNotifiedSessionRef.current.add(o.id);
       const ref = ordersColRef().doc(o.id);
       db.runTransaction((tx) => tx.get(ref).then((snap) => {
@@ -1310,7 +1312,7 @@ function App() {
       })).then((won) => {
         if (!won) return;
         notify({
-          toEmails: [o.createdBy, ...productionEmailsForLocations(locPairs)].filter(Boolean),
+          toEmails: [o.createdBy, ...productionEmailsForPieces(orderPieces)].filter(Boolean),
           title: "\u23F3 \u0623\u0648\u0631\u062F\u0631 \u0642\u0631\u064A\u0628 \u0645\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2014 \u0628\u0627\u0642\u064A " + arabicDaysPhrase(d),
           body: (o.clientName || "\u2014") + " - " + (o.category || "\u2014"),
           orderId: o.id,
@@ -1624,7 +1626,8 @@ function App() {
         patch = { ...patch, auditLog: [...(ord.auditLog || []), ...auditEntries] };
       }
     }
-    persistRecordWrite(ordersColRef().doc(id).update(patch));
+    const writePromise = ordersColRef().doc(id).update(patch);
+    persistRecordWrite(writePromise);
     logActivity("\u0639\u062F\u0651\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0623\u0648\u0631\u062F\u0631: " + (ord ? ord.title : id));
     if (ord) syncPublicTracking({ ...ord, ...patch });
     if (ord && patch && patch.approved === true && !ord.approved) {
@@ -1644,6 +1647,7 @@ function App() {
         notify({ toEmails: [ord.createdBy], title: "\u{1F5BC}\uFE0F \u0635\u0648\u0631 \u062C\u062F\u064A\u062F\u0629 \u0641\u064A \u0623\u0648\u0631\u062F\u0631\u0643", body: (ord.clientName || "\u2014") + " \u2014 " + addedSections.map((c) => c.label).join("\u060C "), orderId: id, kind: "new-gallery-media" });
       }
     }
+    return writePromise;
   };
   const addOrder = (o) => {
     const withOwner = { ...o, createdBy: (user && user.email) || "", engineerName: myDisplayName, approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "", branch: activeBranch || "\u0627\u0644\u0641\u0631\u0639 \u0627\u0644\u0631\u0626\u064A\u0633\u064A" };
@@ -1866,6 +1870,8 @@ function App() {
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k), canEditSub: (k) => canEditSubTab("pricing", k), myRoles, mySupplierScope }) :
+        homeDrilldown.type === "customer-statements" && !homeDrilldown.customerName ? h(CustomerStatementsHubPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null), onOpenCustomer: (name) => setHomeDrilldown({ type: "customer-statements", customerName: name }) }) :
+        homeDrilldown.type === "customer-statements" && homeDrilldown.customerName ? h(CustomerAccountsPage, { customerName: homeDrilldown.customerName, customerOrders: activeOrders.filter((o) => (o.clientName || "").trim() === homeDrilldown.customerName.trim()), pieces: productionPieces, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown({ type: "customer-statements" }) }) :
         homeDrilldown.type === "product-shipments" ? h(ProductShipmentsPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "finishing" ? h(FinishingPage, { pieces: productionPieces, onUpdate: updateProductionPiece, onBack: () => setHomeDrilldown(null), canEdit: hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "gallery" ? h(GalleryHubPage, { orders: activeOrders, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null) }) :
@@ -1906,7 +1912,7 @@ function App() {
         tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production") }),
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
@@ -2118,6 +2124,7 @@ function App() {
             ] },
             { title: "\u{1F4B0} \u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631", tiles: [
               { key: "pricing", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", emoji: "\u{1F4B0}", visible: canSeeTab("pricing"), onClick: () => setHomeDrilldown({ type: "pricing" }) },
+              { key: "customer-statements", label: "\u0643\u0634\u0641 \u062D\u0633\u0627\u0628 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", emoji: "\u{1F4D1}", visible: canSeeTab("customer-statements"), onClick: () => setHomeDrilldown({ type: "customer-statements" }) },
               simple("dashboard"),
               simple("supplier-performance"),
               drill("warranty", "warranty"),
@@ -2162,7 +2169,7 @@ function App() {
       persistAccess(next);
       setShowTeam(false);
     } }),
-    showRoles && access && h(RolesManagementModal, { access, productionSuppliers, onClose: () => setShowRoles(false), onSave: (next) => {
+    showRoles && access && h(RolesManagementModal, { access, productionSuppliers, upholsterySuppliers, onClose: () => setShowRoles(false), onSave: (next) => {
       persistAccess(next);
       setShowRoles(false);
     } }),
@@ -5425,7 +5432,7 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
     currentList.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(currentList), onPdf: () => exportPdf(currentList) }) : null,
     currentList.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, currentList.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
-    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => { onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }); if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); setEditingOrder(null); } }) : null
+    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => { if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); }) }) : null
   );
 }
 function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
@@ -7577,6 +7584,8 @@ function NewOrderModal({ onClose, onSave, existing, existingCategories, engineer
   const [salesPricingFile, setSalesPricingFile] = useState((existing && existing.salesPricingFile) || null);
   const [receiptFile, setReceiptFile] = useState((existing && existing.receiptFile) || null);
   const [sellingPrice, setSellingPrice] = useState((existing && existing.sellingPrice) || (draft && draft.sellingPrice) || "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const clearDraft = () => { try { localStorage.removeItem(NEW_ORDER_DRAFT_KEY); } catch (e) {} };
   useEffect(() => {
     if (existing) return;
@@ -7587,6 +7596,22 @@ function NewOrderModal({ onClose, onSave, existing, existingCategories, engineer
     clearDraft();
     setClientName(""); setCategory(""); setDeliveryDate(""); setFabricShippingStatus(""); setSellingPrice("");
     setRestoredDraft(false);
+  };
+  const canSave = !!clientName.trim() && !(!existing && (!salesPricingFile || !receiptFile)) && !saving;
+  const handleSave = () => {
+    if (!clientName.trim() || (!existing && (!salesPricingFile || !receiptFile)) || saving) return;
+    const payload = existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, salesPricingFile, receiptFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : "") } : { ...emptyOrder(), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, salesPricingFile, receiptFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) };
+    setSaveError("");
+    setSaving(true);
+    if (!existing) clearDraft();
+    Promise.resolve(onSave(payload)).then(() => {
+      setSaving(false);
+      onClose();
+    }).catch((err) => {
+      console.error(err);
+      setSaving(false);
+      setSaveError("\u062A\u0639\u0630\u0651\u0631 \u0627\u0644\u062D\u0641\u0638 \u2014 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0648\u062D\u0627\u0648\u0644\u064A \u062A\u0627\u0646\u064A. \u0628\u064A\u0627\u0646\u0627\u062A\u0643 \u0644\u0633\u0647 \u0645\u0648\u062C\u0648\u062F\u0629 \u0647\u0646\u0627\u060C \u062D\u0627\u0648\u0644\u064A \u062A\u0636\u063A\u0637\u064A \u062D\u0641\u0638 \u062A\u0627\u0646\u064A.");
+    });
   };
   return /* @__PURE__ */ React.createElement(Modal, { title: existing ? "\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631" : "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", onClose },
     !existing && restoredDraft ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "8px 12px", marginBottom: 12, fontSize: 12 } },
@@ -7616,7 +7641,8 @@ function NewOrderModal({ onClose, onSave, existing, existingCategories, engineer
     /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 \u0645\u0646 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A" + (!existing ? " (\u0645\u0637\u0644\u0648\u0628)" : " (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), file: salesPricingFile, onChange: setSalesPricingFile, onRemove: () => setSalesPricingFile(null), folder: "sales-pricing" }),
     /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0633\u0646\u062F \u0627\u0644\u0642\u0628\u0636" + (!existing ? " (\u0645\u0637\u0644\u0648\u0628)" : " (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), file: receiptFile, onChange: setReceiptFile, onRemove: () => setReceiptFile(null), folder: "receipts" }),
     !existing && (!salesPricingFile || !receiptFile) ? /* @__PURE__ */ React.createElement("p", { style: { fontSize: 11.5, color: COLORS.danger, margin: "-6px 0 12px" } }, "\u0644\u0627 \u064A\u0645\u0643\u0646 \u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u062F\u0648\u0646 \u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641 \u0627\u0644\u062A\u0633\u0639\u064A\u0631 \u0648\u0645\u0644\u0641 \u0633\u0646\u062F \u0627\u0644\u0642\u0628\u0636 \u0645\u0639\u064B\u0627") : null,
-    /* @__PURE__ */ React.createElement("button", { disabled: !clientName.trim() || (!existing && (!salesPricingFile || !receiptFile)), style: primaryBtn(!clientName.trim() || (!existing && (!salesPricingFile || !receiptFile))), onClick: () => { if (!existing) clearDraft(); onSave(existing ? { clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, salesPricingFile, receiptFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : "") } : { ...emptyOrder(), title: (clientName.trim() || "\u0623\u0648\u0631\u062F\u0631") + (category.trim() ? " - " + category.trim() : ""), clientName: clientName.trim(), category: category.trim(), dateReceived: date, deliveryDate, fabricShippingStatus, manufacturingOrderFile: orderFile, salesPricingFile, receiptFile, sellingPrice: sellingPrice === "" ? "" : Number(sellingPrice) }); } }, existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
+    saveError ? /* @__PURE__ */ React.createElement("p", { style: { fontSize: 12, color: COLORS.danger, margin: "-6px 0 12px", fontWeight: 700 } }, "\u26A0\uFE0F " + saveError) : null,
+    /* @__PURE__ */ React.createElement("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: handleSave }, saving ? "\u062C\u0627\u0631\u064D \u0627\u0644\u062D\u0641\u0638..." : existing ? "\u062D\u0641\u0638 \u0627\u0644\u062A\u0639\u062F\u064A\u0644" : "\u062D\u0641\u0638 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
   );
 }
 function BrandingModal({ branding, onClose, onSave }) {
@@ -7714,15 +7740,16 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
     ) : null
   );
   const editOrderModal = showEditOrder && h(NewOrderModal, { existing: order, onClose: () => setShowEditOrder(false), onSave: (patch) => {
+    let writePromise;
     if (order.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") {
-      onUpdate({ ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(order), editCount: (order.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() });
+      writePromise = onUpdate({ ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(order), editCount: (order.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() });
       if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (order.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((order.editCount || 0) + 1), orderId: order.id, kind: "resubmit" });
     } else if (isAdminUser) {
-      onUpdate(patch);
+      writePromise = onUpdate(patch);
     } else {
-      onUpdate({ ...patch, editCount: (order.editCount || 0) + 1 });
+      writePromise = onUpdate({ ...patch, editCount: (order.editCount || 0) + 1 });
     }
-    setShowEditOrder(false);
+    return writePromise;
   } });
   const subHeader = (title, onBackClick) => h("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "16px 16px 0" } },
     h("button", { onClick: onBackClick, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -7856,6 +7883,349 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
     editOrderModal
   );
 }
+function pieceShortLabel(p) {
+  const count = p.pieceCount || 1;
+  const desc = p.description || p.pieceType || "قطعة";
+  const size = p.size ? p.size.trim() : "";
+  return count + " / " + desc + (size ? " / " + size : "");
+}
+function CustomerStatementsHubPage({ orders, onBack, onOpenCustomer }) {
+  const [viewMode, setViewMode] = useState("all");
+  const [query, setQuery] = useState("");
+  const norm = (s) => (s || "").trim();
+  const names = Array.from(new Set(orders.map((o) => norm(o.clientName)).filter(Boolean)));
+  const customerOrdersFor = (name) => orders.filter((o) => norm(o.clientName) === name);
+  const custCard = (name) => {
+    const os = customerOrdersFor(name);
+    const quoteCount = os.reduce((s, o) => s + (o.quotes || []).length, 0);
+    const approvalCount = os.reduce((s, o) => s + (o.supplierApprovals || []).length, 0);
+    return h("button", { key: name, onClick: () => onOpenCustomer(name), style: { textAlign: "right", width: "100%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10, cursor: "pointer" } },
+      h("div", { style: { fontWeight: 700, fontSize: 14 } }, name),
+      h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 4 } }, os.length + " أوردر · " + quoteCount + " عرض سعر · " + approvalCount + " اعتماد")
+    );
+  };
+  const filteredNames = names.filter((n) => !query.trim() || n.includes(query.trim())).sort((a, b) => a.localeCompare(b, "ar"));
+  const byMonth = {};
+  names.forEach((n) => {
+    customerOrdersFor(n).forEach((o) => {
+      const m = (o.deliveryDate || o.enteredAt || "").slice(0, 7);
+      if (!m || m.length !== 7) return;
+      if (!byMonth[m]) byMonth[m] = new Set();
+      byMonth[m].add(n);
+    });
+  });
+  const months = Object.keys(byMonth).sort().reverse();
+  const toggleBtn = (val, label) => h("button", { onClick: () => setViewMode(val), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${viewMode === val ? COLORS.gold : COLORS.border}`, background: viewMode === val ? COLORS.goldSoft : COLORS.surface, color: viewMode === val ? COLORS.gold : COLORS.muted, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, label);
+  return h("div", null,
+    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { fontSize: 20, fontWeight: 700 } }, "📑 كشف حساب العملاء")
+    ),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+      toggleBtn("all", "👤 كل العملاء"),
+      toggleBtn("months", "📅 بالشهور")
+    ),
+    viewMode === "all" ? h("div", null,
+      h("input", { style: fieldStyle, placeholder: "ابحثي باسم العميل...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      filteredNames.length === 0 ? h(EmptyHint, { text: "لا يوجد عملاء" }) : filteredNames.map(custCard)
+    ) : h("div", null,
+      months.length === 0 ? h(EmptyHint, { text: "لا توجد بيانات" }) : months.map((m) => h("div", { key: m, style: { marginBottom: 18 } },
+        h("div", { style: { fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 8 } }, monthLabelAr(m)),
+        Array.from(byMonth[m]).sort((a, b) => a.localeCompare(b, "ar")).map(custCard)
+      ))
+    )
+  );
+}
+function CustomerAccountsPage({ customerName, customerOrders, pieces, onUpdateOrder, onBack }) {
+  const [tab, setTab] = useState("quotes");
+  const [showAddQuote, setShowAddQuote] = useState(false);
+  const [approvingQuote, setApprovingQuote] = useState(null);
+  const norm = (s) => (s || "").trim();
+  const customerPieces = (pieces || []).filter((p) => norm(p.customerName) === norm(customerName));
+  const orderById = {};
+  customerOrders.forEach((o) => { orderById[o.id] = o; });
+  const allQuotes = [];
+  customerOrders.forEach((o) => (o.quotes || []).forEach((q) => allQuotes.push({ ...q, orderId: o.id })));
+  const allApprovals = [];
+  customerOrders.forEach((o) => (o.supplierApprovals || []).forEach((a) => allApprovals.push({ ...a, orderId: o.id })));
+  const piecesForOrder = (orderId) => {
+    const o = orderById[orderId];
+    if (!o) return customerPieces;
+    return customerPieces.filter((p) => !p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate);
+  };
+  const addQuote = (orderId, q) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: [...(o.quotes || []), q] }); };
+  const deleteQuote = (orderId, id) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: (o.quotes || []).filter((q) => q.id !== id) }); };
+  const rejectQuote = (orderId, id) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: (o.quotes || []).map((q) => q.id === id ? { ...q, status: "مرفوض" } : q) }); };
+  const approveQuote = (orderId, quoteId, approvalData) => {
+    const o = orderById[orderId];
+    onUpdateOrder(orderId, {
+      quotes: (o.quotes || []).map((q) => q.id === quoteId ? { ...q, status: "معتمد" } : q),
+      supplierApprovals: [...(o.supplierApprovals || []), approvalData]
+    });
+    setApprovingQuote(null);
+  };
+  const updateApproval = (orderId, id, patch) => { const o = orderById[orderId]; onUpdateOrder(orderId, { supplierApprovals: (o.supplierApprovals || []).map((a) => a.id === id ? { ...a, ...patch } : a) }); };
+  return h("div", null,
+    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { fontSize: 18, fontWeight: 700 } }, customerName)
+    ),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" } },
+      h(TabButton, { active: tab === "quotes", onClick: () => setTab("quotes"), emoji: "📋", label: "عروض الأسعار" }),
+      h(TabButton, { active: tab === "readiness", onClick: () => setTab("readiness"), emoji: "🚚", label: "الجاهزية والاستلام" }),
+      h(TabButton, { active: tab === "settlement", onClick: () => setTab("settlement"), emoji: "🧾", label: "تقفيل الحساب" })
+    ),
+    tab === "quotes" ? h(QuotesTab, { customerName, customerOrders, allQuotes, allApprovals, onAdd: () => setShowAddQuote(true), onDeleteQuote: deleteQuote, onApproveClick: (q) => setApprovingQuote(q), onReject: rejectQuote }) : null,
+    tab === "readiness" ? h(ReadinessTab, { allApprovals, pieces: customerPieces, onUpdateApproval: updateApproval }) : null,
+    tab === "settlement" ? h(SettlementTab, { allApprovals, onUpdateApproval: updateApproval }) : null,
+    showAddQuote ? h(AddSupplierQuoteModal, { customerOrders, piecesForOrder, onClose: () => setShowAddQuote(false), onSave: (orderId, q) => { addQuote(orderId, q); setShowAddQuote(false); } }) : null,
+    approvingQuote ? h(ApproveQuoteModal, { quote: approvingQuote, orderPieces: piecesForOrder(approvingQuote.orderId), onClose: () => setApprovingQuote(null), onSave: (data) => approveQuote(approvingQuote.orderId, approvingQuote.id, data) }) : null
+  );
+}
+function QuotesTab({ customerName, customerOrders, allQuotes, allApprovals, onAdd, onDeleteQuote, onApproveClick, onReject }) {
+  const pending = allQuotes.filter((q) => !q.status || q.status === "قيد المراجعة");
+  const decided = allQuotes.filter((q) => q.status && q.status !== "قيد المراجعة");
+  const orderLabel = (orderId) => { const o = customerOrders.find((x) => x.id === orderId); return o ? ("[" + (o.code || o.id.slice(0, 6)) + "]") : ""; };
+  const scopeLabel = (q) => q.scope === "order" ? "كل الأوردر" : "قطع: " + (q.pieceIds || []).length;
+  const statusBadge = (q) => h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: q.status === "معتمد" ? "#E7F3EA" : q.status === "مرفوض" ? "#FBE9E9" : COLORS.bg, color: q.status === "معتمد" ? COLORS.green : q.status === "مرفوض" ? COLORS.danger : COLORS.muted } }, q.status || "قيد المراجعة");
+  const quotesTable = (list, showActions) => h("div", { style: { overflowX: "auto" } },
+    h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: showActions ? 760 : 620 } },
+      h("thead", null, h("tr", null, ["المورد", "نطاق العرض", "نوع التصنيع", "مدة (يوم)", "السعر الإجمالي", "الحالة", "ملاحظات"].concat(showActions ? ["إجراءات"] : []).map((c) =>
+        h("th", { key: c, style: { padding: "6px 8px", borderBottom: `1px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c)
+      ))),
+      h("tbody", null, list.map((q) => h("tr", { key: q.id, style: { borderBottom: `1px solid ${COLORS.bg}` } },
+        h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 700 } }, q.supplierName + " " + orderLabel(q.orderId)),
+        h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, scopeLabel(q)),
+        h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, q.manufacturingType || "\u2014"),
+        h("td", { style: { padding: "6px 8px", textAlign: "center" } }, q.durationDays || "\u2014"),
+        h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.gold } }, Number(q.totalPrice || 0).toLocaleString("en-US") + " " + (q.currency || "ريال")),
+        h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, statusBadge(q)),
+        h("td", { style: { padding: "6px 8px", maxWidth: 160 } }, q.notes || "\u2014"),
+        showActions ? h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } },
+          h("div", { style: { display: "flex", gap: 6 } },
+            h("button", { onClick: () => onApproveClick(q), style: { background: COLORS.gold, color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "✅ اعتماد"),
+            h("button", { onClick: () => onReject(q.orderId, q.id), style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "❌ رفض"),
+            h("button", { onClick: () => onDeleteQuote(q.orderId, q.id), style: { background: "transparent", border: "none", cursor: "pointer", padding: "0 4px" } }, h(Emoji, { size: 14, color: COLORS.muted }, "🗑️"))
+          )
+        ) : null
+      )))
+    )
+  );
+  return h("div", null,
+    h("button", { onClick: onAdd, style: { width: "100%", background: COLORS.ink, color: "#fff", border: "none", borderRadius: 12, padding: "11px 0", fontSize: 13.5, fontWeight: 700, cursor: "pointer", marginBottom: 14 } }, "+ طلب عرض سعر جديد"),
+    h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.muted, marginBottom: 8 } }, "قيد المراجعة (" + pending.length + ")"),
+    pending.length === 0 ? h(EmptyHint, { text: "لا يوجد عروض أسعار معلقة" }) : quotesTable(pending, true),
+    decided.length > 0 ? h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.muted, margin: "16px 0 8px" } }, "تم اتخاذ قرار بشأنها") : null,
+    decided.length > 0 ? quotesTable(decided, false) : null,
+    allApprovals.length > 0 ? h("div", { style: { marginTop: 22 } },
+      h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "📌 عروض الأسعار المعتمدة للتصنيع"),
+      allApprovals.map((a) => {
+        const totalPieces = (a.items || []).reduce((s, it) => s + (Number(it.pieceCount) || 1), 0);
+        return h("div", { key: a.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
+          h("div", { style: { fontWeight: 700, fontSize: 15, textAlign: "center" } }, a.supplierName),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, textAlign: "center", marginTop: 2, marginBottom: 8 } }, "عدد القطع: " + totalPieces + (a.agreedDate ? " · الموعد المتفق عليه: " + a.agreedDate : "")),
+          h("div", { style: { overflowX: "auto" } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 560 } },
+              h("thead", null, h("tr", null, ["عدد القطع", "البيان", "المقاس", "نوع التشطيب", "سعر القطعة", "اجمالي سعر البند"].map((c) =>
+                h("th", { key: c, style: { padding: "6px 8px", borderBottom: `1px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c)
+              ))),
+              h("tbody", null, (a.items || []).map((it) => {
+                const fallbackParts = (it.pieceLabel || "").split(" / ");
+                const desc = it.description !== void 0 ? it.description : (fallbackParts.length >= 2 ? fallbackParts[1] : (it.pieceLabel || ""));
+                const size = it.size !== void 0 ? it.size : (fallbackParts.length >= 3 ? fallbackParts.slice(2).join(" / ") : "");
+                return h("tr", { key: it.pieceId, style: { borderBottom: `1px solid ${COLORS.bg}` } },
+                  h("td", { style: { padding: "6px 8px", textAlign: "center" } }, it.pieceCount || 1),
+                  h("td", { style: { padding: "6px 8px" } }, desc || "\u2014"),
+                  h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, size || "\u2014"),
+                  h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, it.finishType || "\u2014"),
+                  h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, it.unitPrice ? Number(it.unitPrice).toLocaleString("en-US") : "\u2014"),
+                  h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.gold } }, Number(it.lineTotal || 0).toLocaleString("en-US"))
+                );
+              }))
+            )
+          )
+        );
+      })
+    ) : null
+  );
+}
+function AddSupplierQuoteModal({ customerOrders, piecesForOrder, onClose, onSave }) {
+  const [orderId, setOrderId] = useState(customerOrders[0] ? customerOrders[0].id : "");
+  const [supplierName, setSupplierName] = useState("");
+  const [scope, setScope] = useState("order");
+  const [pieceIds, setPieceIds] = useState([]);
+  const [manufacturingType, setManufacturingType] = useState("");
+  const [durationDays, setDurationDays] = useState("");
+  const [totalPrice, setTotalPrice] = useState("");
+  const [currency, setCurrency] = useState("ريال");
+  const [notes, setNotes] = useState("");
+  const orderPieces = piecesForOrder(orderId);
+  const togglePiece = (id) => setPieceIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const canSave = orderId && supplierName.trim() && totalPrice && (scope === "order" || pieceIds.length > 0);
+  return h(Modal, { title: "طلب عرض سعر", onClose },
+    customerOrders.length > 1 ? h(React.Fragment, null,
+      h("label", { style: labelStyle }, "الأوردر"),
+      h("select", { style: fieldStyle, value: orderId, onChange: (e) => { setOrderId(e.target.value); setPieceIds([]); } },
+        customerOrders.map((o) => h("option", { key: o.id, value: o.id }, "[" + (o.code || o.id.slice(0, 6)) + "] " + (o.category || "")))
+      )
+    ) : null,
+    h("label", { style: labelStyle }, "اسم المورد"),
+    h("input", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value), placeholder: "اسم المورد" }),
+    h("label", { style: labelStyle }, "نطاق العرض"),
+    h("select", { style: fieldStyle, value: scope, onChange: (e) => setScope(e.target.value) },
+      h("option", { value: "order" }, "كل الأوردر"),
+      h("option", { value: "pieces" }, "قطع محددة")
+    ),
+    scope === "pieces" ? h("div", { style: { marginBottom: 12 } },
+      h("label", { style: labelStyle }, "حددي القطع"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto", border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 8 } },
+        orderPieces.length === 0 ? h("div", { style: { fontSize: 12, color: COLORS.muted } }, "لا توجد قطع مضافة لهذا الأوردر بعد") :
+        orderPieces.map((p) => h("label", { key: p.id, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 } },
+          h("input", { type: "checkbox", checked: pieceIds.includes(p.id), onChange: () => togglePiece(p.id) }),
+          pieceShortLabel(p)
+        ))
+      )
+    ) : null,
+    h("label", { style: labelStyle }, "نوع التصنيع"),
+    h("select", { style: fieldStyle, value: manufacturingType, onChange: (e) => setManufacturingType(e.target.value) },
+      h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A"),
+      QUOTE_MANUFACTURING_TYPES.map((t) => h("option", { key: t, value: t }, t))
+    ),
+    h("label", { style: labelStyle }, "مدة التصنيع (يوم)"),
+    h("input", { type: "number", style: fieldStyle, value: durationDays, onChange: (e) => setDurationDays(e.target.value), placeholder: "0" }),
+    h("div", { style: { display: "flex", gap: 10 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "السعر الإجمالي"), h("input", { type: "number", style: fieldStyle, value: totalPrice, onChange: (e) => setTotalPrice(e.target.value), placeholder: "0" })),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "العملة"), h("select", { style: fieldStyle, value: currency, onChange: (e) => setCurrency(e.target.value) }, h("option", { value: "ريال" }, "ريال"), h("option", { value: "جنيه" }, "جنيه")))
+    ),
+    h("label", { style: labelStyle }, "ملاحظات"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }),
+    h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave(orderId, {
+      id: uid(), supplierName: supplierName.trim(), scope, pieceIds: scope === "order" ? [] : pieceIds,
+      manufacturingType: manufacturingType.trim(), durationDays, totalPrice, currency, notes: notes.trim(),
+      status: "قيد المراجعة", createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    }) }, "حفظ العرض")
+  );
+}
+function ApproveQuoteModal({ quote, orderPieces, onClose, onSave }) {
+  const items = quote.scope === "order" ? orderPieces : orderPieces.filter((p) => (quote.pieceIds || []).includes(p.id));
+  const [itemState, setItemState] = useState({});
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositDate, setDepositDate] = useState(todayStr());
+  const [agreedDate, setAgreedDate] = useState("");
+  const setItem = (id, key, val) => setItemState((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [key]: val } }));
+  const lineTotal = (p) => (Number((itemState[p.id] && itemState[p.id].unitPrice) || 0) * (Number(p.pieceCount) || 1));
+  const grandTotal = items.reduce((s, p) => s + lineTotal(p), 0);
+  return h(Modal, { title: "اعتماد عرض " + quote.supplierName, onClose },
+    h("div", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.muted, marginBottom: 8 } }, "بيان البنود (نوع التشطيب / سعر القطعة / إجمالي البند)"),
+    items.length === 0 ? h("div", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "لا توجد قطع مرتبطة") : h("div", { style: { overflowX: "auto", marginBottom: 8 } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 560 } },
+        h("thead", null, h("tr", null, ["عدد القطع", "البيان", "المقاس", "نوع التشطيب", "سعر القطعة", "اجمالي سعر البند"].map((c) =>
+          h("th", { key: c, style: { padding: "6px 8px", borderBottom: `1px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c)
+        ))),
+        h("tbody", null, items.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.bg}` } },
+          h("td", { style: { padding: "6px 8px", textAlign: "center" } }, p.pieceCount || 1),
+          h("td", { style: { padding: "6px 8px" } }, p.description || p.pieceType || "\u0642\u0637\u0639\u0629"),
+          h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
+          h("td", { style: { padding: "6px 8px" } },
+            h("select", { style: { ...fieldStyle, marginBottom: 0, minWidth: 130 }, value: (itemState[p.id] && itemState[p.id].finishType) || "", onChange: (e) => setItem(p.id, "finishType", e.target.value) },
+              h("option", { value: "" }, "\u0646\u0648\u0639 \u0627\u0644\u062A\u0634\u0637\u064A\u0628"),
+              QUOTE_MANUFACTURING_TYPES.map((t) => h("option", { key: t, value: t }, t))
+            )
+          ),
+          h("td", { style: { padding: "6px 8px" } },
+            h("input", { type: "number", style: { ...fieldStyle, marginBottom: 0, width: 90 }, placeholder: "0", value: (itemState[p.id] && itemState[p.id].unitPrice) || "", onChange: (e) => setItem(p.id, "unitPrice", e.target.value) })
+          ),
+          h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.gold } }, lineTotal(p).toLocaleString("en-US"))
+        )))
+      )
+    ),
+    items.length > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, borderTop: `1px solid ${COLORS.border}`, paddingTop: 8, marginBottom: 10 } },
+      h("span", null, "إجمالي عرض السعر"),
+      h("span", { style: { color: COLORS.gold } }, grandTotal.toLocaleString("en-US") + " " + (quote.currency || "ريال"))
+    ) : null,
+    h("label", { style: labelStyle }, "الموعد المتفق عليه"),
+    h("input", { type: "date", style: fieldStyle, value: agreedDate, onChange: (e) => setAgreedDate(e.target.value) }),
+    h("div", { style: { display: "flex", gap: 10, marginTop: 4 } },
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "دفعة تحت الحساب"), h("input", { type: "number", style: fieldStyle, value: depositAmount, onChange: (e) => setDepositAmount(e.target.value), placeholder: "0" })),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "تاريخ الدفعة"), h("input", { type: "date", style: fieldStyle, value: depositDate, onChange: (e) => setDepositDate(e.target.value) }))
+    ),
+    h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginBottom: 12 } }, "الباقي يتحدد تلقائيًا عند الاستلام بناءً على المواصفات"),
+    h("button", { style: primaryBtn(false), onClick: () => onSave({
+      id: uid(), quoteId: quote.id, supplierName: quote.supplierName, scope: quote.scope,
+      pieceIds: items.map((p) => p.id),
+      items: items.map((p) => ({ pieceId: p.id, pieceLabel: pieceShortLabel(p), pieceCount: Number(p.pieceCount) || 1, description: p.description || p.pieceType || "\u0642\u0637\u0639\u0629", size: p.size ? p.size.trim() : "", finishType: (itemState[p.id] && itemState[p.id].finishType) || "", unitPrice: (itemState[p.id] && itemState[p.id].unitPrice) || "", lineTotal: lineTotal(p) })),
+      agreedDate,
+      totalAmount: grandTotal || quote.totalPrice, currency: quote.currency,
+      depositAmount, depositPaid: false, depositDate,
+      balanceAmount: Math.max(0, (grandTotal || Number(quote.totalPrice) || 0) - (Number(depositAmount) || 0)),
+      balancePaid: false, balancePaidDate: "",
+      receivedFromSupplier: false, receivedDate: "",
+      closed: false, closedDate: "",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    }) }, "تأكيد الاعتماد")
+  );
+}
+function ReadinessTab({ allApprovals, pieces, onUpdateApproval }) {
+  const pieceById = {};
+  (pieces || []).forEach((p) => { pieceById[p.id] = p; });
+  if (allApprovals.length === 0) return h(EmptyHint, { text: "لا توجد عروض معتمدة بعد" });
+  const bySupplier = {};
+  allApprovals.forEach((a) => { (bySupplier[a.supplierName] = bySupplier[a.supplierName] || []).push(a); });
+  return h("div", null, Object.entries(bySupplier).map(([supplierName, list]) => h("div", { key: supplierName, style: { marginBottom: 16 } },
+    h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 8 } }, "🏭 " + supplierName),
+    list.map((a) => h("div", { key: a.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("div", { style: { fontSize: 11.5, color: COLORS.muted } }, (a.items || []).length + " قطعة"),
+        a.receivedFromSupplier ? h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: "#E7F3EA", color: COLORS.green } }, "✅ تم الاستلام") : h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: COLORS.bg, color: COLORS.muted } }, "⏳ قيد التصنيع")
+      ),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 4, marginTop: 8 } }, (a.items || []).map((it) => {
+        const piece = pieceById[it.pieceId];
+        return h("div", { key: it.pieceId, style: { fontSize: 12, display: "flex", justifyContent: "space-between", borderTop: `1px solid ${COLORS.bg}`, paddingTop: 4 } },
+          h("span", null, it.pieceLabel),
+          h("span", { style: { color: COLORS.gold, fontWeight: 600 } }, (piece && (piece.status || piece.currentLocation)) || "—")
+        );
+      })),
+      !a.receivedFromSupplier ? h("button", { onClick: () => onUpdateApproval(a.orderId, a.id, { receivedFromSupplier: true, receivedDate: todayStr() }), style: { width: "100%", marginTop: 10, background: COLORS.green, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontSize: 12.5, fontWeight: 700, cursor: "pointer" } }, "✅ تم الاستلام من المورد") : h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 8 } }, "تم الاستلام بتاريخ " + (a.receivedDate || "—"))
+    ))
+  )));
+}
+function SettlementTab({ allApprovals, onUpdateApproval }) {
+  if (allApprovals.length === 0) return h(EmptyHint, { text: "لا توجد عروض معتمدة بعد" });
+  const bySupplier = {};
+  allApprovals.forEach((a) => { (bySupplier[a.supplierName] = bySupplier[a.supplierName] || []).push(a); });
+  return h("div", null, Object.entries(bySupplier).map(([supplierName, list]) => {
+    const totalAgreed = list.reduce((s, a) => s + (Number(a.totalAmount) || 0), 0);
+    const totalDeposit = list.reduce((s, a) => s + (a.depositPaid ? Number(a.depositAmount) || 0 : 0), 0);
+    const totalBalance = list.reduce((s, a) => s + (a.balancePaid ? 0 : Number(a.balanceAmount) || 0), 0);
+    return h("div", { key: supplierName, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 14 } },
+      h("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 8 } }, "🧾 كشف حساب — " + supplierName),
+      list.map((a) => h("div", { key: a.id, style: { borderTop: `1px solid ${COLORS.bg}`, paddingTop: 8, marginTop: 8 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5 } },
+          h("span", { style: { color: COLORS.muted } }, "المتفق عليه"),
+          h("span", { style: { fontWeight: 700 } }, Number(a.totalAmount || 0).toLocaleString("en-US") + " " + (a.currency || "ريال"))
+        ),
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, marginTop: 3 } },
+          h("span", { style: { color: COLORS.muted } }, "الدفعة المقدمة"),
+          h("span", { style: { fontWeight: 700, color: a.depositPaid ? COLORS.green : COLORS.muted } }, Number(a.depositAmount || 0).toLocaleString("en-US") + (a.depositPaid ? " ✅" : " ⏳"))
+        ),
+        h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, marginTop: 3 } },
+          h("span", { style: { color: COLORS.muted } }, "الباقي عند الاستلام"),
+          h("span", { style: { fontWeight: 700, color: a.balancePaid ? COLORS.green : COLORS.gold } }, Number(a.balanceAmount || 0).toLocaleString("en-US") + (a.balancePaid ? " ✅" : " ⏳"))
+        ),
+        h("div", { style: { display: "flex", gap: 8, marginTop: 8 } },
+          !a.depositPaid ? h("button", { onClick: () => onUpdateApproval(a.orderId, a.id, { depositPaid: true, depositDate: a.depositDate || todayStr() }), style: { flex: 1, fontSize: 11, padding: "6px 0", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, "تأكيد دفع الدفعة") : null,
+          !a.balancePaid ? h("button", { onClick: () => onUpdateApproval(a.orderId, a.id, { balancePaid: true, balancePaidDate: todayStr() }), style: { flex: 1, fontSize: 11, padding: "6px 0", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, "تأكيد دفع الباقي") : null,
+          !a.closed && a.depositPaid && a.balancePaid ? h("button", { onClick: () => onUpdateApproval(a.orderId, a.id, { closed: true, closedDate: todayStr() }), style: { flex: 1, fontSize: 11, padding: "6px 0", borderRadius: 8, border: "none", background: COLORS.ink, color: "#fff", cursor: "pointer" } }, "🔒 تقفيل الحساب") : null,
+          a.closed ? h("span", { style: { fontSize: 11, color: COLORS.green, fontWeight: 700, alignSelf: "center" } }, "🔒 مقفول بتاريخ " + a.closedDate) : null
+        )
+      )),
+      h("div", { style: { borderTop: `2px solid ${COLORS.gold}`, marginTop: 10, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700 } },
+        h("span", null, "الإجمالي"),
+        h("span", null, totalAgreed.toLocaleString("en-US") + " — مدفوع: " + totalDeposit.toLocaleString("en-US") + " — متبقي: " + totalBalance.toLocaleString("en-US"))
+      )
+    );
+  }));
+}
 function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState(null);
@@ -7867,7 +8237,7 @@ function MaterialsPage({ order, onUpdate, forcedView, canEdit }) {
   const [typeTab, setTypeTab] = useState("\u0627\u0644\u0643\u0644");
   const presentTypes = Array.from(new Set((order.materials || []).map((m) => m.type).filter(Boolean)));
   const itemsForTab = typeTab === "\u0627\u0644\u0643\u0644" ? (order.materials || []) : (order.materials || []).filter((m) => m.type === typeTab);
-  const addMaterial = (m) => { if (!canEdit) return; const patch = { materials: [...(order.materials || []), m] }; if (!order.materialsHandled) { patch.materialsHandled = true; patch.materialsHandledAt = (/* @__PURE__ */ new Date()).toISOString(); } onUpdate(patch); };
+  const addMaterial = (m) => { if (!canEdit) return; onUpdate({ materials: [...(order.materials || []), m] }); };
   const updateMaterial = (m) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).map((x) => x.id === m.id ? m : x) }); };
   const removeMaterial = (id) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).filter((m) => m.id !== id), quotes: (order.quotes || []).filter((q) => q.materialId !== id) }); };
   const addPiece = (materialId, piece) => { if (!canEdit) return; onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, pieces: [...m.pieces || [], piece] } : m) }); };
@@ -8017,7 +8387,8 @@ function AddMaterialModal({ onClose, onSave, existing }) {
   const [busy, setBusy] = useState(false);
   const isCoded = CODED_TYPES.includes(type);
   const isMeasured = MEASURED_TYPES.includes(type);
-  const canSave = isMeasured ? (materialName.trim() && pieceCount && pieceLength && pieceWidth) : quantity;
+  const isMotor = MOTOR_TYPES.includes(type);
+  const canSave = isMeasured ? (materialName.trim() && pieceCount && pieceLength && pieceWidth) : isMotor ? (companyName.trim() && quantity) : quantity;
 
   const handleImageFile = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -8080,6 +8451,9 @@ function AddMaterialModal({ onClose, onSave, existing }) {
         h("datalist", { id: "fabric-company-list" }, Array.from(new Set(DEFAULT_FABRIC_COMPANIES.concat(KNOWN_NAMES.fabricCompanies))).map((c) => h("option", { key: c, value: c }))),
         h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0637\u0639\u0629 \u0627\u0644\u0645\u0631\u062A\u0628\u0637\u0629 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
         h("select", { style: fieldStyle, value: pieceCategory, onChange: (e) => setPieceCategory(e.target.value) }, FABRIC_PIECE_CATEGORY_OPTIONS.map((c) => h("option", { key: c, value: c }, c || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")))
+      ) : isMotor ? h(React.Fragment, null,
+        h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F"),
+        h("input", { style: fieldStyle, value: companyName, onChange: (e) => setCompanyName(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F" })
       ) : h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0635\u0641"),
         h("input", { style: fieldStyle, value: description, onChange: (e) => setDescription(e.target.value), placeholder: "\u0648\u0635\u0641 \u0627\u0644\u062E\u0627\u0645\u0629" })
@@ -8088,28 +8462,29 @@ function AddMaterialModal({ onClose, onSave, existing }) {
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628"), h("input", { style: fieldStyle, type: "date", value: orderDate, onChange: (e) => setOrderDate(e.target.value) })),
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F (\u064A\u0648\u0645)"), h("input", { style: fieldStyle, type: "number", value: leadTimeDays, onChange: (e) => setLeadTimeDays(e.target.value), placeholder: "0" }))
       ),
-      h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631"),
+      h("label", { style: labelStyle }, isMotor ? "\u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628" : "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631"),
       h("select", { style: fieldStyle, value: availability, onChange: (e) => setAvailability(e.target.value) }, AVAILABILITY_OPTIONS.map((a) => h("option", { key: a, value: a }, a))),
+      isMotor ? h("div", null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0645\u062D\u0631\u0643\u0627\u062A"), h("input", { style: fieldStyle, type: "number", value: quantity, onChange: (e) => setQuantity(e.target.value), placeholder: "0" })) : null,
       isCoded ? h("div", { style: { display: "flex", gap: 10 } },
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0643\u0645\u064A\u0629"), h("input", { style: fieldStyle, type: "number", value: quantity, onChange: (e) => setQuantity(e.target.value), placeholder: "0" })),
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0648\u062D\u062F\u0629"), h("select", { style: fieldStyle, value: unit, onChange: (e) => setUnit(e.target.value) }, UNITS.map((u) => h("option", { key: u, value: u }, u))))
       ) : null
     ),
-    !isCoded && !isMeasured ? h("div", { style: { display: "flex", gap: 10 } },
+    !isCoded && !isMeasured && !isMotor ? h("div", { style: { display: "flex", gap: 10 } },
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0643\u0645\u064A\u0629"), h("input", { style: fieldStyle, type: "number", value: quantity, onChange: (e) => setQuantity(e.target.value), placeholder: "0" })),
       h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0648\u062D\u062F\u0629"), h("select", { style: fieldStyle, value: unit, onChange: (e) => setUnit(e.target.value) }, UNITS.map((u) => h("option", { key: u, value: u }, u))))
     ) : null,
     h("button", { disabled: !canSave, style: primaryBtn(!canSave), onClick: () => onSave({
     id: existing ? existing.id : uid(),
     type,
-    description: isCoded ? (companyName.trim() + (itemCode.trim() ? " - " + normalizeDigits(itemCode.trim()) : "")) : description.trim(),
+    description: isCoded ? (companyName.trim() + (itemCode.trim() ? " - " + normalizeDigits(itemCode.trim()) : "")) : isMotor ? companyName.trim() : description.trim(),
     orderDate,
     leadTimeDays,
     availability,
     quantity: isMeasured ? "" : quantity,
-    unit: isMeasured ? "" : unit,
+    unit: isMeasured ? "" : (isMotor ? "\u0645\u062D\u0631\u0643" : unit),
     itemCode: isCoded ? normalizeDigits(itemCode.trim()) : "",
-    companyName: isCoded ? companyName.trim() : "",
+    companyName: (isCoded || isMotor) ? companyName.trim() : "",
     pieceCategory: isCoded ? pieceCategory : "",
     materialName: isMeasured ? materialName.trim() : "",
     pieces: isMeasured ? [{ id: (firstPiece && firstPiece.id) || uid(), pieceCount, length: pieceLength, width: pieceWidth, unit: pieceUnit, image: pieceImage, drawingFile, edgeFinish: EDGE_FINISH_TYPES.includes(type) ? edgeFinish.trim() : "" }] : null
@@ -8280,7 +8655,7 @@ function GalleryHubPage({ orders, onUpdateOrder, onBack }) {
   },
     h("div", null,
       h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
-      h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, o.deliveryDate ? "\u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E")
+      h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, (o.deliveryDate ? "\u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E") + (o.category ? " \u00B7 " + o.category : ""))
     ),
     h(Emoji, { size: 13 }, "\u2039")
   );
@@ -8863,13 +9238,38 @@ function ProductionQuotePage({ order, onUpdate, canEdit }) {
     if (totalEGP > 0) dataRows.push(["\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", "", "", "", "", totalEGP, "\u062C\u0646\u064A\u0647 \u0645\u0635\u0631\u064A", "", ""]);
     printAsPdf("\u062A\u0633\u0639\u064A\u0631 " + (order.title || "\u0627\u0644\u0623\u0648\u0631\u062F\u0631"), headers, dataRows);
   };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }), items.length > 0 && /* @__PURE__ */ React.createElement(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }), items.length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10, ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } }, items.map((it) => /* @__PURE__ */ React.createElement("div", { key: it.id, onClick: () => setEditingItem(it), style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 600 } }, it.pieceName), (it.pieceCount || it.size || (it.manufacturingType && it.manufacturingType.length)) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: COLORS.gold, marginTop: 2 } }, [it.pieceCount ? "\u0639\u062F\u062F: " + it.pieceCount : "", it.size ? "\u0645\u0642\u0627\u0633: " + it.size : "", it.manufacturingType && it.manufacturingType.length ? it.manufacturingType.join("\u060C ") : ""].filter(Boolean).join(" \u00B7 ")), it.supplierName && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.supplierName), it.notes && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, it.notes)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US"), " ", (it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644"), /* @__PURE__ */ React.createElement("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))), it.priceFile && /* @__PURE__ */ React.createElement("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { marginTop: 8, fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 13 }, "\u{1F4CE}"), " ", it.priceFile.name)))), items.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } }, totalSAR > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US"), " \u0631\u064A\u0627\u0644")), totalEGP > 0 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US"), " \u062C.\u0645"))), canEdit && /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631"), showAdd && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => {
-    addItem(it);
-    setShowAdd(false);
-  } }), editingItem && /* @__PURE__ */ React.createElement(AddQuoteItemModal, { existing: editingItem, onClose: () => setEditingItem(null), onSave: (it) => {
-    updateItem(it);
-    setEditingItem(null);
-  } }));
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4B0}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639" }),
+    items.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
+    items.length === 0 ? h(EmptyHint, { text: "\u0623\u0636\u064A\u0641\u064A \u0633\u0639\u0631 \u0643\u0644 \u0642\u0637\u0639\u0629 \u0647\u064A\u062A\u0645 \u062A\u0635\u0646\u064A\u0639\u0647\u0627" }) : null,
+    items.length > 0 ? h("div", { style: { overflowX: "auto", ...(canEdit ? {} : { pointerEvents: "none", opacity: 0.65 }) } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 680 } },
+        h("thead", null, h("tr", null, ["عدد القطع", "البيان", "المقاس", "نوع التصنيع", "السعر", "ملاحظات", ""].map((c, i) =>
+          h("th", { key: c || ("actions" + i), style: { padding: "6px 8px", borderBottom: `1px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 10.5, whiteSpace: "nowrap" } }, c)
+        ))),
+        h("tbody", null, items.map((it) => h("tr", { key: it.id, onClick: () => setEditingItem(it), style: { borderBottom: `1px solid ${COLORS.bg}`, cursor: "pointer" } },
+          h("td", { style: { padding: "6px 8px", textAlign: "center" } }, it.pieceCount || 1),
+          h("td", { style: { padding: "6px 8px" } },
+            h("div", { style: { fontWeight: 600 } }, it.pieceName),
+            it.supplierName ? h("div", { style: { fontSize: 11, color: COLORS.muted } }, it.supplierName) : null,
+            it.priceFile ? h("a", { href: it.priceFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, textDecoration: "none" } }, "\u{1F4CE} " + it.priceFile.name) : null
+          ),
+          h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, it.size || "\u2014"),
+          h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, (it.manufacturingType && it.manufacturingType.length) ? it.manufacturingType.join("\u060C ") : "\u2014"),
+          h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.ink } }, Number(it.price).toLocaleString("en-US") + " " + ((it.currency || "\u0631\u064A\u0627\u0644") === "\u062C\u0646\u064A\u0647" ? "\u062C.\u0645" : "\u0631\u064A\u0627\u0644")),
+          h("td", { style: { padding: "6px 8px", fontSize: 11.5, color: COLORS.muted, maxWidth: 140 } }, it.notes || "\u2014"),
+          h("td", { style: { padding: "6px 8px" } }, h("button", { onClick: (e) => { e.stopPropagation(); removeItem(it.id); }, style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")))
+        )))
+      )
+    ) : null,
+    items.length > 0 ? h("div", { style: { display: "flex", flexDirection: "column", gap: 4, padding: "12px 4px", marginTop: 4, borderTop: `1px solid ${COLORS.border}` } },
+      totalSAR > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between" } }, h("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u0631\u064A\u0627\u0644)"), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalSAR.toLocaleString("en-US") + " \u0631\u064A\u0627\u0644")) : null,
+      totalEGP > 0 ? h("div", { style: { display: "flex", justifyContent: "space-between" } }, h("span", { style: { fontWeight: 700 } }, "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A (\u062C\u0646\u064A\u0647)"), h("span", { style: { fontWeight: 700, color: COLORS.gold } }, totalEGP.toLocaleString("en-US") + " \u062C.\u0645")) : null
+    ) : null,
+    canEdit ? h("button", { onClick: () => setShowAdd(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631") : null,
+    showAdd ? h(AddQuoteItemModal, { onClose: () => setShowAdd(false), onSave: (it) => { addItem(it); setShowAdd(false); } }) : null,
+    editingItem ? h(AddQuoteItemModal, { existing: editingItem, onClose: () => setEditingItem(null), onSave: (it) => { updateItem(it); setEditingItem(null); } }) : null
+  );
 }
 const MANUFACTURING_TYPES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F"];
 function AddQuoteItemModal({ onClose, onSave, existing }) {
@@ -8942,6 +9342,30 @@ const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
 const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
+const PRODUCTION_ENTITY_PAGES = {
+  "مصر": [
+    { key: "carpentry", label: "نجارة / مصانع" },
+    { key: "painting", label: "دهان" },
+    { key: "upholstery", label: "تنجيد" },
+    { key: "packing_shipping", label: "تغليف وشحن" }
+  ],
+  "الدمام": [
+    { key: "carpentry", label: "نجارة / مصانع" },
+    { key: "painting", label: "دهان" },
+    { key: "upholstery", label: "تنجيد" }
+  ]
+};
+const ACCESS_LEVEL_OPTIONS = [
+  { value: "none", label: "لا يشوف" },
+  { value: "view", label: "مشاهدة" },
+  { value: "edit", label: "تحرير" }
+];
+function productionAccessLevel(accessObj, entity, pageKey, isAdminUser) {
+  if (isAdminUser) return "edit";
+  const v = accessObj && accessObj[entity] && accessObj[entity][pageKey];
+  return v || "none";
+}
+const STAGE_TO_PAGE_KEY = { "\u062F\u0647\u0627\u0646": "painting", "\u062A\u0646\u062C\u064A\u062F": "upholstery", "\u062A\u063A\u0644\u064A\u0641": "packing_shipping", "\u0634\u062D\u0646": "packing_shipping", "\u0646\u062C\u0627\u0631\u0629": "carpentry" };
 const SUB_TABS_CONFIG = {
   customers: [
     { key: "files-payment", label: "\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644 \u0648\u0627\u0644\u0633\u062F\u0627\u062F" }
@@ -9008,6 +9432,7 @@ const ALL_TABS = [
   { key: "universal-search", label: "البحث الشامل", emoji: "\u{1F50E}" },
   { key: "escalations", label: "طلب مساعدة", emoji: "\u{1F198}" },
   { key: "pricing", label: "الحسابات", emoji: "\u{1F4B0}" },
+  { key: "customer-statements", label: "كشف حساب العملاء", emoji: "\u{1F4D1}" },
   { key: "guide", label: "دليل الاستخدام", emoji: "\u{1F4D7}" }
 ];
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -9133,11 +9558,6 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
       upholsteryLocation: isSofaType(pieceType) ? (upholsteryLocation.trim() || "\u2014") : "\u2014",
       status: "لم يتم البدء", agreedDeadline, stages: {}, shippingDate: "", arrivalDate: "", createdAt: (/* @__PURE__ */ new Date()).toISOString()
     });
-    if (onUpdateOrder && orders) {
-      const name = customerName.trim();
-      const matchOrder = orders.find((o) => (o.clientName || "").trim() === name && (!customerDeliveryDate || o.deliveryDate === customerDeliveryDate) && !o.distributionHandled);
-      if (matchOrder) onUpdateOrder(matchOrder.id, { distributionHandled: true, distributionHandledAt: (/* @__PURE__ */ new Date()).toISOString() });
-    }
     setCustomerName(""); setCustomerDeliveryDate(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setUpholsteryLocation(""); setImage(null); setAgreedDeadline("");
   };
   const [recentQuery, setRecentQuery] = useState("");
@@ -9525,7 +9945,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
+function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
   const [entity, setEntity] = useState((deepLink && deepLink.entity) || null);
   useEffect(() => { if (deepLink && onConsumeDeepLink) onConsumeDeepLink(); }, []);
   if (!entity) {
@@ -9536,7 +9956,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers,
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -9551,6 +9971,9 @@ function resolveStageKey(loc) {
   const all = [].concat(...Object.values(CURRENT_UPHOLSTERY_SUPPLIERS || {}));
   if (all.includes(loc)) return "\u062A\u0646\u062C\u064A\u062F";
   return "\u0646\u062C\u0627\u0631\u0629";
+}
+function pageKeyForPiece(piece) {
+  return STAGE_TO_PAGE_KEY[resolveStageKey(piece && piece.currentLocation)] || "carpentry";
 }
 function applyPieceStatusChange(piece, newStatus, specificTarget) {
   const p = { ...piece, stages: { ...(piece.stages || {}) } };
@@ -9660,13 +10083,24 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
   const [fSupplier, setFSupplier] = useState("");
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
+  const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const canBulkEdit = isAdminUser || !statusOnly;
   const bulkMove = () => {
     if (!bulkTarget || bulkSelected.length === 0) return;
     if (!window.confirm("\u0646\u0642\u0644 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkTarget + "\"\u061F")) return;
     bulkSelected.forEach((id) => {
       const piece = pieces.find((p) => p.id === id);
       if (piece) onUpdate({ ...piece, currentLocation: bulkTarget });
+    });
+    setBulkSelected([]);
+  };
+  const bulkApplyStatus = () => {
+    if (bulkSelected.length === 0) return;
+    if (!window.confirm("\u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkStatus + "\"\u061F")) return;
+    bulkSelected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (piece) onUpdate({ ...piece, status: bulkStatus });
     });
     setBulkSelected([]);
   };
@@ -9746,12 +10180,17 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
         )
       )
     ) : null,
-    (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+    (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10 } },
       h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
       h("button", { onClick: bulkMove, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px" } }, "\u0646\u0642\u0644")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
+    (canBulkEdit && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+      h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
+    ) : null,
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
@@ -9763,7 +10202,18 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
   const [openPiece, setOpenPiece] = useState(null);
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
+  const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const canBulkEdit = isAdminUser || !statusOnly;
+  const bulkApplyStatus = () => {
+    if (bulkSelected.length === 0) return;
+    if (!window.confirm("\u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkStatus + "\"\u061F")) return;
+    bulkSelected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (piece) onUpdate({ ...piece, status: bulkStatus });
+    });
+    setBulkSelected([]);
+  };
   const bulkMove = () => {
     if (!bulkTarget || bulkSelected.length === 0) return;
     if (!window.confirm("\u0646\u0642\u0644 " + bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0625\u0644\u0649 \"" + bulkTarget + "\"\u061F")) return;
@@ -9807,12 +10257,17 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
     return h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
       filtered.length > 0 ? h(ExportButtons, { onExcel: searchExportExcel, onPdf: searchExportPdf }) : null,
-      (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10 } },
         h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkTarget, onChange: (e) => setBulkTarget(e.target.value) }, siblingLocations.map((l) => h("option", { key: l, value: l }, l))),
         h("button", { onClick: bulkMove, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px" } }, "\u0646\u0642\u0644")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (isAdminUser && siblingLocations && siblingLocations.length > 0) ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
+      (canBulkEdit && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+        h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+        h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
+      ) : null,
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -9834,7 +10289,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
@@ -9853,10 +10308,13 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     return d !== null && d < 0;
   }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
   const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
-  const scopeApplies = !myRoles.includes("admin") && mySupplierScope && mySupplierScope.length > 0;
-  let visibleStageGroups = scopeApplies
-    ? STAGE_GROUPS.filter((g) => g.special || g.locations.some((loc) => scopeCoversLocation(mySupplierScope, loc, entity)))
-    : STAGE_GROUPS;
+  const pageAccessLevel = (pageKey) => {
+    if (isAdminForProduction) return "edit";
+    if (!myRoles.includes("production")) return "edit";
+    return productionAccessLevel(myProductionAccess, entity, pageKey, false);
+  };
+  const hasAnyPageAccess = STAGE_GROUPS.some((g) => !g.special && pageAccessLevel(g.key) !== "none");
+  let visibleStageGroups = STAGE_GROUPS.filter((g) => (g.special ? hasAnyPageAccess : pageAccessLevel(g.key) !== "none"));
   if (canSeeSub) visibleStageGroups = visibleStageGroups.filter((g) => g.special || canSeeSub(g.key));
   if (!stageKey) {
     return h("div", null,
@@ -9910,17 +10368,16 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
-    myRoles, mySupplierScope, onBack: () => setStageKey(null), deepLink, canEditStage: !canEditSub || canEditSub(group.key) });
+    myRoles, onBack: () => setStageKey(null), deepLink, canEditStage: pageAccessLevel(group.key) === "edit" });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, mySupplierScope, onBack, deepLink, canEditStage }) {
+function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, canEditStage }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
   const [showAdd, setShowAdd] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
   const [viewMode, setViewMode] = useState("current");
-  const canEditPiece = (p) => canEditStage && (myRoles.includes("admin") || (myRoles.includes("production") && scopeCoversLocation(mySupplierScope, p.currentLocation, entity)));
-  const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
-  const scopeApplies = !myRoles.includes("admin") && mySupplierScope && mySupplierScope.length > 0;
-  const visibleLocations = scopeApplies ? group.locations.filter((loc) => scopeCoversLocation(mySupplierScope, loc, entity)) : group.locations;
+  const canEditPiece = (p) => canEditStage && (myRoles.includes("admin") || myRoles.includes("production"));
+  const statusOnly = myRoles.includes("production") && !myRoles.includes("admin") && !canEditStage;
+  const visibleLocations = group.locations;
   if (!activeLoc) {
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
@@ -10196,7 +10653,7 @@ function FullProductionPage({ pieces }) {
   );
 }
 
-function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) {
+function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers, onClose, onSave }) {
   const [members, setMembers] = useState(() => {
     const base = (access.members && access.members.length) ? access.members : [];
     const baseEmails = new Set(base.map((m) => m.email));
@@ -10205,11 +10662,18 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   });
   const [newEmail, setNewEmail] = useState("");
   const [expandedEmail, setExpandedEmail] = useState(null);
+  const combinedLocationsByEntity = {};
+  Object.keys(productionSuppliers || {}).forEach((en) => {
+    combinedLocationsByEntity[en] = Array.from(new Set([...(productionSuppliers[en] || []), ...((upholsterySuppliers || {})[en] || [])]));
+  });
+  Object.keys(upholsterySuppliers || {}).forEach((en) => {
+    if (!combinedLocationsByEntity[en]) combinedLocationsByEntity[en] = Array.from(new Set(upholsterySuppliers[en] || []));
+  });
   const supplierNameCounts = {};
-  Object.values(productionSuppliers || {}).forEach((names) => (names || []).forEach((n) => { supplierNameCounts[n] = (supplierNameCounts[n] || 0) + 1; }));
+  Object.values(combinedLocationsByEntity).forEach((names) => names.forEach((n) => { supplierNameCounts[n] = (supplierNameCounts[n] || 0) + 1; }));
   const allSupplierOptionsRaw = [];
-  Object.entries(productionSuppliers || {}).forEach(([en, names]) => {
-    (names || []).forEach((n) => {
+  Object.entries(combinedLocationsByEntity).forEach(([en, names]) => {
+    names.forEach((n) => {
       const ambiguous = supplierNameCounts[n] > 1;
       allSupplierOptionsRaw.push(ambiguous ? { value: en + "::" + n, label: n + " (" + en + ")" } : { value: n, label: n });
     });
@@ -10217,6 +10681,14 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
   const seenSupplierValues = new Set();
   const allSuppliers = allSupplierOptionsRaw.filter((o) => { if (seenSupplierValues.has(o.value)) return false; seenSupplierValues.add(o.value); return true; });
   const updateMember = (email, patch) => setMembers(members.map((m) => (m.email === email ? { ...m, ...patch } : m)));
+  const setProductionAccess = (email, entity, pageKey, level) => {
+    setMembers(members.map((m) => {
+      if (m.email !== email) return m;
+      const current = m.productionAccess || {};
+      const nextEntity = { ...(current[entity] || {}), [pageKey]: level };
+      return { ...m, productionAccess: { ...current, [entity]: nextEntity } };
+    }));
+  };
   const memberRoles = (m) => m.roles && m.roles.length ? m.roles : (m.role ? [m.role] : ["viewer"]);
   const addMember = () => {
     const e = newEmail.trim().toLowerCase();
@@ -10314,11 +10786,25 @@ function RolesManagementModal({ access, productionSuppliers, onClose, onSave }) 
             h("input", { type: "checkbox", checked: !!m.receivesAllNotifications, onChange: () => updateMember(m.email, { receivesAllNotifications: !m.receivesAllNotifications }), style: { display: "none" } }),
             h(Emoji, { size: 13 }, "\u{1F514}"), "\u064A\u0633\u062A\u0642\u0628\u0644 \u0643\u0644 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0632\u064A \u0627\u0644\u0645\u062F\u064A\u0631)"
           ) : null,
-          (((m.permittedTabs || []).includes("production-board") || (m.permittedTabs || []).includes("pricing")) || roles.includes("supplier")) ? h(React.Fragment, null,
+          ((m.permittedTabs || []).includes("pricing") || roles.includes("supplier")) ? h(React.Fragment, null,
             h("div", { style: { fontSize: 11, color: COLORS.muted, marginBottom: 4 } }, roles.includes("supplier") ? "\u062D\u062F\u062F\u064A \u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0644\u064A \u0647\u064A\u0634\u0648\u0641 \u0642\u0637\u0639\u0647 \u0628\u0633 (\u0645\u0648\u0631\u062F \u0648\u0627\u062D\u062F \u0644\u0644\u062D\u0633\u0627\u0628 \u062F\u0647)" : "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0624\u064A\u0629 \u0628\u064A\u0627\u0646\u0627\u062A\u0647\u0645 \u0641\u064A \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0648\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A (\u0627\u062A\u0631\u0643\u064A\u0647 \u0641\u0627\u0631\u063A\u064B\u0627 \u0644\u0625\u0638\u0647\u0627\u0631 \u0643\u0644 \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646)"),
             h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((opt) =>
               h("label", { key: opt.value, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(opt.value) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(opt.value) ? COLORS.goldSoft : "#fff" } },
                 h("input", { type: "checkbox", checked: (m.supplierScope || []).includes(opt.value), onChange: () => toggleScope(m.email, opt.value), style: { display: "none" } }), opt.label)
+            ))
+          ) : null,
+          (roles.includes("production") && !roles.includes("admin") && !isOwnerRow) ? h("div", { style: { marginBottom: 12 } },
+            h("div", { style: { fontSize: 11, fontWeight: 700, color: COLORS.muted, marginBottom: 6 } }, "\u0635\u0644\u0627\u062D\u064A\u0627\u062A \u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062A\u0635\u0646\u064A\u0639 \u2014 \u0645\u0635\u0631/\u0627\u0644\u062F\u0645\u0627\u0645 \u0645\u0646\u0641\u0635\u0644\u064A\u0646, \u062D\u062F\u062F\u064A \u0644\u0643\u0644 \u0635\u0641\u062D\u0629 \u0645\u0634\u0627\u0647\u062F\u0629 \u0623\u0648 \u062A\u062D\u0631\u064A\u0631"),
+            h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } }, Object.entries(PRODUCTION_ENTITY_PAGES).map(([en, pages]) =>
+              h("div", { key: en, style: { border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 8, background: "#fff" } },
+                h("div", { style: { fontSize: 12, fontWeight: 700, marginBottom: 6 } }, "\u062A\u0635\u0646\u064A\u0639 " + en),
+                pages.map((pg) => h("div", { key: pg.key, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 6 } },
+                  h("span", { style: { fontSize: 11.5, color: COLORS.ink } }, pg.label),
+                  h("select", { value: (m.productionAccess && m.productionAccess[en] && m.productionAccess[en][pg.key]) || "none", onChange: (e) => setProductionAccess(m.email, en, pg.key, e.target.value), style: { fontSize: 11, padding: "3px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}` } },
+                    ACCESS_LEVEL_OPTIONS.map((op) => h("option", { key: op.value, value: op.value }, op.label))
+                  )
+                ))
+              )
             ))
           ) : null,
           roles.includes("admin") || isOwnerRow ? h("p", { style: { fontSize: 11.5, color: COLORS.muted, margin: 0 } }, "🔓 عندها/عنده كل الأقسام تلقائي") : h(React.Fragment, null,
