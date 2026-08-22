@@ -103,7 +103,7 @@ const body = { fontFamily: "'IBM Plex Sans Arabic', sans-serif" };
 const ORDER_CATEGORIES = ["\u0643\u0646\u0628", "\u0633\u062A\u0627\u0626\u0631", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0645\u0637\u0627\u0628\u062E", "\u063A\u0631\u0641 \u0646\u0648\u0645", "\u0633\u0641\u0631\u0629", "\u0623\u062E\u0631\u0649"];
 const MATERIAL_TYPES = ["\u0642\u0645\u0627\u0634", "\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637", "\u0645\u062D\u0631\u0643\u0627\u062A \u0643\u0647\u0631\u0628\u0627", "\u0623\u062E\u0631\u0649"];
 const MOTOR_TYPES = ["\u0645\u062D\u0631\u0643\u0627\u062A \u0643\u0647\u0631\u0628\u0627"];
-const QUOTE_MANUFACTURING_TYPES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F", "\u0646\u062C\u0627\u0631\u0629 + \u062F\u0647\u0627\u0646 + \u062A\u0646\u062C\u064A\u062F", "\u062E\u0627\u0645\u0627\u062A + \u062A\u0635\u0646\u064A\u0639", "\u0646\u062C\u0627\u0631\u0629 + \u062A\u0646\u062C\u064A\u062F"];
+const QUOTE_MANUFACTURING_TYPES = ["\u0646\u062C\u0627\u0631\u0629", "\u062F\u0647\u0627\u0646", "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u0641\u0635\u064A\u0644", "\u0646\u062C\u0627\u0631\u0629 + \u062F\u0647\u0627\u0646 + \u062A\u0646\u062C\u064A\u062F", "\u062E\u0627\u0645\u0627\u062A + \u062A\u0635\u0646\u064A\u0639", "\u0646\u062C\u0627\u0631\u0629 + \u062A\u0646\u062C\u064A\u062F"];
 const UNITS = ["\u0645\u062A\u0631", "\u0645\xB2", "\u0642\u0637\u0639\u0629", "\u0644\u0641\u0629", "\u0644\u0648\u062D", "\u0643\u062C\u0645"];
 const PIECE_UNITS = ["\u0633\u0645", "\u0645"];
 const MEASURED_TYPES = ["\u0631\u062E\u0627\u0645", "\u0632\u062C\u0627\u062C", "\u0628\u0648\u0631\u0633\u0644\u064A\u0646", "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637"];
@@ -226,6 +226,12 @@ function compressImage(file, maxDim = 700, quality = 0.55) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+function withTimeout(promise, ms) {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+  ]);
 }
 async function uploadToStorage(file, folder) {
   const safeName = (file.name || "file").replace(/[^\w.\-\u0600-\u06FF]+/g, "_");
@@ -1439,7 +1445,7 @@ function App() {
   };
   const syncPublicTracking = (order, piecesSnapshot) => {
     if (!order || !order.id || !order.clientName) return;
-    const matching = (piecesSnapshot || productionPieces).filter((p) => p.customerName === order.clientName && (!p.customerDeliveryDate || !order.deliveryDate || p.customerDeliveryDate === order.deliveryDate));
+    const matching = (piecesSnapshot || productionPieces).filter((p) => p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
     const payload = {
       clientName: order.clientName || "",
       category: order.category || "",
@@ -2856,11 +2862,11 @@ function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
     }
     setBusy(true);
     try {
-      const attachment = await fileToAttachment(f, folder || "files");
+      const attachment = await withTimeout(fileToAttachment(f, folder || "files"), 3e4);
       onChange(attachment);
     } catch (err) {
       console.error(err);
-      setWarning("\u062A\u0639\u0630\u0631 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641: " + (err && err.message ? err.message : "\u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641. \u062C\u0631\u0651\u0628\u064A \u062A\u0627\u0646\u064A \u0623\u0648 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A."));
+      setWarning(err && err.message === "timeout" ? "\u0627\u0644\u0631\u0641\u0639 \u0623\u062E\u0630 \u0648\u0642\u062A\u064B\u0627 \u0637\u0648\u064A\u0644\u0627\u064B \u062C\u062F\u064B\u0627 \u0648\u0644\u0645 \u064A\u0643\u062A\u0645\u0644 \u2014 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0623\u0648 \u0623\u0646 \u062E\u062F\u0645\u0629 \u0627\u0644\u062A\u062E\u0632\u064A\u0646 \u0645\u0641\u0639\u0651\u0644\u0629\u060C \u0648\u062D\u0627\u0648\u0644\u064A \u062A\u0627\u0646\u064A." : "\u062A\u0639\u0630\u0631 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641: " + (err && err.message ? err.message : "\u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641. \u062C\u0631\u0651\u0628\u064A \u062A\u0627\u0646\u064A \u0623\u0648 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A."));
     } finally {
       setBusy(false);
     }
@@ -2873,7 +2879,7 @@ function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const [fCategory, setFCategory] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fTag, setFTag] = useState("");
-  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -3066,7 +3072,7 @@ function WarrantyRequestPage({ request: r, members, emailToName, onUpdate, onBac
     try {
       const list = Array.from(fileList);
       const attachments = [];
-      for (const file of list) attachments.push(await fileToAttachment(file, "warranty-photos"));
+      for (const file of list) attachments.push(await withTimeout(fileToAttachment(file, "warranty-photos"), 3e4));
       onUpdate({ photos: [...photos, ...attachments] });
     } finally {
       setBusy(false);
@@ -3331,7 +3337,7 @@ function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onBack }) 
     try {
       const list = Array.from(fileList);
       const attachments = [];
-      for (const file of list) attachments.push(await fileToAttachment(file, "employee-followup-media"));
+      for (const file of list) attachments.push(await withTimeout(fileToAttachment(file, "employee-followup-media"), 3e4));
       setMedia((m) => [...m, ...attachments]);
     } finally {
       setBusy(false);
@@ -3548,7 +3554,7 @@ function buildAssistantAnswer(q, ctx) {
     const code = codeMatch[0].toUpperCase().replace(/^AK-?/, "AK-");
     const ord = active.find((o) => (o.orderCode || "").toUpperCase() === code);
     if (!ord) return "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631 \u0628\u0627\u0644\u0643\u0648\u062F " + code + ".";
-    const ordPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (ord.clientName || "").trim() && (!p.customerDeliveryDate || !ord.deliveryDate || p.customerDeliveryDate === ord.deliveryDate));
+    const ordPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (ord.clientName || "").trim() && (ord.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === ord.deliveryDate) : !p.customerDeliveryDate));
     return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + computeOrderPiecesStatusLabel(ordPieces, orderStatusLabel(ord)) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || (emailToName && emailToName[ord.createdBy]) || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
   }
   if (has("متأخر", "اتأخر", "تأخير") && has("تصنيع", "قطعة", "قطع", "إنتاج", "مصنع")) {
@@ -3798,7 +3804,7 @@ const REPORT_SOURCES = {
       { key: "engineerName", label: "\u0627\u0644\u0645\u0647\u0646\u062F\u0633" },
       { key: "enteredAt", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0636\u0627\u0641\u0629", fmt: (v) => v ? v.slice(0, 10) : "" },
       { key: "deliveryDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645" },
-      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => (p.customerName || "").trim() === (row.clientName || "").trim() && (!p.customerDeliveryDate || !row.deliveryDate || p.customerDeliveryDate === row.deliveryDate)), orderStatusLabel(row)) },
+      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => (p.customerName || "").trim() === (row.clientName || "").trim() && (row.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === row.deliveryDate) : !p.customerDeliveryDate)), orderStatusLabel(row)) },
       { key: "approved", label: "\u0645\u0639\u062A\u0645\u062F\u061F", fmt: (v) => v ? "\u0646\u0639\u0645" : "\u0644\u0627" },
       { key: "sellingPrice", label: "\u0627\u0644\u0633\u0639\u0631" },
       { key: "amountPaid", label: "\u0627\u0644\u0645\u062F\u0641\u0648\u0639" },
@@ -4305,7 +4311,7 @@ function TechnicalOfficeDrawingsModal({ order, onUpdate, onClose }) {
     try {
       const list = Array.from(fileList);
       const attachments = [];
-      for (const file of list) attachments.push(await fileToAttachment(file, "technical-office-drawings"));
+      for (const file of list) attachments.push(await withTimeout(fileToAttachment(file, "technical-office-drawings"), 3e4));
       onUpdate({ technicalOfficeFiles: [...files, ...attachments] });
     } finally {
       setBusy(false);
@@ -4843,7 +4849,7 @@ function EngineeringReportsPage({ records, designerReports, engineeringReference
   const submitReference = async () => {
     if (!refTitle.trim()) return;
     let att = null;
-    if (refFile) att = await fileToAttachment(refFile, "engineering-reference");
+    if (refFile) att = await withTimeout(fileToAttachment(refFile, "engineering-reference"), 3e4);
     onAddReference({ title: refTitle.trim(), category: refCategory.trim(), notes: refNotes.trim(), file: att });
     setRefTitle(""); setRefCategory(""); setRefNotes(""); setRefFile(null);
   };
@@ -4978,7 +4984,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
     try {
       const list = Array.from(fileList);
       const attachments = [];
-      for (const file of list) attachments.push(await fileToAttachment(file, "revision-media"));
+      for (const file of list) attachments.push(await withTimeout(fileToAttachment(file, "revision-media"), 3e4));
       setShowroomSendBackMedia((m) => [...m, ...attachments]);
     } finally {
       setSendBackMediaBusy(false);
@@ -4996,7 +5002,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
       const files = Array.from(fileList);
       const attachments = [];
       for (const file of files) {
-        const att = await fileToAttachment(file, "pre-approval-showroom");
+        const att = await withTimeout(fileToAttachment(file, "pre-approval-showroom"), 3e4);
         if (file.type && file.type.startsWith("video/")) att.kind = "video";
         attachments.push(att);
       }
@@ -5019,7 +5025,7 @@ function PreApprovalRecordPage({ record: r, myEmail, myDisplayName, myRoles, isA
   const setEngineeringStatus = (status) => onUpdate({ engineeringStatus: status });
   const uploadEngineeringFile = async (file) => {
     if (!file) return;
-    const att = await fileToAttachment(file, "pre-approval-engineering");
+    const att = await withTimeout(fileToAttachment(file, "pre-approval-engineering"), 3e4);
     const patch = { engineeringFile: att };
     if (r.engineeringFile) {
       patch.engineeringFileHistory = [...(r.engineeringFileHistory || []), { ...r.engineeringFile, replacedAt: now() }];
@@ -5263,7 +5269,7 @@ function TechnicalReviewControls({ onApprove, onSendBack, sendLabel, approveLabe
     try {
       const list = Array.from(fileList);
       const attachments = [];
-      for (const file of list) attachments.push(await fileToAttachment(file, "revision-media"));
+      for (const file of list) attachments.push(await withTimeout(fileToAttachment(file, "revision-media"), 3e4));
       setMedia((m) => [...m, ...attachments]);
     } finally {
       setBusy(false);
@@ -5357,7 +5363,7 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
       h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
       h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate)), orderStatusLabel(o))),
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate)), orderStatusLabel(o))),
       o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
     )
   );
@@ -5413,11 +5419,13 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
   const [query, setQuery] = useState("");
   const [fAvailability, setFAvailability] = useState("");
   const [fCompanyFilter, setFCompanyFilter] = useState("");
+  const [selectedKeys, setSelectedKeys] = useState([]);
+  const [bulkEntity, setBulkEntity] = useState("");
   const byType = {};
   orders.forEach((o) => {
     (o.materials || []).forEach((m) => {
       const t = m.type || "\u0623\u062E\u0631\u0649";
-      (byType[t] = byType[t] || []).push({ ...m, orderId: o.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate || "", manufacturingLocation: o.manufacturingLocation || "" });
+      (byType[t] = byType[t] || []).push({ ...m, orderId: o.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate || "", manufacturingLocation: m.manufacturingLocation || o.manufacturingLocation || "" });
     });
   });
   const types = Object.keys(byType).sort((a, b) => a.localeCompare(b, "ar"));
@@ -5444,6 +5452,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
   }
   const isMeasured = MEASURED_TYPES.includes(selectedType);
   const isCoded = CODED_TYPES.includes(selectedType);
+  const isQmash = selectedType === "قماش";
   const availabilityOptions = Array.from(new Set(byType[selectedType].map((m) => m.availability).filter(Boolean)));
   const companyOptions = Array.from(new Set(byType[selectedType].map((m) => m.companyName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const filtered = byType[selectedType].filter((m) => {
@@ -5455,6 +5464,42 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
     if (fCompanyFilter && m.companyName !== fCompanyFilter) return false;
     return true;
   });
+  const rowKey = (m) => m.orderId + "::" + m.id;
+  const toggleKey = (k) => setSelectedKeys((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
+  const filteredKeys = filtered.map(rowKey);
+  const allChecked = isQmash && filteredKeys.length > 0 && filteredKeys.every((k) => selectedKeys.includes(k));
+  const toggleAll = () => setSelectedKeys(allChecked ? [] : filteredKeys);
+  const applyBulkEntity = () => {
+    if (!bulkEntity || !onUpdateOrder) return;
+    const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("::")[0])));
+    orderIds.forEach((oid) => {
+      const order = orders.find((o) => o.id === oid);
+      if (!order) return;
+      const materials = (order.materials || []).map((mat) => selectedKeys.includes(oid + "::" + mat.id) ? { ...mat, manufacturingLocation: bulkEntity } : mat);
+      onUpdateOrder(oid, { materials });
+    });
+    setSelectedKeys([]);
+    setBulkEntity("");
+  };
+  const handleLocationChange = (m, newVal) => {
+    if (!onUpdateOrder) return;
+    const applyAll = window.confirm("تطبيق \"" + (newVal || "بدون تحديد") + "\" على كل أكواد \"" + (m.clientName || "") + "\" في " + selectedType + " كمان؟\n\nموافق = كل الأكواد\nإلغاء = هذا الكود فقط");
+    if (applyAll) {
+      orders.forEach((o) => {
+        if ((o.clientName || "").trim() !== (m.clientName || "").trim()) return;
+        const mats = o.materials || [];
+        if (!mats.some((mat) => (mat.type || "") === selectedType)) return;
+        const updated = mats.map((mat) => (mat.type || "") === selectedType ? { ...mat, manufacturingLocation: newVal } : mat);
+        onUpdateOrder(o.id, { materials: updated });
+      });
+    } else {
+      const order = orders.find((o) => o.id === m.orderId);
+      if (!order) return;
+      const materials = (order.materials || []).map((mat) => mat.id === m.id ? { ...mat, manufacturingLocation: newVal } : mat);
+      onUpdateOrder(m.orderId, { materials });
+    }
+  };
+  const thStyle = { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" };
   const exportExcel = () => {
     const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629"]];
     filtered.forEach((m) => rows.push([m.clientName, m.deliveryDate, normalizeDigits(m.materialName || m.description || m.companyName || ""), materialDetailStr(m), m.orderDate || "", m.leadTimeDays || "", m.availability || ""]));
@@ -5489,13 +5534,31 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
       h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A"), companyOptions.map((c) => h("option", { key: c, value: c }, c))
     ) : null,
     filtered.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
+    isQmash && filteredKeys.length > 0 ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, margin: "4px 0 8px" } }, "غيّري جهة كود واحد وهيسألك تطبقها على باقي أكواد نفس العميل ولا لأ \u2014 أو ابحثي باسم عميل وحدّدي الكل عشان تغيّري جهة كل أكواده دفعة واحدة") : null,
+    isQmash && selectedKeys.length > 0 ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, flexWrap: "wrap" } },
+      h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.ink } }, "محدد: " + selectedKeys.length),
+      h("select", { value: bulkEntity, onChange: (e) => setBulkEntity(e.target.value), style: { fontSize: 12.5, padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}` } },
+        h("option", { value: "" }, "اختاري الجهة"), ENTITIES.map((en) => h("option", { key: en, value: en }, en))
+      ),
+      h("button", { disabled: !bulkEntity, onClick: applyBulkEntity, style: { background: bulkEntity ? COLORS.teal : COLORS.border, color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: bulkEntity ? "pointer" : "default" } }, "تطبيق على المحدد"),
+      h("button", { onClick: () => setSelectedKeys([]), style: { background: "transparent", border: "none", color: COLORS.muted, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" } }, "إلغاء التحديد")
+    ) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 620 } },
-        h("thead", null, h("tr", null, (selectedType === "\u0642\u0645\u0627\u0634" ? ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", ""] : ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", ""]).map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+        h("thead", null, h("tr", null,
+          isQmash ? h("th", { key: "chk", style: thStyle }, h("input", { type: "checkbox", checked: allChecked, onChange: toggleAll, style: { cursor: "pointer" } })) : null,
+          h("th", { key: "client", style: thStyle }, "\u0627\u0644\u0639\u0645\u064A\u0644"),
+          h("th", { key: "desc", style: thStyle }, "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641"),
+          h("th", { key: "details", style: thStyle }, "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644"),
+          h("th", { key: "status", style: thStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
+          isQmash ? h("th", { key: "loc", style: thStyle }, "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0635\u0646\u064A\u0639") : null,
+          h("th", { key: "arrow", style: thStyle }, "")
+        )),
         h("tbody", null, filtered.map((m, idx) => {
           const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold);
           return h("tr", { key: idx, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            isQmash ? h("td", { style: { padding: "9px 10px" } }, h("input", { type: "checkbox", checked: selectedKeys.includes(rowKey(m)), onChange: () => toggleKey(rowKey(m)), style: { cursor: "pointer" } })) : null,
             h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, m.clientName),
             h("td", { style: { padding: "9px 10px", maxWidth: 180, whiteSpace: "normal" } }, normalizeDigits(m.materialName || m.description || (isCoded ? m.companyName : "") || "\u2014")),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, materialDetailStr(m)),
@@ -5506,8 +5569,8 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
             }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), (STONE_TYPES_WITH_CUSTOM_AVAILABILITY.includes(selectedType) ? STONE_AVAILABILITY_OPTIONS : AVAILABILITY_OPTIONS).map((a) => h("option", { key: a, value: a }, a))) : (m.availability ? h("span", { style: { fontSize: 10.5, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability) : "\u2014")),
             selectedType === "\u0642\u0645\u0627\u0634" ? h("td", { style: { padding: "6px 10px", whiteSpace: "nowrap" } }, onUpdateOrder && m.orderId ? h("select", {
               value: m.manufacturingLocation || "",
-              onChange: (e) => onUpdateOrder(m.orderId, { manufacturingLocation: e.target.value }),
-              title: "\u062D\u062F\u062F\u064A \u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F \u0639\u0634\u0627\u0646 \u062A\u0638\u0647\u0631 \u0627\u0644\u062E\u0627\u0645\u0629 \u0641\u064A \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631. \u0647\u0630\u0627 \u0627\u0644\u062A\u062D\u062F\u064A\u062F \u0647\u0648 \u0627\u0644\u0645\u0639\u062A\u0645\u062F \u0627\u0644\u0648\u062D\u064A\u062F \u0644\u0638\u0647\u0648\u0631 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0641\u064A \u0635\u0641\u062D\u0629 \u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631\u060C \u0648\u0645\u0628\u064A\u062A\u063A\u064A\u0631 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u062D\u0633\u0628 \u0627\u0644\u062A\u0648\u0632\u064A\u0639",
+              onChange: (e) => handleLocationChange(m, e.target.value),
+              title: "جهة تصنيع هذا الكود بس \u2014 هتتسأل لو حابة تطبقيها على باقي أكواد نفس العميل كمان",
               style: { fontSize: 10.5, fontWeight: 700, color: m.manufacturingLocation ? "#fff" : COLORS.teal, background: m.manufacturingLocation ? COLORS.teal : COLORS.bg, border: `1px solid ${COLORS.teal}`, borderRadius: 8, padding: "4px 6px", cursor: "pointer" }
             }, h("option", { value: "" }, "\u062A\u062D\u062F\u064A\u062F"), ENTITIES.map((en) => h("option", { key: en, value: en }, en))) : null) : null,
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, onOpenOrder && m.orderId ? h("button", { onClick: () => onOpenOrder(m.orderId), title: "\u0641\u062A\u062D \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644 \u0644\u0644\u0623\u0648\u0631\u062F\u0631 \u062F\u0647", style: { background: "transparent", border: "none", cursor: "pointer", padding: 4 } }, h(Emoji, { size: 16, color: COLORS.teal }, "\u2190")) : null)
@@ -5517,6 +5580,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
     )
   );
 }
+
 function TopRequestedMaterialsPage({ orders }) {
   const [query, setQuery] = useState("");
   const [fType, setFType] = useState("");
@@ -5759,13 +5823,13 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [fArrivalStatus, setFArrivalStatus] = useState("");
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [selectedShipments, setSelectedShipments] = useState([]);
-  const distributedToEgypt = (o) => o.manufacturingLocation === "\u0645\u0635\u0631";
   const rows = [];
   orders.forEach((o) => {
-    if (!distributedToEgypt(o)) return;
     (o.materials || []).forEach((m) => {
       if (m.type !== "\u0642\u0645\u0627\u0634") return;
       if (m.pieceCategory && m.pieceCategory !== "\u0643\u0646\u0628") return;
+      const matLoc = m.manufacturingLocation || o.manufacturingLocation || "";
+      if (matLoc !== "\u0645\u0635\u0631") return;
       rows.push({ orderId: o.id, materialId: m.id, clientName: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", deliveryDate: o.deliveryDate, itemCode: m.itemCode, companyName: m.companyName, quantity: m.quantity, unit: m.unit || "\u0645\u062A\u0631", availability: m.availability, fabricShippingStatus: m.fabricShippingStatus, fabricShippingDate: m.fabricShippingDate, fabricArrivalStatus: m.fabricArrivalStatus, fabricArrivalDate: m.fabricArrivalDate });
     });
   });
@@ -5908,7 +5972,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
         const media = (shipmentMedia && shipmentMedia[date]) || {};
         const addShipmentMedia = async (key, file, multiple) => {
           if (!file || readOnly) return;
-          const att = await fileToAttachment(file, "fabric-shipments");
+          const att = await withTimeout(fileToAttachment(file, "fabric-shipments"), 3e4);
           if (multiple) {
             onUpdateShipmentMedia(date, { [key]: [...(media[key] || []), att] });
           } else {
@@ -6404,7 +6468,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   const exportFullBackup = () => {
     const orderRows = [["\u0627\u0644\u0642\u0633\u0645", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
     orders.forEach((o) => {
-      const oPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+      const oPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
       orderRows.push([o.category || "", o.clientName || "", o.dateReceived || "", o.deliveryDate || "", computeOrderPiecesStatusLabel(oPieces, orderStatusLabel(o)), o.fabricShippingStatus || ""]);
     });
     const pieceRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639/\u0627\u0644\u0645\u0648\u0642\u0639", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
@@ -6780,7 +6844,7 @@ function CustomerTimelineTablePage({ orders, pieces, onOpenOrder, hideHeader }) 
     return dateStr + (days !== null && days >= 0 ? " (" + days + " \u064A\u0648\u0645)" : "");
   };
   const rows = orders.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).map((o) => {
-    const matchingPieces = pieces.filter((p) => norm(p.customerName) === norm(o.clientName) && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+    const matchingPieces = pieces.filter((p) => norm(p.customerName) === norm(o.clientName) && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
     const totalPieces = matchingPieces.length;
     const readyCount = matchingPieces.filter(pieceIsReady).length;
     let productionDate = null;
@@ -6862,7 +6926,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   const [fStatus, setFStatus] = useState("");
   const [fFabric, setFFabric] = useState("");
   const [fTag, setFTag] = useState("");
-  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (!p.customerDeliveryDate || !o.deliveryDate || p.customerDeliveryDate === o.deliveryDate));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -7641,7 +7705,7 @@ function BrandingModal({ branding, onClose, onSave }) {
     if (!file) return;
     setBusy(true);
     try {
-      const att = await fileToAttachment(file, "branding");
+      const att = await withTimeout(fileToAttachment(file, "branding"), 3e4);
       setLogo(att.dataUrl);
     } catch (err) {
       console.error(err);
@@ -7652,7 +7716,7 @@ function BrandingModal({ branding, onClose, onSave }) {
   return /* @__PURE__ */ React.createElement(Modal, { title: "\u0634\u0639\u0627\u0631 \u0648\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0634\u0639\u0627\u0631"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } }, logo ? /* @__PURE__ */ React.createElement("img", { src: logo, alt: "logo", style: { width: 56, height: 56, borderRadius: 14, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 56, height: 56, borderRadius: 14, background: COLORS.goldSoft, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 24 }, "\u{1F528}")), /* @__PURE__ */ React.createElement("label", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "12px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0627\u062E\u062A\u064A\u0627\u0631 \u0635\u0648\u0631\u0629", /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", onChange: handleFile, style: { display: "none" } })), logo && /* @__PURE__ */ React.createElement("button", { onClick: () => setLogo(null), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: "Al Khobar Orders", dir: "ltr" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0636\u0631\u064A\u0628\u064A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A \u2014 \u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0645\u062A\u0648\u0627\u0641\u0642\u0629 \u0645\u0639 \u0641\u0627\u062A\u0648\u0631\u0629)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: vatNumber, onChange: (e) => setVatNumber(e.target.value), placeholder: "3xxxxxxxxxxxxx03", dir: "ltr" }), /* @__PURE__ */ React.createElement("button", { disabled: !name.trim(), style: primaryBtn(!name.trim()), onClick: () => onSave({ name: name.trim(), logo, vatNumber: vatNumber.trim() }) }, "\u062D\u0641\u0638"));
 }
 function OrderTimelinePage({ order, pieces, onBack }) {
-  const matchingPieces = pieces.filter((p) => p.customerName === order.clientName && (!p.customerDeliveryDate || !order.deliveryDate || p.customerDeliveryDate === order.deliveryDate));
+  const matchingPieces = pieces.filter((p) => p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
   const totalPieces = matchingPieces.length;
   const readyCount = matchingPieces.filter(pieceIsReady).length;
   const deliveredCount = matchingPieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
@@ -7991,12 +8055,14 @@ function QuotesTab({ customerName, customerOrders, allQuotes, allApprovals, onAd
         h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, statusBadge(q)),
         h("td", { style: { padding: "6px 8px", maxWidth: 160 } }, q.notes || "\u2014"),
         h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, q.quoteImage ? h("a", { href: q.quoteImage.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.teal, textDecoration: "none" } }, "\u{1F5BC}\uFE0F \u0639\u0631\u0636") : "\u2014"),
-        h("td", { style: { padding: "6px 8px" } }, h("button", { onClick: () => onEditClick(q), style: { background: "transparent", border: "none", cursor: "pointer", padding: "0 4px" } }, h(Emoji, { size: 14, color: COLORS.muted }, "\u270F\uFE0F"))),
+        h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } }, h("div", { style: { display: "flex", gap: 4 } },
+          h("button", { onClick: () => onEditClick(q), style: { background: "transparent", border: "none", cursor: "pointer", padding: "0 4px" } }, h(Emoji, { size: 14, color: COLORS.muted }, "✏️")),
+          h("button", { onClick: () => { if (window.confirm("هتحذفي عرض السعر ده؟ مينفعش ترجعيه تاني.")) onDeleteQuote(q.orderId, q.id); }, style: { background: "transparent", border: "none", cursor: "pointer", padding: "0 4px" } }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️"))
+        )),
         showActions ? h("td", { style: { padding: "6px 8px", whiteSpace: "nowrap" } },
           h("div", { style: { display: "flex", gap: 6 } },
             h("button", { onClick: () => onApproveClick(q), style: { background: COLORS.gold, color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "✅ اعتماد"),
-            h("button", { onClick: () => onReject(q.orderId, q.id), style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "❌ رفض"),
-            h("button", { onClick: () => onDeleteQuote(q.orderId, q.id), style: { background: "transparent", border: "none", cursor: "pointer", padding: "0 4px" } }, h(Emoji, { size: 14, color: COLORS.muted }, "🗑️"))
+            h("button", { onClick: () => onReject(q.orderId, q.id), style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" } }, "❌ رفض")
           )
         ) : null
       )))
@@ -8395,7 +8461,7 @@ function AddMaterialModal({ onClose, onSave, existing }) {
     if (!file) return;
     setBusy(true);
     try {
-      const att = await fileToAttachment(file, "materials");
+      const att = await withTimeout(fileToAttachment(file, "materials"), 3e4);
       setPieceImage(att.dataUrl);
     } catch (err) {
       console.error(err);
@@ -8505,7 +8571,7 @@ function AddPieceModal({ onClose, onSave, existing, materialType }) {
     if (!file) return;
     setBusy(true);
     try {
-      const att = await fileToAttachment(file, "pieces");
+      const att = await withTimeout(fileToAttachment(file, "pieces"), 3e4);
       setImage(att.dataUrl);
     } catch (err) {
       console.error(err);
@@ -8589,7 +8655,7 @@ function CustomerGalleryPage({ order, onUpdateOrder, onBack }) {
       const files = Array.from(fileList);
       const attachments = [];
       for (const file of files) {
-        const att = await fileToAttachment(file, "gallery");
+        const att = await withTimeout(fileToAttachment(file, "gallery"), 3e4);
         if (file.type && file.type.startsWith("video/")) att.kind = "video";
         attachments.push(att);
       }
@@ -9565,7 +9631,7 @@ function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding
     ) : null,
     (() => {
       const normName = (s) => (s || "").trim().replace(/\s+/g, " ");
-      const orderPieces = (pieces || []).filter((p) => normName(p.customerName) === normName(order.clientName) && (!order.deliveryDate || !p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate));
+      const orderPieces = (pieces || []).filter((p) => normName(p.customerName) === normName(order.clientName) && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
       return h(React.Fragment, null,
         h(SectionHeader, { emoji: "\u{1F9E9}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629" }),
         orderPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0639\u062F" }) :
@@ -10274,7 +10340,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
         const file = e.target.files && e.target.files[0];
         if (!file) return;
         try {
-          const att = await fileToAttachment(file, "production-pieces");
+          const att = await withTimeout(fileToAttachment(file, "production-pieces"), 3e4);
           updateField("image", att);
         } catch (err) { console.error(err); }
       } })
