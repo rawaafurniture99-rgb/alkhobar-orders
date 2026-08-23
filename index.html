@@ -338,6 +338,24 @@ function orderStatusLabel(order) {
   }
   return "\u0644\u0645 \u064A\u0628\u062F\u0623 \u0627\u0644\u0625\u0646\u062A\u0627\u062C";
 }
+function pieceMatchesOrder(p, order, allOrders) {
+  if (p.orderId) return p.orderId === order.id;
+  const normName = (s) => (s || "").trim();
+  if (normName(p.customerName) !== normName(order.clientName)) return false;
+  const dateOk = order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate;
+  if (!dateOk) return false;
+  if (allOrders && p.pieceType) {
+    const siblings = allOrders.filter((o2) => o2.id !== order.id && !p.orderId && normName(o2.clientName) === normName(order.clientName) && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o2.deliveryDate) : !p.customerDeliveryDate));
+    if (siblings.length > 0) {
+      const typeMatches = (o2) => (o2.category || "").includes(p.pieceType) || (o2.title || "").includes(p.pieceType);
+      const thisMatches = typeMatches(order);
+      const siblingMatches = siblings.some(typeMatches);
+      if (thisMatches && !siblingMatches) return true;
+      if (!thisMatches && siblingMatches) return false;
+    }
+  }
+  return true;
+}
 function orderPieceStatusText(p) {
   return p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : (p.status || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621");
 }
@@ -424,7 +442,7 @@ function pieceCostTotal(piece) {
   if (ae && ae.amount) { if (ae.currency === "\u062C\u0646\u064A\u0647") egp += Number(ae.amount); else sar += Number(ae.amount); }
   return { perUnitSAR: sar, perUnitEGP: egp, totalSAR: sar * qty, totalEGP: egp * qty };
 }
-function computeOrderCost(order, pieces) {
+function computeOrderCost(order, pieces, allOrders) {
   let materialsCost = (order.materials || []).reduce((sum, m) => sum + (Number(m.price) || 0), 0);
   let productionCostSAR = (order.productionQuoteItems || []).filter((it) => (it.currency || "\u0631\u064A\u0627\u0644") === "\u0631\u064A\u0627\u0644").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
   let productionCostEGP = (order.productionQuoteItems || []).filter((it) => it.currency === "\u062C\u0646\u064A\u0647").reduce((sum, it) => sum + (Number(it.price) || 0), 0);
@@ -432,7 +450,7 @@ function computeOrderCost(order, pieces) {
   let fabricCostTotal = 0, adminExpensesTotal = 0, materialsFromStages = 0;
   const stageTotals = { \u0646\u062C\u0627\u0631\u0629: { sar: 0, egp: 0 }, \u062F\u0647\u0627\u0646: { sar: 0, egp: 0 }, \u062A\u0646\u062C\u064A\u062F: { sar: 0, egp: 0 }, \u0627\u0644\u062A\u0641\u0635\u064A\u0644: { sar: 0, egp: 0 }, \u0627\u0633\u062A\u064A\u0644: { sar: 0, egp: 0 }, \u0631\u062E\u0627\u0645: { sar: 0, egp: 0 }, \u0632\u062C\u0627\u062C: { sar: 0, egp: 0 }, "\u0648\u0631\u0642 \u062D\u0627\u0626\u0637": { sar: 0, egp: 0 } };
   const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
-  const orderPieces = pieces ? pieces.filter((p) => norm(p.customerName) === norm(order.clientName)) : [];
+  const orderPieces = (pieces || []).filter((p) => pieceMatchesOrder(p, order, allOrders));
   const exchangeRateEarly = Number(order.exchangeRate) || 0;
   orderPieces.forEach((p) => {
     const costs = p.costs || {};
@@ -851,6 +869,11 @@ function App() {
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [productionDeepLink, setProductionDeepLink] = useState(null);
   const [homeDrilldown, setHomeDrilldown] = useState(null);
+  const [subBackStack, setSubBackStack] = useState([]);
+  const pushSubBack = useCallback((fn) => setSubBackStack((s) => [...s, fn]), []);
+  const popSubBack = useCallback((fn) => setSubBackStack((s) => { const i = s.lastIndexOf(fn); return i === -1 ? s : [...s.slice(0, i), ...s.slice(i + 1)]; }), []);
+  const subNavApi = { push: pushSubBack, pop: popSubBack };
+  useEffect(() => { setSubBackStack([]); }, [tab]);
   const [showBranding, setShowBranding] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
   const [productionPieces, setProductionPieces] = useState([]);
@@ -1235,7 +1258,7 @@ function App() {
       const daysSinceApproval = dayDiff(o.reviewDate, todayStr());
       if (daysSinceApproval === null || daysSinceApproval < 1) return;
       const distKey = o.id + "-dist-" + today;
-      const alreadyDistributed = o.distributionHandled || productionPieces.some((p) => (p.customerName || "").trim() === (o.clientName || "").trim());
+      const alreadyDistributed = o.distributionHandled || productionPieces.some((p) => pieceMatchesOrder(p, o, orders));
       if (!alreadyDistributed && o.distributionLastReminderDate !== today && !dailyReminderSentRef.current.has(distKey)) {
         dailyReminderSentRef.current.add(distKey);
         const ref = ordersColRef().doc(o.id);
@@ -1293,7 +1316,7 @@ function App() {
       if (!o.deliveryDate || o.nearDeliveryNotified || o.archived || nearDeliveryNotifiedSessionRef.current.has(o.id)) return;
       const d = daysUntil(o.deliveryDate);
       if (d === null || d < 1 || d > 5) return;
-      const orderPieces = productionPieces.filter((p) => (p.orderId ? p.orderId === o.id : (p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate))));
+      const orderPieces = productionPieces.filter((p) => pieceMatchesOrder(p, o, orders));
       const alreadyDelivered = orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
       if (alreadyDelivered) {
         nearDeliveryNotifiedSessionRef.current.add(o.id);
@@ -1482,7 +1505,7 @@ function App() {
   };
   const syncPublicTracking = (order, piecesSnapshot) => {
     if (!order || !order.id || !order.clientName) return;
-    const matching = (piecesSnapshot || productionPieces).filter((p) => (p.orderId ? p.orderId === order.id : (p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
+    const matching = (piecesSnapshot || productionPieces).filter((p) => pieceMatchesOrder(p, order, orders));
     const payload = {
       clientName: order.clientName || "",
       category: order.category || "",
@@ -1861,6 +1884,7 @@ function App() {
     isOffline && h("div", { style: { background: COLORS.goldSoft, color: COLORS.gold, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", textAlign: "center" } }, "\u{1F50C} \u0645\u0641\u064A\u0634 \u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u2014 \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0647\u062A\u062A\u062D\u0641\u0638 \u0648\u062A\u062A\u0632\u0627\u0645\u0646 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0644\u0645\u0627 \u0627\u0644\u0646\u062A \u064A\u0631\u062C\u0639"),
     selectedOrder ? h(OrderDetail, {
       order: selectedOrder,
+      orders: activeOrders,
       pieces: productionPieces,
       branding,
       onBack: () => { setSelectedId(null); setSelectedOrderSection(null); },
@@ -1908,12 +1932,13 @@ function App() {
         homeDrilldown.type === "health-check" ? h(SystemHealthCheckPage, { orders, pieces: productionPieces, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); } }) :
         homeDrilldown.type === "escalations" ? h(EscalationHubPage, { escalations, orders: activeOrders, isAdminUser: isOwner || hasRole("admin"), onAdd: addEscalation, onUpdate: updateEscalation, onOpenOrder: (id) => { openOrder(id); }, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "employee-followup" ? h(EmployeeFollowUpPage, { myLogs: myDailyLogs, teamLogs: teamDailyLogs, emailToName, onAdd: addDailyLog, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "legacy-piece-linking" ? h(LegacyPieceLinkingPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "universal-search" ? h(UniversalSearchPage, { orders: activeOrders, pieces: productionPieces, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onOpenCustomer: (name) => { setHomeDrilldown(null); setTab("customers"); setSelectedId(null); setPendingCustomer(name); } }) :
         homeDrilldown.type === "technical-office" ? h(TechnicalOfficeHubPage, { orders: activeOrders, pieces: productionPieces, onUpdate: updateOrder, onUpdatePiece: updateProductionPiece, onBack: () => setHomeDrilldown(null) }) : null
       )
     ) : tab ? h(React.Fragment, null,
       h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
-        h("button", { onClick: () => setTab(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+        h("button", { onClick: () => { const top = subBackStack[subBackStack.length - 1]; if (top) { top(); } else { setTab(null); } }, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { flex: 1 } },
           h("h1", { style: { ...display, fontSize: 21, fontWeight: 700, margin: 0, color: COLORS.ink } }, SECTION_TITLE)
         ),
@@ -1924,19 +1949,19 @@ function App() {
       ),
       h("main", { style: { padding: 16, paddingBottom: 100 } },
         !canSeeTab(tab) ? null : h(React.Fragment, null,
-        tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
-        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder }),
+        tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
+        tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder, onSubNav: subNavApi }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k) }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production") }),
-        tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
+        tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
-        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }),
-        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k) }),
-        tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
-        tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails }),
-        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k) })
+        tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
+        tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k), onSubNav: subNavApi }),
+        tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id, section) => openOrder(id, section), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
+        tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails, onSubNav: subNavApi }),
+        tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k), onSubNav: subNavApi })
         )
       ),
     ) : h("div", { style: { display: "flex", flexDirection: "column", minHeight: "100vh" } },
@@ -2054,7 +2079,7 @@ function App() {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
           if (d === null || d < 1 || d > 5) return false;
-          const orderPieces = productionPieces.filter((p) => (p.orderId ? p.orderId === o.id : (p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate))));
+          const orderPieces = productionPieces.filter((p) => pieceMatchesOrder(p, o, orders));
           if (orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return false;
           return true;
         }).map((o) => o.clientName).filter(Boolean)));
@@ -2153,7 +2178,8 @@ function App() {
               drill("assistant", "assistant"),
               drill("universal-search", "universal-search"),
               drill("escalations", "escalations"),
-              { key: "employee-followup", label: "\u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646", emoji: "\u{1F4DD}", visible: true, onClick: () => setHomeDrilldown({ type: "employee-followup" }) }
+              { key: "employee-followup", label: "\u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646", emoji: "\u{1F4DD}", visible: true, onClick: () => setHomeDrilldown({ type: "employee-followup" }) },
+              { key: "legacy-piece-linking", label: "\u0631\u0628\u0637 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0642\u062F\u064A\u0645\u0629 \u0628\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u0647\u0627", emoji: "\u{1F517}", visible: isOwner || hasRole("admin"), onClick: () => setHomeDrilldown({ type: "legacy-piece-linking" }) }
             ] }
           ];
           return h(React.Fragment, null,
@@ -2916,7 +2942,7 @@ function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const [fCategory, setFCategory] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fTag, setFTag] = useState("");
-  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => pieceMatchesOrder(p, o, orders));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -3363,6 +3389,68 @@ function EscalationHubPage({ escalations, orders, isAdminUser, onAdd, onUpdate, 
     )
   );
 }
+function LegacyPieceLinkingPage({ orders, pieces, onUpdatePiece, onBack }) {
+  const [query, setQuery] = useState("");
+  const unlinked = pieces.filter((p) => !p.orderId);
+  const byCustomer = {};
+  unlinked.forEach((p) => {
+    const key = (p.customerName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
+    (byCustomer[key] = byCustomer[key] || []).push(p);
+  });
+  const ordersForCustomer = (name) => orders.filter((o) => (o.clientName || "").trim() === name);
+  const riskyNames = Object.keys(byCustomer)
+    .filter((name) => ordersForCustomer(name).length >= 2)
+    .filter((name) => !query.trim() || name.includes(query.trim()))
+    .sort((a, b) => a.localeCompare(b, "ar"));
+  const orderLabel = (o) => (o.orderCode ? "[" + o.orderCode + "] " : "") + (o.title || o.category || "\u0628\u062F\u0648\u0646 \u0639\u0646\u0648\u0627\u0646") + (o.deliveryDate ? " \u2014 " + o.deliveryDate : "");
+  const suggestionFor = (p, custOrders) => {
+    const candidateMatches = custOrders.filter((o) => p.pieceType && ((o.category || "").includes(p.pieceType) || (o.title || "").includes(p.pieceType)));
+    return candidateMatches.length === 1 ? candidateMatches[0].id : "";
+  };
+  const totalSuggested = riskyNames.reduce((sum, name) => sum + byCustomer[name].filter((p) => suggestionFor(p, ordersForCustomer(name))).length, 0);
+  const applyAllSuggestions = () => {
+    riskyNames.forEach((name) => {
+      const custOrders = ordersForCustomer(name);
+      byCustomer[name].forEach((p) => {
+        const s = suggestionFor(p, custOrders);
+        if (s) onUpdatePiece({ ...p, orderId: s });
+      });
+    });
+  };
+  return h("div", null,
+    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, "\u0631\u0628\u0637 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0642\u062F\u064A\u0645\u0629 \u0628\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u0647\u0627")
+    ),
+    h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 14, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: 10 } },
+      "\u0647\u0646\u0627 \u0628\u0633 \u0627\u0644\u0639\u0645\u0644\u0627\u0621 \u0627\u0644\u0644\u064A \u0639\u0646\u062F\u0647\u0645 \u0623\u0643\u062A\u0631 \u0645\u0646 \u0623\u0648\u0631\u062F\u0631 \u0648\u0641\u064A\u0647 \u0642\u0637\u0639 \u0642\u062F\u064A\u0645\u0629 \u0645\u0634 \u0645\u0631\u0628\u0648\u0637\u0629 \u0628\u0623\u0648\u0631\u062F\u0631 \u0645\u0639\u064A\u0651\u0646 \u2014 \u062F\u064A \u0627\u0644\u0644\u064A \u0645\u0645\u0643\u0646 \u062A\u062A\u0644\u062E\u0628\u0637 \u062D\u0627\u0644\u062A\u0647\u0627 \u0644\u0648 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0628\u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645 \u0648\u0627\u062D\u062F. \u062D\u062F\u062F\u064A \u0644\u0643\u0644 \u0642\u0637\u0639\u0629 \u0623\u0648\u0631\u062F\u0631\u0647\u0627 \u0627\u0644\u0635\u062D\u064A\u062D \u0645\u0631\u0629 \u0648\u0627\u062D\u062F\u0629 \u0648\u062E\u0644\u0627\u0635 \u062A\u062A\u062D\u0644 \u0627\u0644\u0645\u0634\u0643\u0644\u0629 \u0644\u0644\u0623\u0628\u062F \u0644\u0647\u0630\u0647 \u0627\u0644\u0642\u0637\u0639\u0629."
+    ),
+    totalSuggested > 0 ? h("button", { onClick: applyAllSuggestions, style: { ...primaryBtn(false), marginBottom: 14 } }, "\u2705 \u0631\u0628\u0637 \u0643\u0644 \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0627\u062A \u0627\u0644\u0648\u0627\u0636\u062D\u0629 \u062F\u0641\u0639\u0629 \u0648\u0627\u062D\u062F\u0629 (" + totalSuggested + ")") : null,
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    riskyNames.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062D\u062A\u0627\u062C\u0629 \u0631\u0628\u0637 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u0634\u064A\u0621 \u0645\u0638\u0628\u0648\u0637" }) :
+    h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, riskyNames.map((name) => {
+      const custOrders = ordersForCustomer(name);
+      const custPieces = byCustomer[name];
+      return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+        h("div", { style: { fontWeight: 700, fontSize: 14.5, marginBottom: 8 } }, name + " \u2014 " + custPieces.length + " \u0642\u0637\u0639\u0629 \u063A\u064A\u0631 \u0645\u0631\u0628\u0648\u0637\u0629"),
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, custPieces.map((p) => {
+          const suggested = suggestionFor(p, custOrders);
+          return h("div", { key: p.id, style: { background: COLORS.bg, borderRadius: 8, padding: 8 } },
+            h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 4 } }, (p.pieceType || "\u2014") + (p.description ? " \u2014 " + p.description : "")),
+            h("select", {
+              style: { fontSize: 12, padding: "6px 8px", borderRadius: 8, border: `1px solid ${COLORS.border}`, width: "100%", background: p.orderId ? COLORS.goldSoft : "#fff" },
+              value: p.orderId || suggested || "",
+              onChange: (e) => onUpdatePiece({ ...p, orderId: e.target.value || null })
+            },
+              h("option", { value: "" }, "\u2014 \u062D\u062F\u062F\u064A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u2014"),
+              custOrders.map((o) => h("option", { key: o.id, value: o.id }, orderLabel(o)))
+            )
+          );
+        }))
+      );
+    }))
+  );
+}
 function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onBack }) {
   const [text, setText] = useState("");
   const [media, setMedia] = useState([]);
@@ -3591,7 +3679,7 @@ function buildAssistantAnswer(q, ctx) {
     const code = codeMatch[0].toUpperCase().replace(/^AK-?/, "AK-");
     const ord = active.find((o) => (o.orderCode || "").toUpperCase() === code);
     if (!ord) return "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631 \u0628\u0627\u0644\u0643\u0648\u062F " + code + ".";
-    const ordPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === ord.id : ((p.customerName || "").trim() === (ord.clientName || "").trim() && (ord.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === ord.deliveryDate) : !p.customerDeliveryDate))));
+    const ordPieces = (pieces || []).filter((p) => pieceMatchesOrder(p, ord, active));
     return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + computeOrderPiecesStatusLabel(ordPieces, orderStatusLabel(ord)) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || (emailToName && emailToName[ord.createdBy]) || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
   }
   if (has("متأخر", "اتأخر", "تأخير") && has("تصنيع", "قطعة", "قطع", "إنتاج", "مصنع")) {
@@ -3600,7 +3688,7 @@ function buildAssistantAnswer(q, ctx) {
     return late.length === 0 ? "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u062F\u0644\u0648\u0642\u062A\u064A \u2014 \u0645\u0645\u062A\u0627\u0632! \u{1F44F}" : "\u0641\u064A " + late.length + " \u0642\u0637\u0639\u0629 \u0645\u062A\u0623\u062E\u0631\u0629: " + names.join("\u060C ") + (late.length > 5 ? " \u0648\u063A\u064A\u0631\u0647\u0645" : "");
   }
   if (has("متأخر", "اتأخر", "تأخير") && has("تسليم", "توصيل")) {
-    const late = active.filter((o) => o.deliveryDate && daysUntil(o.deliveryDate) !== null && daysUntil(o.deliveryDate) < 0 && !(pieces.filter((p) => p.customerName === o.clientName).every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")));
+    const late = active.filter((o) => o.deliveryDate && daysUntil(o.deliveryDate) !== null && daysUntil(o.deliveryDate) < 0 && !(pieces.filter((p) => pieceMatchesOrder(p, o, active)).every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")));
     return late.length === 0 ? "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u062A\u0623\u062E\u0631\u0629 \u0639\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u062F\u0644\u0648\u0642\u062A\u064A." : "\u0641\u064A " + late.length + " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + late.slice(0, 5).map((o) => o.clientName).join("\u060C ");
   }
   if (has("جاهز", "خلص", "خلصت", "متجهز") && has("تسليم", "شحن")) {
@@ -3841,7 +3929,7 @@ const REPORT_SOURCES = {
       { key: "engineerName", label: "\u0627\u0644\u0645\u0647\u0646\u062F\u0633" },
       { key: "enteredAt", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0636\u0627\u0641\u0629", fmt: (v) => v ? v.slice(0, 10) : "" },
       { key: "deliveryDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645" },
-      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => (p.orderId ? p.orderId === row.id : ((p.customerName || "").trim() === (row.clientName || "").trim() && (row.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === row.deliveryDate) : !p.customerDeliveryDate)))), orderStatusLabel(row)) },
+      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces, allOrders) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => pieceMatchesOrder(p, row, allOrders)), orderStatusLabel(row)) },
       { key: "approved", label: "\u0645\u0639\u062A\u0645\u062F\u061F", fmt: (v) => v ? "\u0646\u0639\u0645" : "\u0644\u0627" },
       { key: "sellingPrice", label: "\u0627\u0644\u0633\u0639\u0631" },
       { key: "amountPaid", label: "\u0627\u0644\u0645\u062F\u0641\u0648\u0639" },
@@ -3989,7 +4077,7 @@ function SystemHealthCheckPage({ orders, pieces, onBack, onOpenOrder }) {
     const normName = (s) => (s || "").trim().replace(/\s+/g, " ");
     const orderNames = new Set(active.map((o) => normName(o.clientName)));
     const orphanPieces = pieces.filter((p) => p.customerName && !orderNames.has(normName(p.customerName)));
-    const noPieceOrders = active.filter((o) => o.approved && o.distributionHandled && !pieces.some((p) => normName(p.customerName) === normName(o.clientName)));
+    const noPieceOrders = active.filter((o) => o.approved && o.distributionHandled && !pieces.some((p) => pieceMatchesOrder(p, o, active)));
     const collectionResults = [];
     for (const c of HEALTH_COLLECTIONS) {
       try {
@@ -4079,7 +4167,7 @@ function CustomReportPage({ orders, pieces, onBack }) {
   const rows = generated ? buildRows() : [];
   const headers = activeFields.map((f) => f.label);
   const dataRows = rows.map((r) => activeFields.map((f) => {
-    const v = f.fmt ? f.fmt(r[f.key], r, pieces) : r[f.key];
+    const v = f.fmt ? f.fmt(r[f.key], r, pieces, orders) : r[f.key];
     return v === undefined || v === null ? "" : String(v);
   }));
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
@@ -4377,7 +4465,7 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
   const byTab = scoped.filter((o) => tab === "active" ? !isFinished(o) : isFinished(o));
   const filtered = byTab.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.deliveryDate || "9999").localeCompare(b.deliveryDate || "9999"));
   const preFiltered = preScoped.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.deliveryDate || "9999").localeCompare(b.deliveryDate || "9999"));
-  const piecesFor = (o) => pieces.filter((p) => p.customerName === o.clientName && isTechnicalOfficePieceType(p.pieceType));
+  const piecesFor = (o) => pieces.filter((p) => pieceMatchesOrder(p, o, orders) && isTechnicalOfficePieceType(p.pieceType));
   const activeCount = scoped.filter((o) => !isFinished(o)).length;
   const finishedCount = scoped.filter((o) => isFinished(o)).length;
   const setStatus = (o, s) => {
@@ -5333,9 +5421,15 @@ function TechnicalReviewControls({ onApprove, onSendBack, sendLabel, approveLabe
     h("button", { onClick: () => setShowNote(true), style: { flex: 1, background: "#fff", color: COLORS.gold, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F504} \u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644")
   );
 }
-function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails }) {
+function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails, onSubNav }) {
   const [tab, setTab] = useState("pending");
   const [selectedEngineer, setSelectedEngineer] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !selectedEngineer) return;
+    const handler = () => setSelectedEngineer(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [selectedEngineer]);
   const [monthFilter, setMonthFilter] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
   const [query, setQuery] = useState("");
@@ -5400,7 +5494,7 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
       h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
       h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate)))), orderStatusLabel(o))),
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => pieceMatchesOrder(p, o, orders)), orderStatusLabel(o))),
       o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
     )
   );
@@ -5451,8 +5545,14 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
     editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => { if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); }) }) : null
   );
 }
-function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder }) {
+function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
   const [selectedType, setSelectedType] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !selectedType) return;
+    const handler = () => setSelectedType(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [selectedType]);
   const [query, setQuery] = useState("");
   const [fAvailability, setFAvailability] = useState("");
   const [fCompanyFilter, setFCompanyFilter] = useState("");
@@ -5664,8 +5764,14 @@ function TopRequestedMaterialsPage({ orders }) {
     )
   );
 }
-function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub, emailToName }) {
+function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSub, canEditSub, emailToName, onSubNav }) {
   const [view, setView] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !view) return;
+    const handler = () => setView(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [view]);
   const [summarySearch, setSummarySearch] = useState("");
   const [rollupSearch, setRollupSearch] = useState("");
   const [rollupType, setRollupType] = useState("");
@@ -5739,7 +5845,7 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
   };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F9F5}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A" }),
-    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", allowNotNeeded: true }) : null,
+    onUpdateOrder ? h(OrderHandoffQueue, { orders, flagKey: "materialsHandled", onUpdateOrder, onOpenOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062A\u062D\u062A\u0627\u062C \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A", emoji: "\u{1F9F5}", doneLabel: "\u062A\u0645 \u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", allowNotNeeded: true, requireApproved: false }) : null,
     !view ? h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, [
       { key: "byCustomer", label: "\u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644", emoji: "\u{1F464}", count: byCustomerNames.length },
       { key: "byOrder", label: "\u062D\u0633\u0628 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 (\u0644\u0644\u062A\u0642\u0627\u0631\u064A\u0631)", emoji: "\u{1F4C2}" },
@@ -5780,7 +5886,7 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
     ) : view === "byOrder" ? h(React.Fragment, null,
       h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u062F\u0648\u0633\u064A \u0639\u0644\u0649 \u0639\u0645\u064A\u0644 \u0648\u0627\u062E\u062A\u0627\u0631\u064A \u0623\u0648\u0631\u062F\u0631\u0647 \u2014 \u0647\u062A\u0648\u0635\u0644\u064A \u0645\u0628\u0627\u0634\u0631\u0629 \u0644\u0635\u0641\u062D\u0629 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0643\u0644 \u062A\u0641\u0627\u0635\u064A\u0644\u0647\u0627 (\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628\u060C \u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F\u060C \u0627\u0644\u0635\u0648\u0631\u0629\u060C \u0627\u0644\u0645\u0644\u0641\u0627\u062A) \u2014 \u062A\u0642\u0631\u064A\u0631 \u0645\u0641\u0635\u0644 \u0644\u0643\u0644 \u0623\u0648\u0631\u062F\u0631 \u0644\u0648\u062D\u062F\u0647"),
       h(CustomersList, { orders, onOpen: onOpenOrder, emailToName, pieces })
-    ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder: (!canEditSub || canEditSub("byType")) ? onUpdateOrder : null }) : view === "missing" ? (
+    ) : view === "byType" ? h(ByTypeMaterialsPage, { orders, onOpenOrder, onUpdateOrder: (!canEditSub || canEditSub("byType")) ? onUpdateOrder : null, onSubNav }) : view === "missing" ? (
       missingMaterials.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628 \u062D\u0627\u0644\u064A\u064B\u0627 \u2014 \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u062A\u0648\u0641\u0631\u0629" }) :
       h(React.Fragment, null,
       h("input", { style: fieldStyle, value: missingSearch, onChange: (e) => setMissingSearch(e.target.value), placeholder: "\u0628\u062D\u062B \u0628\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F..." }),
@@ -5856,6 +5962,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [showFilters, setShowFilters] = useState(false);
   const [fAvailability, setFAvailability] = useState("");
   const [fShipStatus, setFShipStatus] = useState("");
+  const [fCompanyFilter, setFCompanyFilter] = useState("");
   const [showShipFilters, setShowShipFilters] = useState(false);
   const [fArrivalStatus, setFArrivalStatus] = useState("");
   const [shipmentQuery, setShipmentQuery] = useState("");
@@ -5878,6 +5985,7 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
       if (!hay.includes(queryNorm)) return false;
     }
     if (fAvailability && r.availability !== fAvailability) return false;
+    if (fCompanyFilter && r.companyName !== fCompanyFilter) return false;
     if (fShipStatus === "__unset__" && r.fabricShippingStatus) return false;
     if (fShipStatus && fShipStatus !== "__unset__" && r.fabricShippingStatus !== fShipStatus) return false;
     return true;
@@ -5935,6 +6043,12 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
               h("option", { value: "" }, "\u0627\u0644\u0643\u0644"),
               h("option", { value: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" }, "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646"),
               h("option", { value: "__unset__" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")
+            )
+          ),
+          h("div", null,
+            h("label", { style: labelStyle }, "\u0634\u0631\u0643\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
+            h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCompanyFilter, onChange: (e) => setFCompanyFilter(e.target.value) },
+              h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), Array.from(new Set(rows.map((r) => r.companyName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar")).map((c) => h("option", { key: c, value: c }, c))
             )
           )
         ) : null
@@ -6147,9 +6261,15 @@ function DeliveryCalendar({ pieces, onSelectDay }) {
     )
   );
 }
-function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, canEditSub }) {
+function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, canEditSub, onSubNav }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !view) return;
+    const handler = () => setView(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [view]);
   const readOnly = readOnlyProp || (canEditSub && view ? !canEditSub(view) : false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -6316,8 +6436,14 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
     )
   );
 }
-function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
+function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces, onSubNav }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !selectedCustomer) return;
+    const handler = () => setSelectedCustomer(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [selectedCustomer]);
   const [query, setQuery] = useState("");
   const [locFilter, setLocFilter] = useState("");
   const todayPieces = pieces.filter((p) => {
@@ -6366,8 +6492,14 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePi
       )
   );
 }
-function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminUser, onUpdateOrder, onUpdatePiece, canBulkUpdatePieces }) {
+function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminUser, onUpdateOrder, onUpdatePiece, canBulkUpdatePieces, onSubNav }) {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !selectedCustomer) return;
+    const handler = () => setSelectedCustomer(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [selectedCustomer]);
   const now = /* @__PURE__ */ new Date();
   const thisMonthKey = now.toISOString().slice(0, 7);
   const ordersThisMonth = orders.filter((o) => (o.dateReceived || "").slice(0, 7) === thisMonthKey).length;
@@ -6505,7 +6637,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   const exportFullBackup = () => {
     const orderRows = [["\u0627\u0644\u0642\u0633\u0645", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
     orders.forEach((o) => {
-      const oPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
+      const oPieces = (pieces || []).filter((p) => pieceMatchesOrder(p, o, orders));
       orderRows.push([o.category || "", o.clientName || "", o.dateReceived || "", o.deliveryDate || "", computeOrderPiecesStatusLabel(oPieces, orderStatusLabel(o)), o.fabricShippingStatus || ""]);
     });
     const pieceRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639/\u0627\u0644\u0645\u0648\u0642\u0639", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
@@ -6765,9 +6897,15 @@ function ActivityLogPage({ log, emailToName }) {
 function countUniqueCustomers(orderList) {
   return new Set(orderList.map((o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") + "||" + (o.deliveryDate || ""))).size;
 }
-function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePendingCustomer, onUpdateOrder, canSeeSub, canEditSub, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
+function CustomersHubPage({ orders, pieces, onOpen, pendingCustomer, onConsumePendingCustomer, onUpdateOrder, canSeeSub, canEditSub, emailToName, onUpdatePiece, canBulkUpdatePieces, onSubNav }) {
   const [filterKey, setFilterKey] = useState(null);
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!onSubNav || !filterKey) return;
+    const handler = () => setFilterKey(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [filterKey]);
 
   useEffect(() => {
     if (pendingCustomer) {
@@ -6881,7 +7019,7 @@ function CustomerTimelineTablePage({ orders, pieces, onOpenOrder, hideHeader }) 
     return dateStr + (days !== null && days >= 0 ? " (" + days + " \u064A\u0648\u0645)" : "");
   };
   const rows = orders.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).map((o) => {
-    const matchingPieces = pieces.filter((p) => (p.orderId ? p.orderId === o.id : (norm(p.customerName) === norm(o.clientName) && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
+    const matchingPieces = pieces.filter((p) => pieceMatchesOrder(p, o, orders));
     const totalPieces = matchingPieces.length;
     const readyCount = matchingPieces.filter(pieceIsReady).length;
     let productionDate = null;
@@ -6963,7 +7101,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   const [fStatus, setFStatus] = useState("");
   const [fFabric, setFFabric] = useState("");
   const [fTag, setFTag] = useState("");
-  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => pieceMatchesOrder(p, o, orders));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -7185,11 +7323,19 @@ function FinishingPage({ pieces, onUpdate, onBack, canEdit }) {
 function ProductionDelaysPage({ pieces, onBack }) {
   const [query, setQuery] = useState("");
   const [fLocation, setFLocation] = useState("");
-  const delayed = pieces.filter((p) => {
+  const delayedRaw = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
-  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fLocation || p.currentLocation === fLocation)).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
+  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fLocation || p.currentLocation === fLocation));
+  const groupKey = (p) => p.splitGroupId || p.id;
+  const groupsMap = {};
+  delayedRaw.forEach((p) => { (groupsMap[groupKey(p)] = groupsMap[groupKey(p)] || []).push(p); });
+  const delayed = Object.values(groupsMap).map((group) => {
+    const rep = group.reduce((worst, p) => (pieceDeadlineDiff(p) < pieceDeadlineDiff(worst) ? p : worst), group[0]);
+    const locations = Array.from(new Set(group.map((p) => p.currentLocation).filter(Boolean)));
+    return { ...rep, currentLocation: locations.length > 1 ? locations.join(" / ") : rep.currentLocation, _groupSize: group.length };
+  }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
   const locationOptions = Array.from(new Set(pieces.map((p) => p.currentLocation).filter(Boolean)));
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0631\u062D\u0644\u0629/\u0627\u0644\u0645\u0643\u0627\u0646", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0623\u062E\u064A\u0631", "\u062A\u0630\u0643\u064A\u0631"];
   const exportRows = () => delayed.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014", p.manufacturingEntity || "\u2014", p.agreedDeadline || "\u2014", Math.abs(pieceDeadlineDiff(p)) + " \u064A\u0648\u0645"]);
@@ -7619,7 +7765,7 @@ function isNotificationResolved(n, orders, productionPieces) {
   if (n.kind === "materials-deadline") return !!o.materialsHandled;
   if (n.kind === "distribution-deadline") return !!o.distributionHandled;
   if ((n.kind === "near-delivery" || n.kind === "deadline" || n.kind === "ready-for-delivery") && productionPieces) {
-    const matching = productionPieces.filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim());
+    const matching = productionPieces.filter((p) => pieceMatchesOrder(p, o, orders));
     if (matching.length > 0 && matching.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return true;
   }
   return false;
@@ -7752,8 +7898,8 @@ function BrandingModal({ branding, onClose, onSave }) {
   };
   return /* @__PURE__ */ React.createElement(Modal, { title: "\u0634\u0639\u0627\u0631 \u0648\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0634\u0639\u0627\u0631"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } }, logo ? /* @__PURE__ */ React.createElement("img", { src: logo, alt: "logo", style: { width: 56, height: 56, borderRadius: 14, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 56, height: 56, borderRadius: 14, background: COLORS.goldSoft, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 24 }, "\u{1F528}")), /* @__PURE__ */ React.createElement("label", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "12px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0627\u062E\u062A\u064A\u0627\u0631 \u0635\u0648\u0631\u0629", /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", onChange: handleFile, style: { display: "none" } })), logo && /* @__PURE__ */ React.createElement("button", { onClick: () => setLogo(null), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: "Al Khobar Orders", dir: "ltr" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0636\u0631\u064A\u0628\u064A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A \u2014 \u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0645\u062A\u0648\u0627\u0641\u0642\u0629 \u0645\u0639 \u0641\u0627\u062A\u0648\u0631\u0629)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: vatNumber, onChange: (e) => setVatNumber(e.target.value), placeholder: "3xxxxxxxxxxxxx03", dir: "ltr" }), /* @__PURE__ */ React.createElement("button", { disabled: !name.trim(), style: primaryBtn(!name.trim()), onClick: () => onSave({ name: name.trim(), logo, vatNumber: vatNumber.trim() }) }, "\u062D\u0641\u0638"));
 }
-function OrderTimelinePage({ order, pieces, onBack }) {
-  const matchingPieces = pieces.filter((p) => (p.orderId ? p.orderId === order.id : (p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
+function OrderTimelinePage({ order, pieces, onBack, orders }) {
+  const matchingPieces = pieces.filter((p) => pieceMatchesOrder(p, order, orders));
   const totalPieces = matchingPieces.length;
   const readyCount = matchingPieces.filter(pieceIsReady).length;
   const deliveredCount = matchingPieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
@@ -7761,7 +7907,7 @@ function OrderTimelinePage({ order, pieces, onBack }) {
   const steps = [
     { emoji: "\u{1F4E5}", label: "\u0627\u0633\u062A\u0644\u0627\u0645 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", done: true, detail: order.dateReceived ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.dateReceived : null },
     { emoji: "\u2705", label: "\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", done: !!order.approved, detail: order.approved ? (order.reviewDate ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.reviewDate.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F") : "\u0644\u0633\u0647 \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" },
-    { emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", done: !!order.materialsHandled, detail: !order.approved ? "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0623\u0648\u0644\u0627\u064B" : order.materialsHandled === "not_needed" ? "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C" : order.materialsHandled ? (order.materialsHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.materialsHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062D\u0635\u0631") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A" },
+    { emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", done: !!order.materialsHandled, detail: order.materialsHandled === "not_needed" ? "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C" : order.materialsHandled ? (order.materialsHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.materialsHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062D\u0635\u0631") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A" },
     { emoji: "\u{1F4E6}", label: "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0642\u0637\u0639 \u0639\u0644\u0649 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646", done: !!order.distributionHandled, detail: !order.approved ? "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0623\u0648\u0644\u0627\u064B" : order.distributionHandled ? (order.distributionHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.distributionHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0648\u0632\u0651\u0639" },
     { emoji: "\u{1F6E0}\uFE0F", label: "\u0627\u0644\u062A\u0635\u0646\u064A\u0639", done: totalPieces > 0 && readyCount === totalPieces, detail: totalPieces === 0 ? "\u0645\u0633\u062A\u0646\u064A \u064A\u062A\u0648\u0632\u0651\u0639" : readyCount + " \u0645\u0646 " + totalPieces + " \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629", subItems: totalPieces > 0 && readyCount < totalPieces ? matchingPieces.filter((p) => !pieceIsReady(p)).map((p) => (p.pieceType || "\u2014") + " \u2014 " + stageLabel(p.currentLocation)) : [] },
     { emoji: "\u{1F69A}", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", done: totalPieces > 0 && deliveredCount === totalPieces, detail: totalPieces === 0 ? "\u2014" : deliveredCount + " \u0645\u0646 " + totalPieces + " \u0642\u0637\u0639\u0629 \u0627\u062A\u0633\u0644\u0645\u062A" + (order.deliveryDate ? " \u00B7 \u0645\u0648\u0639\u062F \u0645\u062A\u0648\u0642\u0639: " + order.deliveryDate : "") }
@@ -7801,14 +7947,14 @@ function OrderPiecesStatusModal({ orderPieces, onClose }) {
     }))
   );
 }
-function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canEdit, isAdminUser, onNotify, emailsWithTabAccess, reviewTeamEmails, unreadCount, onOpenNotifPanel, initialSection, canSeePricing, canEditPricingOverride, onUpdatePiece }) {
+function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canEdit, isAdminUser, onNotify, emailsWithTabAccess, reviewTeamEmails, unreadCount, onOpenNotifPanel, initialSection, canSeePricing, canEditPricingOverride, onUpdatePiece, orders }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditOrder, setShowEditOrder] = useState(false);
   const [section, setSection] = useState(initialSection || null);
   const [materialsView, setMaterialsView] = useState(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [showPiecesStatus, setShowPiecesStatus] = useState(false);
-  const orderPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === order.id : ((p.customerName || "").trim() === (order.clientName || "").trim() && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
+  const orderPieces = (pieces || []).filter((p) => pieceMatchesOrder(p, order, orders));
   const piecesStatusLabel = computeOrderPiecesStatusLabel(orderPieces, orderStatusLabel(order));
   const header = h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
     h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -7942,13 +8088,13 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   if (section === "quote") {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
       subHeader("\u0627\u0644\u062A\u0633\u0639\u064A\u0631\u0627\u062A", () => setSection(null)),
-      h("div", { style: { padding: 16 } }, h(PricingPage, { order, pieces, onUpdate, onUpdatePiece, canEdit: canEdit || canEditPricingOverride, branding })),
+      h("div", { style: { padding: 16 } }, h(PricingPage, { order, pieces, onUpdate, onUpdatePiece, canEdit: canEdit || canEditPricingOverride, branding, orders })),
       deleteModal,
       editOrderModal
     );
   }
   if (section === "timeline") {
-    return h(OrderTimelinePage, { order, pieces, onBack: () => setSection(null) });
+    return h(OrderTimelinePage, { order, pieces, onBack: () => setSection(null), orders });
   }
   if (!materialsView) {
     return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null), header,
@@ -8039,7 +8185,7 @@ function CustomerAccountsPage({ customerName, customerOrders, pieces, onUpdateOr
   const piecesForOrder = (orderId) => {
     const o = orderById[orderId];
     if (!o) return customerPieces;
-    return customerPieces.filter((p) => p.orderId ? p.orderId === o.id : (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
+    return customerPieces.filter((p) => pieceMatchesOrder(p, o, customerOrders));
   };
   const addQuote = (orderId, q) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: [...(o.quotes || []), q] }); };
   const deleteQuote = (orderId, id) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: (o.quotes || []).filter((q) => q.id !== id) }); };
@@ -8894,7 +9040,7 @@ function CustomerPricingSummaryPage({ orders, pieces, onUpdatePiece, hideHeader,
   const cellText = (amount, currency) => amount ? Number(amount).toLocaleString("en-US") + " " + (currency === "\u062C\u0646\u064A\u0647" ? "\u062C\u0646\u064A\u0647" : "\u0631\u064A\u0627\u0644") : "";
   let rowsData = [];
   orders.forEach((o) => {
-    let orderPieces = (pieces || []).filter((p) => norm(p.customerName) === norm(o.clientName));
+    let orderPieces = (pieces || []).filter((p) => pieceMatchesOrder(p, o, orders));
     if (entityFilter) orderPieces = orderPieces.filter((p) => p.manufacturingEntity === entityFilter);
     orderPieces.forEach((p, idx) => {
       const qty = Number(p.pieceCount) || 1;
@@ -8911,7 +9057,7 @@ function CustomerPricingSummaryPage({ orders, pieces, onUpdatePiece, hideHeader,
   const orderRowCounts = {};
   filtered.forEach((r) => { orderRowCounts[r.order.id] = (orderRowCounts[r.order.id] || 0) + 1; });
   const orderCostCache = {};
-  const orderCostFor = (o) => { if (!orderCostCache[o.id]) orderCostCache[o.id] = computeOrderCost(o, pieces); return orderCostCache[o.id]; };
+  const orderCostFor = (o) => { if (!orderCostCache[o.id]) orderCostCache[o.id] = computeOrderCost(o, pieces, orders); return orderCostCache[o.id]; };
   const stageCols = [];
   COST_STAGES.forEach((s) => {
     if (SUPPLIER_BEFORE_STAGES.includes(s)) stageCols.push("\u0627\u0633\u0645 \u0645\u0648\u0631\u062F " + s);
@@ -9105,7 +9251,7 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, on
     const custPieces = (scopedPieces || []).filter((p) => norm(p.customerName) === norm(selectedName));
     const fallbackRate = custOrders.map((o) => Number(o.exchangeRate)).find((r) => r > 0) || 0;
     const effectiveRate = liveRate || fallbackRate;
-    const piecesForOrder = (o) => custPieces.filter((p) => p.orderId ? p.orderId === o.id : (custOrders.length === 1 ? true : (p.customerDeliveryDate && o.deliveryDate && p.customerDeliveryDate === o.deliveryDate)));
+    const piecesForOrder = (o) => custPieces.filter((p) => custOrders.length === 1 ? true : pieceMatchesOrder(p, o, custOrders));
     const matchedPieceIds = new Set();
     custOrders.forEach((o) => piecesForOrder(o).forEach((p) => matchedPieceIds.add(p.id)));
     const unmatchedPieces = custOrders.length === 1 ? [] : custPieces.filter((p) => !matchedPieceIds.has(p.id));
@@ -9229,7 +9375,7 @@ function IncomeStatementView({ orders, pieces, expenses }) {
   const filteredOrders = orders.filter((o) => inRange(o.deliveryDate || o.dateReceived));
   let revenue = 0, cogs = 0;
   filteredOrders.forEach((o) => {
-    const c = computeOrderCost(o, pieces);
+    const c = computeOrderCost(o, pieces, orders);
     revenue += c.sellingPrice;
     cogs += c.totalCost;
   });
@@ -9556,8 +9702,8 @@ function LedgerView({ orders, expenses }) {
     if (o.dateReceived && Number(o.sellingPrice) > 0) entries.push({ date: o.dateReceived, type: "sale", label: (o.clientName || "\u2014") + (o.category ? " \u2014 " + o.category : ""), amount: Number(o.sellingPrice) || 0, direction: "in" });
     (o.paymentLog || []).forEach((p) => entries.push({ date: p.date, type: "customer-payment", label: "\u0645\u0646 " + (o.clientName || "\u2014") + (p.note ? " \u2014 " + p.note : ""), amount: Number(p.amount) || 0, direction: "in" }));
     (o.supplierApprovals || []).forEach((a) => {
-      if (a.depositPaid && a.depositDate) entries.push({ date: a.depositDate, type: "supplier-payment", label: "\u062F\u0641\u0639\u0629 \u0645\u0642\u062F\u0645\u0629 \u0644\u0640" + (a.supplierName || "\u2014"), amount: Number(a.depositAmount) || 0, direction: "out" });
-      if (a.balancePaid && a.balancePaidDate) entries.push({ date: a.balancePaidDate, type: "supplier-payment", label: "\u0628\u0627\u0642\u064A \u0644\u0640" + (a.supplierName || "\u2014"), amount: Number(a.balanceAmount) || 0, direction: "out" });
+      if (a.depositPaid && a.depositDate) entries.push({ date: a.depositDate, type: "supplier-payment", label: "\u062F\u0641\u0639\u0629 \u0645\u0642\u062F\u0645\u0629 \u0644\u0640" + (a.supplierName || "\u2014") + " \u2014 \u0627\u0644\u0639\u0645\u064A\u0644: " + (o.clientName || "\u2014"), amount: Number(a.depositAmount) || 0, direction: "out" });
+      if (a.balancePaid && a.balancePaidDate) entries.push({ date: a.balancePaidDate, type: "supplier-payment", label: "\u0628\u0627\u0642\u064A \u0644\u0640" + (a.supplierName || "\u2014") + " \u2014 \u0627\u0644\u0639\u0645\u064A\u0644: " + (o.clientName || "\u2014"), amount: Number(a.balanceAmount) || 0, direction: "out" });
     });
   });
   (expenses || []).forEach((e) => entries.push({ date: e.date, type: "expense", label: (e.category || "\u0645\u0635\u0631\u0648\u0641") + (e.description ? " \u2014 " + e.description : ""), amount: Number(e.amount) || 0, direction: "out" }));
@@ -9630,11 +9776,11 @@ function AccountingHubPage({ orders, pieces, expenses, onAddExpense, onUpdateExp
     view === "expenses" ? h(GeneralExpensesView, { expenses, onAdd: onAddExpense, onUpdate: onUpdateExpense, onDelete: onDeleteExpense, canEdit: !canEditSub || canEditSub("expenses") }) : null
   );
 }
-function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding }) {
+function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding, orders }) {
   const updateMaterialPrice = (materialId, price) => {
     onUpdate({ materials: (order.materials || []).map((m) => m.id === materialId ? { ...m, price } : m) });
   };
-  const cost = computeOrderCost(order, pieces);
+  const cost = computeOrderCost(order, pieces, orders);
   const materials = order.materials || [];
   const [egpToSarRate, setEgpToSarRate] = useState(null);
   const [egpRateLoading, setEgpRateLoading] = useState(false);
@@ -9673,7 +9819,7 @@ function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding
     ) : null,
     (() => {
       const normName = (s) => (s || "").trim().replace(/\s+/g, " ");
-      const orderPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === order.id : (normName(p.customerName) === normName(order.clientName) && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
+      const orderPieces = (pieces || []).filter((p) => pieceMatchesOrder(p, order, orders));
       return h(React.Fragment, null,
         h(SectionHeader, { emoji: "\u{1F9E9}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629" }),
         orderPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0639\u062F" }) :
@@ -10034,12 +10180,12 @@ function computeCustomerFriendlyStatus(order, matchingPieces) {
   return "\u0642\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639";
 }
 
-function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer, allowNotNeeded }) {
+function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer, allowNotNeeded, requireApproved }) {
   const [tab, setTab] = useState("new");
   const [query, setQuery] = useState("");
-  const approved = orders.filter((o) => o.approved);
-  const fresh = approved.filter((o) => !o[flagKey]);
-  const done = approved.filter((o) => o[flagKey]);
+  const eligible = requireApproved === false ? orders : orders.filter((o) => o.approved);
+  const fresh = eligible.filter((o) => !o[flagKey]);
+  const done = eligible.filter((o) => o[flagKey]);
   const list = (tab === "new" ? fresh : done).filter((o) => !query.trim() || (o.clientName || "").includes(query.trim()) || (o.orderCode || "").includes(query.trim()));
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
     h("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 } }, h(Emoji, { size: 15 }, emoji), title),
@@ -10066,7 +10212,7 @@ function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLa
     )))
   );
 }
-function DistributionEntryPage({ pieces, productionSuppliers, upholsterySuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder }) {
+function DistributionEntryPage({ pieces, productionSuppliers, upholsterySuppliers, onAdd, onUpdate, onDelete, onAddSupplier, canEdit, orders, onUpdateOrder, onSubNav }) {
   const [editingPiece, setEditingPiece] = useState(null);
   const [entity, setEntity] = useState(ENTITIES[0]);
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
@@ -10111,6 +10257,12 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
   };
   const [recentQuery, setRecentQuery] = useState("");
   const [selectedDistCustomer, setSelectedDistCustomer] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !selectedDistCustomer) return;
+    const handler = () => setSelectedDistCustomer(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [selectedDistCustomer]);
   const [showDistFilters, setShowDistFilters] = useState(false);
   const [distEntityFilter, setDistEntityFilter] = useState("");
   const byCustomer = {};
@@ -10513,18 +10665,36 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub }) {
+function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
   const [entity, setEntity] = useState((deepLink && deepLink.entity) || null);
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    if (!onSubNav || !entity) return;
+    const handler = () => setEntity(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [entity]);
   useEffect(() => { if (deepLink && onConsumeDeepLink) onConsumeDeepLink(); }, []);
   if (!entity) {
+    const searchNorm = searchQuery.trim();
+    const searchMatches = searchNorm ? pieces.filter((p) => (p.customerName || "").includes(searchNorm)) : [];
     return h("div", null,
       h(SectionHeader, { emoji: "\u{1F3ED}", title: "\u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }),
+      h("input", { style: fieldStyle, placeholder: "\u{1F50D} \u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0644\u0645\u0639\u0631\u0641\u0629 \u0645\u0643\u0627\u0646\u0647 \u0645\u0646 \u063A\u064A\u0631 \u0627\u0644\u062F\u062E\u0648\u0644 \u0644\u0644\u0642\u0633\u0645...", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value) }),
+      searchNorm ? (
+        searchMatches.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0628\u0627\u0644\u0627\u0633\u0645 \u062F\u0647" }) :
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, searchMatches.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+          h("div", { style: { fontWeight: 700, fontSize: 13.5 } }, p.customerName + " \u2014 " + (p.pieceType || "\u2014")),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 3 } }, "\u{1F3ED} \u062A\u0635\u0646\u064A\u0639 " + (p.manufacturingEntity || "\u2014") + " \u00B7 " + resolveStageKey(p.currentLocation) + " \u00B7 " + (p.currentLocation || p.supplierName || "\u2014")),
+          h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u0627\u0644\u062D\u0627\u0644\u0629: " + (p.status || "\u2014"))
+        )))
+      ) :
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 } },
         ENTITIES.map((en) => h(NavTile, { key: en, active: false, onClick: () => setEntity(en), emoji: "\u{1F3ED}", label: "\u062A\u0635\u0646\u064A\u0639 " + en }))
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub, onSubNav });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -10766,6 +10936,12 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
 }
 function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles }) {
   const [scope, setScope] = useState(null);
+  useEffect(() => {
+    if (!onSubNav || !scope) return;
+    const handler = () => setScope(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [scope]);
   const [query, setQuery] = useState("");
   const [openPiece, setOpenPiece] = useState(null);
   const [bulkSelected, setBulkSelected] = useState([]);
@@ -10857,9 +11033,16 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub, onSubNav }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    if (!onSubNav || !stageKey) return;
+    const handler = () => setStageKey(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [stageKey]);
   const entityPieces = pieces.filter((p) => p.manufacturingEntity === entity);
   const allLocations = productionSuppliers[entity] || [];
   const carpentryLocs = allLocations.filter((l) => !FIXED_STAGE_LOCATIONS.includes(l));
@@ -10885,11 +11068,22 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
   let visibleStageGroups = STAGE_GROUPS.filter((g) => (g.special ? hasAnyPageAccess : pageAccessLevel(g.key) !== "none"));
   if (canSeeSub) visibleStageGroups = visibleStageGroups.filter((g) => g.special || canSeeSub(g.key));
   if (!stageKey) {
+    const searchNorm = searchQuery.trim();
+    const searchMatches = searchNorm ? entityPieces.filter((p) => (p.customerName || "").includes(searchNorm)) : [];
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
         h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u062A\u0635\u0646\u064A\u0639 " + entity)
       ),
+      h("input", { style: fieldStyle, placeholder: "\u{1F50D} \u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0644\u0645\u0639\u0631\u0641\u0629 \u0645\u0643\u0627\u0646\u0647 \u0645\u0646 \u063A\u064A\u0631 \u0627\u0644\u062F\u062E\u0648\u0644 \u0644\u0644\u0642\u0633\u0645...", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value) }),
+      searchNorm ? (
+        searchMatches.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0628\u0627\u0644\u0627\u0633\u0645 \u062F\u0647 \u0641\u064A \u062A\u0635\u0646\u064A\u0639 " + entity }) :
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, searchMatches.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+          h("div", { style: { fontWeight: 700, fontSize: 13.5 } }, p.customerName + " \u2014 " + (p.pieceType || "\u2014")),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 3 } }, resolveStageKey(p.currentLocation) + " \u00B7 " + (p.currentLocation || p.supplierName || "\u2014")),
+          h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u0627\u0644\u062D\u0627\u0644\u0629: " + (p.status || "\u2014"))
+        )))
+      ) : h(React.Fragment, null,
       trueDelays.length > 0 ? h("div", { style: { background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 10, padding: 10, marginBottom: 14 } },
         h("div", { style: { color: COLORS.danger, fontWeight: 700, fontSize: 13, marginBottom: 6 } }, "\u23F0 \u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0627\u062A (" + trueDelays.length + ")"),
         h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, trueDelays.map((p) => h("span", { key: p.id, style: { fontSize: 11.5, background: "#fff", border: `1px solid ${COLORS.danger}`, borderRadius: 999, padding: "3px 8px", color: COLORS.danger } }, p.customerName + " \u00B7 " + p.currentLocation)))
@@ -10899,6 +11093,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
           const stagePieceCount = g.key === "delays" ? trueDelays.length : entityPieces.filter((p) => g.locations.includes(p.currentLocation)).length;
           return h(NavTile, { key: g.key, active: false, onClick: () => setStageKey(g.key), emoji: g.emoji, label: g.label + (stagePieceCount ? " (" + stagePieceCount + ")" : "") });
         })
+      )
       )
     );
   }
@@ -10936,10 +11131,17 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
-    myRoles, onBack: () => setStageKey(null), deepLink, canEditStage: pageAccessLevel(group.key) === "edit" });
+    myRoles, onBack: () => setStageKey(null), deepLink, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, canEditStage }) {
+function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, canEditStage, onSubNav }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    if (!onSubNav || !activeLoc) return;
+    const handler = () => setActiveLoc(null);
+    onSubNav.push(handler);
+    return () => onSubNav.pop(handler);
+  }, [activeLoc]);
   const [showAdd, setShowAdd] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState("");
   const [viewMode, setViewMode] = useState("current");
@@ -10947,11 +11149,22 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
   const statusOnly = myRoles.includes("production") && !myRoles.includes("admin") && !canEditStage;
   const visibleLocations = group.locations;
   if (!activeLoc) {
+    const searchNorm = searchQuery.trim();
+    const searchMatches = searchNorm ? entityPieces.filter((p) => (p.customerName || "").includes(searchNorm) && group.locations.includes(p.currentLocation)) : [];
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
         h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
         h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u062A\u0635\u0646\u064A\u0639 " + entity + " \u2014 " + group.label)
       ),
+      h("input", { style: fieldStyle, placeholder: "\u{1F50D} \u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0644\u0645\u0639\u0631\u0641\u0629 \u0645\u0643\u0627\u0646\u0647...", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value) }),
+      searchNorm ? (
+        searchMatches.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0628\u0627\u0644\u0627\u0633\u0645 \u062F\u0647 \u0647\u0646\u0627" }) :
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, searchMatches.map((p) => h("div", { key: p.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+          h("div", { style: { fontWeight: 700, fontSize: 13.5 } }, p.customerName + " \u2014 " + (p.pieceType || "\u2014")),
+          h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 3 } }, "\u{1F4CD} " + (p.currentLocation || p.supplierName || "\u2014")),
+          h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, "\u0627\u0644\u062D\u0627\u0644\u0629: " + (p.status || "\u2014"))
+        )))
+      ) : h(React.Fragment, null,
       visibleLocations.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0645\u0648\u0627\u0642\u0639/\u0645\u0648\u0631\u062F\u064A\u0646 \u0645\u062E\u0635\u0635\u0635\u0629 \u0644\u0643 \u0647\u0646\u0627" }) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 14 } },
         visibleLocations.map((loc) => {
@@ -10983,6 +11196,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
       group.allowAdd && myRoles.includes("admin") ? (!showAdd
         ? h("button", { onClick: () => setShowAdd(true), style: { padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: `1px dashed ${COLORS.gold}`, background: "#fff", color: COLORS.gold, cursor: "pointer" } }, "+ \u0645\u0648\u0631\u062F \u0622\u062E\u0631")
         : h("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, h("input", { style: { ...fieldStyle, marginBottom: 0, padding: "6px 8px", fontSize: 13, width: 140 }, value: newSupplierName, onChange: (e) => setNewSupplierName(e.target.value) }), h("button", { onClick: () => { if (newSupplierName.trim()) { onAddSupplier(entity, newSupplierName.trim()); setNewSupplierName(""); setShowAdd(false); } }, style: { ...primaryBtn(false), width: 60, padding: "6px 0" } }, "\u2713"))) : null
+    )
     );
   }
   const locPieces = entityPieces.filter((p) => p.currentLocation === activeLoc);
