@@ -1293,7 +1293,7 @@ function App() {
       if (!o.deliveryDate || o.nearDeliveryNotified || o.archived || nearDeliveryNotifiedSessionRef.current.has(o.id)) return;
       const d = daysUntil(o.deliveryDate);
       if (d === null || d < 1 || d > 5) return;
-      const orderPieces = productionPieces.filter((p) => p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
+      const orderPieces = productionPieces.filter((p) => (p.orderId ? p.orderId === o.id : (p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate))));
       const alreadyDelivered = orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
       if (alreadyDelivered) {
         nearDeliveryNotifiedSessionRef.current.add(o.id);
@@ -1482,7 +1482,7 @@ function App() {
   };
   const syncPublicTracking = (order, piecesSnapshot) => {
     if (!order || !order.id || !order.clientName) return;
-    const matching = (piecesSnapshot || productionPieces).filter((p) => p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
+    const matching = (piecesSnapshot || productionPieces).filter((p) => (p.orderId ? p.orderId === order.id : (p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
     const payload = {
       clientName: order.clientName || "",
       category: order.category || "",
@@ -2054,7 +2054,7 @@ function App() {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
           if (d === null || d < 1 || d > 5) return false;
-          const orderPieces = productionPieces.filter((p) => p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
+          const orderPieces = productionPieces.filter((p) => (p.orderId ? p.orderId === o.id : (p.customerName === o.clientName && (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate))));
           if (orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return false;
           return true;
         }).map((o) => o.clientName).filter(Boolean)));
@@ -2916,7 +2916,7 @@ function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const [fCategory, setFCategory] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fTag, setFTag] = useState("");
-  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -3591,7 +3591,7 @@ function buildAssistantAnswer(q, ctx) {
     const code = codeMatch[0].toUpperCase().replace(/^AK-?/, "AK-");
     const ord = active.find((o) => (o.orderCode || "").toUpperCase() === code);
     if (!ord) return "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631 \u0628\u0627\u0644\u0643\u0648\u062F " + code + ".";
-    const ordPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (ord.clientName || "").trim() && (ord.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === ord.deliveryDate) : !p.customerDeliveryDate));
+    const ordPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === ord.id : ((p.customerName || "").trim() === (ord.clientName || "").trim() && (ord.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === ord.deliveryDate) : !p.customerDeliveryDate))));
     return code + " \u2014 " + (ord.clientName || "\u2014") + " \u00B7 " + (ord.category || "\u2014") + " \u00B7 " + computeOrderPiecesStatusLabel(ordPieces, orderStatusLabel(ord)) + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (ord.engineerName || (emailToName && emailToName[ord.createdBy]) || "\u2014") + " \u00B7 \u0627\u0644\u062A\u0633\u0644\u064A\u0645: " + (ord.deliveryDate || "\u2014");
   }
   if (has("متأخر", "اتأخر", "تأخير") && has("تصنيع", "قطعة", "قطع", "إنتاج", "مصنع")) {
@@ -3841,7 +3841,7 @@ const REPORT_SOURCES = {
       { key: "engineerName", label: "\u0627\u0644\u0645\u0647\u0646\u062F\u0633" },
       { key: "enteredAt", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0636\u0627\u0641\u0629", fmt: (v) => v ? v.slice(0, 10) : "" },
       { key: "deliveryDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645" },
-      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => (p.customerName || "").trim() === (row.clientName || "").trim() && (row.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === row.deliveryDate) : !p.customerDeliveryDate)), orderStatusLabel(row)) },
+      { key: "status", label: "\u0627\u0644\u062D\u0627\u0644\u0629", fmt: (v, row, allPieces) => computeOrderPiecesStatusLabel((allPieces || []).filter((p) => (p.orderId ? p.orderId === row.id : ((p.customerName || "").trim() === (row.clientName || "").trim() && (row.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === row.deliveryDate) : !p.customerDeliveryDate)))), orderStatusLabel(row)) },
       { key: "approved", label: "\u0645\u0639\u062A\u0645\u062F\u061F", fmt: (v) => v ? "\u0646\u0639\u0645" : "\u0644\u0627" },
       { key: "sellingPrice", label: "\u0627\u0644\u0633\u0639\u0631" },
       { key: "amountPaid", label: "\u0627\u0644\u0645\u062F\u0641\u0648\u0639" },
@@ -5400,7 +5400,7 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
       h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
       h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate)), orderStatusLabel(o))),
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate)))), orderStatusLabel(o))),
       o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
     )
   );
@@ -6505,7 +6505,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   const exportFullBackup = () => {
     const orderRows = [["\u0627\u0644\u0642\u0633\u0645", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
     orders.forEach((o) => {
-      const oPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
+      const oPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
       orderRows.push([o.category || "", o.clientName || "", o.dateReceived || "", o.deliveryDate || "", computeOrderPiecesStatusLabel(oPieces, orderStatusLabel(o)), o.fabricShippingStatus || ""]);
     });
     const pieceRows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639/\u0627\u0644\u0645\u0648\u0642\u0639", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]];
@@ -6881,7 +6881,7 @@ function CustomerTimelineTablePage({ orders, pieces, onOpenOrder, hideHeader }) 
     return dateStr + (days !== null && days >= 0 ? " (" + days + " \u064A\u0648\u0645)" : "");
   };
   const rows = orders.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).map((o) => {
-    const matchingPieces = pieces.filter((p) => norm(p.customerName) === norm(o.clientName) && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
+    const matchingPieces = pieces.filter((p) => (p.orderId ? p.orderId === o.id : (norm(p.customerName) === norm(o.clientName) && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
     const totalPieces = matchingPieces.length;
     const readyCount = matchingPieces.filter(pieceIsReady).length;
     let productionDate = null;
@@ -6963,7 +6963,7 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
   const [fStatus, setFStatus] = useState("");
   const [fFabric, setFFabric] = useState("");
   const [fTag, setFTag] = useState("");
-  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate));
+  const piecesForOrder = (o) => (pieces || []).filter((p) => (p.orderId ? p.orderId === o.id : ((p.customerName || "").trim() === (o.clientName || "").trim() && (o.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate) : !p.customerDeliveryDate))));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -7753,7 +7753,7 @@ function BrandingModal({ branding, onClose, onSave }) {
   return /* @__PURE__ */ React.createElement(Modal, { title: "\u0634\u0639\u0627\u0631 \u0648\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642", onClose }, /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0634\u0639\u0627\u0631"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } }, logo ? /* @__PURE__ */ React.createElement("img", { src: logo, alt: "logo", style: { width: 56, height: 56, borderRadius: 14, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 56, height: 56, borderRadius: 14, background: COLORS.goldSoft, display: "flex", alignItems: "center", justifyContent: "center" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 24 }, "\u{1F528}")), /* @__PURE__ */ React.createElement("label", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "12px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0627\u062E\u062A\u064A\u0627\u0631 \u0635\u0648\u0631\u0629", /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", onChange: handleFile, style: { display: "none" } })), logo && /* @__PURE__ */ React.createElement("button", { onClick: () => setLogo(null), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0628\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: "Al Khobar Orders", dir: "ltr" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0636\u0631\u064A\u0628\u064A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A \u2014 \u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0645\u062A\u0648\u0627\u0641\u0642\u0629 \u0645\u0639 \u0641\u0627\u062A\u0648\u0631\u0629)"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: vatNumber, onChange: (e) => setVatNumber(e.target.value), placeholder: "3xxxxxxxxxxxxx03", dir: "ltr" }), /* @__PURE__ */ React.createElement("button", { disabled: !name.trim(), style: primaryBtn(!name.trim()), onClick: () => onSave({ name: name.trim(), logo, vatNumber: vatNumber.trim() }) }, "\u062D\u0641\u0638"));
 }
 function OrderTimelinePage({ order, pieces, onBack }) {
-  const matchingPieces = pieces.filter((p) => p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
+  const matchingPieces = pieces.filter((p) => (p.orderId ? p.orderId === order.id : (p.customerName === order.clientName && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
   const totalPieces = matchingPieces.length;
   const readyCount = matchingPieces.filter(pieceIsReady).length;
   const deliveredCount = matchingPieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645").length;
@@ -7808,7 +7808,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   const [materialsView, setMaterialsView] = useState(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [showPiecesStatus, setShowPiecesStatus] = useState(false);
-  const orderPieces = (pieces || []).filter((p) => (p.customerName || "").trim() === (order.clientName || "").trim() && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
+  const orderPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === order.id : ((p.customerName || "").trim() === (order.clientName || "").trim() && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
   const piecesStatusLabel = computeOrderPiecesStatusLabel(orderPieces, orderStatusLabel(order));
   const header = h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
     h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -8039,7 +8039,7 @@ function CustomerAccountsPage({ customerName, customerOrders, pieces, onUpdateOr
   const piecesForOrder = (orderId) => {
     const o = orderById[orderId];
     if (!o) return customerPieces;
-    return customerPieces.filter((p) => !p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate);
+    return customerPieces.filter((p) => p.orderId ? p.orderId === o.id : (!p.customerDeliveryDate || p.customerDeliveryDate === o.deliveryDate));
   };
   const addQuote = (orderId, q) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: [...(o.quotes || []), q] }); };
   const deleteQuote = (orderId, id) => { const o = orderById[orderId]; onUpdateOrder(orderId, { quotes: (o.quotes || []).filter((q) => q.id !== id) }); };
@@ -8054,6 +8054,7 @@ function CustomerAccountsPage({ customerName, customerOrders, pieces, onUpdateOr
     setApprovingQuote(null);
   };
   const updateApproval = (orderId, id, patch) => { const o = orderById[orderId]; onUpdateOrder(orderId, { supplierApprovals: (o.supplierApprovals || []).map((a) => a.id === id ? { ...a, ...patch } : a) }); };
+  const deleteApproval = (orderId, id) => { const o = orderById[orderId]; onUpdateOrder(orderId, { supplierApprovals: (o.supplierApprovals || []).filter((a) => a.id !== id) }); };
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -8064,7 +8065,7 @@ function CustomerAccountsPage({ customerName, customerOrders, pieces, onUpdateOr
       h(TabButton, { active: tab === "readiness", onClick: () => setTab("readiness"), emoji: "🚚", label: "الجاهزية والاستلام" }),
       h(TabButton, { active: tab === "settlement", onClick: () => setTab("settlement"), emoji: "🧾", label: "تقفيل الحساب" })
     ),
-    tab === "quotes" ? h(QuotesTab, { customerName, customerOrders, allQuotes, allApprovals, onAdd: () => setShowAddQuote(true), onDeleteQuote: deleteQuote, onApproveClick: (q) => setApprovingQuote(q), onReject: rejectQuote, onEditClick: (q) => setEditingQuote(q) }) : null,
+    tab === "quotes" ? h(QuotesTab, { customerName, customerOrders, allQuotes, allApprovals, onAdd: () => setShowAddQuote(true), onDeleteQuote: deleteQuote, onDeleteApproval: deleteApproval, onApproveClick: (q) => setApprovingQuote(q), onReject: rejectQuote, onEditClick: (q) => setEditingQuote(q) }) : null,
     tab === "readiness" ? h(ReadinessTab, { allApprovals, pieces: customerPieces, onUpdateApproval: updateApproval }) : null,
     tab === "settlement" ? h(SettlementTab, { allApprovals, onUpdateApproval: updateApproval }) : null,
     showAddQuote ? h(AddSupplierQuoteModal, { customerOrders, piecesForOrder, onClose: () => setShowAddQuote(false), onSave: (orderId, q) => { addQuote(orderId, q); setShowAddQuote(false); } }) : null,
@@ -8072,7 +8073,7 @@ function CustomerAccountsPage({ customerName, customerOrders, pieces, onUpdateOr
     approvingQuote ? h(ApproveQuoteModal, { quote: approvingQuote, orderPieces: piecesForOrder(approvingQuote.orderId), onClose: () => setApprovingQuote(null), onSave: (data) => approveQuote(approvingQuote.orderId, approvingQuote.id, data) }) : null
   );
 }
-function QuotesTab({ customerName, customerOrders, allQuotes, allApprovals, onAdd, onDeleteQuote, onApproveClick, onReject, onEditClick }) {
+function QuotesTab({ customerName, customerOrders, allQuotes, allApprovals, onAdd, onDeleteQuote, onDeleteApproval, onApproveClick, onReject, onEditClick }) {
   const pending = allQuotes.filter((q) => !q.status || q.status === "قيد المراجعة");
   const decided = allQuotes.filter((q) => q.status && q.status !== "قيد المراجعة");
   const orderLabel = (orderId) => { const o = customerOrders.find((x) => x.id === orderId); return o ? ("[" + (o.code || o.id.slice(0, 6)) + "]") : ""; };
@@ -8116,7 +8117,11 @@ function QuotesTab({ customerName, customerOrders, allQuotes, allApprovals, onAd
       allApprovals.map((a) => {
         const totalPieces = (a.items || []).reduce((s, it) => s + (Number(it.pieceCount) || 1), 0);
         return h("div", { key: a.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
-          h("div", { style: { fontWeight: 700, fontSize: 15, textAlign: "center" } }, a.supplierName),
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            h("div", { style: { width: 22 } }),
+            h("div", { style: { fontWeight: 700, fontSize: 15, textAlign: "center", flex: 1 } }, a.supplierName),
+            h("button", { onClick: () => { if (window.confirm("هتحذفي عرض \"" + a.supplierName + "\" المعتمد ده؟ فيه أسعار متسجّلة عليه، ومينفعش ترجعيه تاني.")) onDeleteApproval(a.orderId, a.id); }, style: { background: "transparent", border: "none", cursor: "pointer", padding: "0 2px" } }, h(Emoji, { size: 15, color: COLORS.danger }, "🗑️"))
+          ),
           h("div", { style: { fontSize: 12, color: COLORS.muted, textAlign: "center", marginTop: 2, marginBottom: 8 } }, "عدد القطع: " + totalPieces + (a.agreedDate ? " · الموعد المتفق عليه: " + a.agreedDate : "")),
           h("div", { style: { overflowX: "auto" } },
             h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 560 } },
@@ -9100,7 +9105,7 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, on
     const custPieces = (scopedPieces || []).filter((p) => norm(p.customerName) === norm(selectedName));
     const fallbackRate = custOrders.map((o) => Number(o.exchangeRate)).find((r) => r > 0) || 0;
     const effectiveRate = liveRate || fallbackRate;
-    const piecesForOrder = (o) => custOrders.length === 1 ? custPieces : custPieces.filter((p) => p.customerDeliveryDate && o.deliveryDate && p.customerDeliveryDate === o.deliveryDate);
+    const piecesForOrder = (o) => custPieces.filter((p) => p.orderId ? p.orderId === o.id : (custOrders.length === 1 ? true : (p.customerDeliveryDate && o.deliveryDate && p.customerDeliveryDate === o.deliveryDate)));
     const matchedPieceIds = new Set();
     custOrders.forEach((o) => piecesForOrder(o).forEach((p) => matchedPieceIds.add(p.id)));
     const unmatchedPieces = custOrders.length === 1 ? [] : custPieces.filter((p) => !matchedPieceIds.has(p.id));
@@ -9668,7 +9673,7 @@ function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding
     ) : null,
     (() => {
       const normName = (s) => (s || "").trim().replace(/\s+/g, " ");
-      const orderPieces = (pieces || []).filter((p) => normName(p.customerName) === normName(order.clientName) && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate));
+      const orderPieces = (pieces || []).filter((p) => (p.orderId ? p.orderId === order.id : (normName(p.customerName) === normName(order.clientName) && (order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate))));
       return h(React.Fragment, null,
         h(SectionHeader, { emoji: "\u{1F9E9}", title: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0648\u0632\u0651\u0639\u0629" }),
         orderPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C \u0645\u0648\u0632\u0651\u0639\u0629 \u0644\u0647\u0630\u0627 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0639\u062F" }) :
@@ -10067,6 +10072,8 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
   const [customerName, setCustomerName] = useState("");
   const [customerDeliveryDate, setCustomerDeliveryDate] = useState("");
+  const [linkedOrderId, setLinkedOrderId] = useState("");
+  const [orderPickerQuery, setOrderPickerQuery] = useState("");
   const [pieceType, setPieceType] = useState("");
   const [pieceCount, setPieceCount] = useState(1);
   const [size, setSize] = useState("");
@@ -10083,17 +10090,24 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
   if (!canEdit) {
     return h("div", null, h(SectionHeader, { emoji: "📦", title: "التوزيع" }), h(EmptyHint, { text: "مالكيش صلاحية إضافة توزيع جديد. تقدري تشوفي أقسام الإنتاج والإنتاج الكامل بس." }));
   }
+  const matchingOrders = orderPickerQuery.trim() && orders ? orders.filter((o) => (o.clientName || "").includes(orderPickerQuery.trim())).slice(0, 8) : [];
+  const pickOrder = (o) => {
+    setCustomerName(o.clientName || "");
+    setCustomerDeliveryDate(o.deliveryDate || "");
+    setLinkedOrderId(o.id);
+    setOrderPickerQuery("");
+  };
   const submit = () => {
     if (!customerName.trim() || !supplierName) return;
     onAdd({
-      id: uid(), customerName: customerName.trim(), customerDeliveryDate, pieceType, pieceCount: Number(pieceCount) || 1, size: size.trim(),
+      id: uid(), customerName: customerName.trim(), customerDeliveryDate, orderId: linkedOrderId || null, pieceType, pieceCount: Number(pieceCount) || 1, size: size.trim(),
       description, manufacturingEntity: entity, supplierName, currentLocation: supplierName, baseStage: isSoftGoodType(pieceType) ? "تنجيد" : "نجارة",
       image, peopleCount: isSofaType(pieceType) ? (Number(peopleCount) || 0) : "", metersCount: isWoodType(pieceType) ? (Number(metersCount) || 0) : "",
       fabricShippingStatus: isSofaType(pieceType) ? pieceFabricStatus : "",
       upholsteryLocation: isSofaType(pieceType) ? (upholsteryLocation.trim() || "\u2014") : "\u2014",
       status: "لم يتم البدء", agreedDeadline, stages: {}, shippingDate: "", arrivalDate: "", createdAt: (/* @__PURE__ */ new Date()).toISOString()
     });
-    setCustomerName(""); setCustomerDeliveryDate(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setUpholsteryLocation(""); setImage(null); setAgreedDeadline("");
+    setCustomerName(""); setCustomerDeliveryDate(""); setLinkedOrderId(""); setOrderPickerQuery(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setUpholsteryLocation(""); setImage(null); setAgreedDeadline("");
   };
   const [recentQuery, setRecentQuery] = useState("");
   const [selectedDistCustomer, setSelectedDistCustomer] = useState(null);
@@ -10144,8 +10158,27 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
     orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", onOpenCustomer: (name) => setSelectedDistCustomer((name || "").trim()) }) : null,
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
+      orders && orders.length > 0 ? h("div", { style: { marginBottom: 14, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: 10 } },
+        h("label", { style: { ...labelStyle, marginBottom: 6 } }, "🔗 اربطيها بأوردر موجود (بيضمن إن حالتها منتظبطش مع أوردر تاني لنفس العميل)"),
+        linkedOrderId ? h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "8px 10px" } },
+          h("span", { style: { fontSize: 12.5, fontWeight: 700 } }, "✅ " + customerName + (customerDeliveryDate ? " — " + customerDeliveryDate : "")),
+          h("button", { onClick: () => setLinkedOrderId(""), style: { background: "transparent", border: "none", color: COLORS.danger, fontSize: 12, cursor: "pointer" } }, "✕ إلغاء الربط")
+        ) : h(React.Fragment, null,
+          h("input", { style: { ...fieldStyle, marginBottom: matchingOrders.length > 0 ? 8 : 0 }, placeholder: "دوّري باسم العميل عشان تلاقي أوردره...", value: orderPickerQuery, onChange: (e) => setOrderPickerQuery(e.target.value) }),
+          matchingOrders.length > 0 ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+            matchingOrders.map((o) => h("div", {
+              key: o.id,
+              onClick: () => pickOrder(o),
+              style: { background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 10px", cursor: "pointer", fontSize: 12.5 }
+            },
+              h("div", { style: { fontWeight: 700 } }, o.clientName + (o.title ? " — " + o.title : "")),
+              h("div", { style: { color: COLORS.muted, fontSize: 11.5 } }, (o.category || "") + " · " + (o.deliveryDate || "بدون تاريخ تسليم"))
+            ))
+          ) : null
+        )
+      ) : null,
       h("label", { style: labelStyle }, "اسم العميل"),
-      h("input", { style: fieldStyle, value: customerName, onChange: (e) => setCustomerName(e.target.value) }),
+      h("input", { style: fieldStyle, value: customerName, onChange: (e) => { setCustomerName(e.target.value); setLinkedOrderId(""); } }),
       h("label", { style: labelStyle }, "تاريخ تسليم العميل"),
       h("input", { style: fieldStyle, type: "date", value: customerDeliveryDate, onChange: (e) => setCustomerDeliveryDate(e.target.value) }),
       h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
