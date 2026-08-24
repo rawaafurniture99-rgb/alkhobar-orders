@@ -865,6 +865,8 @@ function App() {
   }, [selectedId]);
   const [showRoles, setShowRoles] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
+  const [sidebarOpenGroups, setSidebarOpenGroups] = useState({ g0: true, g1: true, g2: true, g3: true, g4: true });
   const [showFollowupList, setShowFollowupList] = useState(false);
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [productionDeepLink, setProductionDeepLink] = useState(null);
@@ -1687,7 +1689,8 @@ function App() {
     return writePromise;
   };
   const addOrder = (o) => {
-    const withOwner = { ...o, createdBy: (user && user.email) || "", engineerName: myDisplayName, approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "", branch: activeBranch || "\u0627\u0644\u0641\u0631\u0639 \u0627\u0644\u0631\u0626\u064A\u0633\u064A" };
+    const isSalesEngineerOrder = hasRole("engineer") && !hasRole("admin") && !hasRole("engineers-manager");
+    const withOwner = { ...o, createdBy: (user && user.email) || "", engineerName: myDisplayName, approved: false, enteredAt: new Date().toISOString(), editCount: 0, reviewStatus: "", branch: activeBranch || "\u0627\u0644\u0641\u0631\u0639 \u0627\u0644\u0631\u0626\u064A\u0633\u064A", requiresSalesManagerApproval: isSalesEngineerOrder, salesManagerApproval: "" };
     db.runTransaction(async (tx) => {
       const wsRef = workspaceDocRef();
       const wsSnap = await tx.get(wsRef);
@@ -1878,8 +1881,71 @@ function App() {
     : tab === "deliveries" ? "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645"
     : tab === "materials-hub" ? "\u0627\u0644\u062E\u0627\u0645\u0627\u062A"
     : branding.name;
-  return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink } },
+  const SIDEBAR_GROUPS = (() => {
+    const byKey = {};
+    ALL_TABS.forEach((t) => { byKey[t.key] = t; });
+    const simple = (key) => ({ key, label: byKey[key].label, emoji: byKey[key].emoji, visible: canSeeTab(key), onClick: () => { setTab(key); setSidebarDrawerOpen(false); } });
+    const drill = (key, type, emojiOverride, labelOverride, visibleOverride) => ({ key, label: labelOverride || byKey[key].label, emoji: emojiOverride || byKey[key].emoji, visible: visibleOverride !== void 0 ? visibleOverride : canSeeTab(key), onClick: () => { setHomeDrilldown({ type }); setSidebarDrawerOpen(false); } });
+    const sbReviewCount = activeOrders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" && (!o.requiresSalesManagerApproval || o.salesManagerApproval === "approved")).length;
+    const sbSalesApprovalCount = activeOrders.filter((o) => o.requiresSalesManagerApproval && !o.salesManagerApproval).length;
+    return [
+      { title: "\u{1F4CB} \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0648\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", tiles: [
+        { key: "new-order", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", emoji: "\u2795", visible: !myRoles.every((r) => r === "viewer"), onClick: () => { setShowNewOrder(true); setSidebarDrawerOpen(false); } },
+        { ...simple("sales-approval"), __badge: sbSalesApprovalCount },
+        { ...simple("review"), __badge: sbReviewCount, __active: tab === "review" },
+        { ...simple("my-orders"), __active: tab === "my-orders" },
+        drill("technical-office", "technical-office")
+      ] },
+      { title: "\u{1F3ED} \u0627\u0644\u0625\u0646\u062A\u0627\u062C", tiles: [
+        { ...simple("production-board"), __active: tab === "production-board" },
+        { ...simple("distribution"), __active: tab === "distribution" },
+        { ...simple("materials-hub"), __active: tab === "materials-hub" },
+        { ...simple("egypt-upholstery"), __active: tab === "egypt-upholstery" },
+        drill("finishing", "finishing"),
+        drill("product-shipments", "product-shipments", null, null),
+        { ...simple("full-production"), __active: tab === "full-production" },
+        { ...simple("today-queue"), __active: tab === "today-queue" },
+        { ...simple("deliveries"), __active: tab === "deliveries" }
+      ] },
+      { title: "\u{1F465} \u0627\u0644\u0639\u0645\u0644\u0627\u0621", tiles: [
+        { ...simple("customers"), __active: tab === "customers" },
+        drill("gallery", "gallery"),
+        drill("ratings", "ratings"),
+        drill("customer-value", "customer-value"),
+        drill("appointments", "appointments")
+      ] },
+      { title: "\u{1F4B0} \u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631", tiles: [
+        { key: "pricing", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", emoji: "\u{1F4B0}", visible: canSeeTab("pricing"), onClick: () => { setHomeDrilldown({ type: "pricing" }); setSidebarDrawerOpen(false); } },
+        { key: "accounting", label: "\u0627\u0644\u0645\u062D\u0627\u0633\u0628\u0629", emoji: "\u{1F4BC}", visible: canSeeTab("accounting"), onClick: () => { setHomeDrilldown({ type: "accounting" }); setSidebarDrawerOpen(false); } },
+        { key: "customer-statements", label: "\u0643\u0634\u0641 \u062D\u0633\u0627\u0628 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", emoji: "\u{1F4D1}", visible: canSeeTab("customer-statements"), onClick: () => { setHomeDrilldown({ type: "customer-statements" }); setSidebarDrawerOpen(false); } },
+        { ...simple("dashboard"), __active: tab === "dashboard" },
+        { ...simple("supplier-performance"), __active: tab === "supplier-performance" },
+        drill("warranty", "warranty"),
+        { key: "health-check", label: "\u0641\u062D\u0635 \u0627\u0644\u0646\u0638\u0627\u0645", emoji: "\u26A1", visible: isOwner || hasRole("admin"), onClick: () => { setHomeDrilldown({ type: "health-check" }); setSidebarDrawerOpen(false); } },
+        drill("custom-report", "custom-report")
+      ] },
+      { title: "\u2699\uFE0F \u0623\u062F\u0648\u0627\u062A", tiles: [
+        drill("quick-tasks", "quick-tasks"),
+        drill("team-calendar", "team-calendar"),
+        drill("assistant", "assistant"),
+        drill("universal-search", "universal-search"),
+        drill("escalations", "escalations"),
+        { key: "employee-followup", label: "\u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0645\u0648\u0638\u0641\u064A\u0646", emoji: "\u{1F4DD}", visible: true, onClick: () => { setHomeDrilldown({ type: "employee-followup" }); setSidebarDrawerOpen(false); } },
+        { key: "legacy-piece-linking", label: "\u0631\u0628\u0637 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0642\u062F\u064A\u0645\u0629 \u0628\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u0647\u0627", emoji: "\u{1F517}", visible: isOwner || hasRole("admin"), onClick: () => { setHomeDrilldown({ type: "legacy-piece-linking" }); setSidebarDrawerOpen(false); } }
+      ] }
+    ];
+  })();
+  return h("div", { dir: "rtl", className: (!selectedOrder && !homeDrilldown) ? "app-root" : "", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink } },
     h(GlobalStyle, null),
+    (!selectedOrder && !homeDrilldown) ? h(React.Fragment, null,
+      h("div", { className: "app-sidebar-panel app-sidebar-desktop" },
+        h(SidebarNavList, { groups: SIDEBAR_GROUPS, openGroups: sidebarOpenGroups, onToggleGroup: (k) => setSidebarOpenGroups((prev) => ({ ...prev, [k]: prev[k] === false })), onNavigate: (t) => t.onClick() })
+      ),
+      h("div", { className: "app-drawer-overlay" + (sidebarDrawerOpen ? " open" : ""), onClick: () => setSidebarDrawerOpen(false) }),
+      h("div", { className: "app-drawer-panel" + (sidebarDrawerOpen ? " open" : "") },
+        h(SidebarNavList, { groups: SIDEBAR_GROUPS, openGroups: sidebarOpenGroups, onToggleGroup: (k) => setSidebarOpenGroups((prev) => ({ ...prev, [k]: prev[k] === false })), onNavigate: (t) => t.onClick() })
+      )
+    ) : null,
     syncError && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 12.5, padding: "8px 14px", textAlign: "center" } }, syncError),
     isOffline && h("div", { style: { background: COLORS.goldSoft, color: COLORS.gold, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", textAlign: "center" } }, "\u{1F50C} \u0645\u0641\u064A\u0634 \u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u2014 \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0647\u062A\u062A\u062D\u0641\u0638 \u0648\u062A\u062A\u0632\u0627\u0645\u0646 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0644\u0645\u0627 \u0627\u0644\u0646\u062A \u064A\u0631\u062C\u0639"),
     selectedOrder ? h(OrderDetail, {
@@ -1942,6 +2008,7 @@ function App() {
         h("div", { style: { flex: 1 } },
           h("h1", { style: { ...display, fontSize: 21, fontWeight: 700, margin: 0, color: COLORS.ink } }, SECTION_TITLE)
         ),
+        h("button", { className: "app-sidebar-toggle", onClick: () => setSidebarDrawerOpen(true), style: iconBtnStyle, title: "\u0627\u0644\u0642\u0627\u0626\u0645\u0629" }, h(Emoji, { size: 19 }, "\u2630")),
         h("button", { onClick: openNotifPanel, style: { ...iconBtnStyle, position: "relative" }, title: "\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062A" },
           h(Emoji, { size: 19 }, "\u{1F514}"),
           unreadCount > 0 ? h("span", { style: { position: "absolute", top: 0, insetInlineEnd: 0, background: COLORS.danger, color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" } }, unreadCount > 9 ? "9+" : unreadCount) : null
@@ -1960,6 +2027,7 @@ function App() {
         tab === "today-queue" && h(TodayQueuePage, { pieces: productionPieces, orders: activeOrders, emailToName, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k), onSubNav: subNavApi }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id, section) => openOrder(id, section), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
+        tab === "sales-approval" && h(SalesApprovalPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, reviewTeamEmails, myEmail: user && user.email }),
         tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails, onSubNav: subNavApi }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k), onSubNav: subNavApi })
         )
@@ -2009,6 +2077,7 @@ function App() {
             )
           ),
           h("div", { style: { display: "flex", gap: 8 } },
+            h("button", { className: "app-sidebar-toggle", onClick: () => setSidebarDrawerOpen(true), style: { ...iconBtnStyle, color: "#FBEFDD" }, title: "\u0627\u0644\u0642\u0627\u0626\u0645\u0629" }, h(Emoji, { size: 20 }, "\u2630")),
             h("button", { onClick: openNotifPanel, style: { ...iconBtnStyle, position: "relative" }, title: "\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062A" },
               h(Emoji, { size: 20 }, "\u{1F514}"),
               unreadCount > 0 ? h("span", { style: { position: "absolute", top: 0, insetInlineEnd: 0, background: COLORS.danger, color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" } }, unreadCount > 9 ? "9+" : unreadCount) : null
@@ -2074,7 +2143,8 @@ function App() {
         return h("div", { style: { display: "flex", flexDirection: "column", gap: 1 } }, groups.map((g, i) => followupLine(g, i)));
       })(),
       (() => {
-        const reviewCount = activeOrders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629").length;
+        const reviewCount = activeOrders.filter((o) => o.createdBy && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" && (!o.requiresSalesManagerApproval || o.salesManagerApproval === "approved")).length;
+        const salesApprovalCount = activeOrders.filter((o) => o.requiresSalesManagerApproval && !o.salesManagerApproval).length;
         const nearDeliveryNames = Array.from(new Set(activeOrders.filter((o) => {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
@@ -2095,6 +2165,7 @@ function App() {
           return d !== null && d < 0;
         }).map((p) => p.customerName || "\u2014")).size;
         const items = [
+          canSeeTab("sales-approval") ? { emoji: "\u{1F4DD}", count: salesApprovalCount, label: "\u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u0628\u064A\u0639\u0627\u062A", color: COLORS.gold, onClick: () => setTab("sales-approval") } : null,
           canSeeTab("review") ? { emoji: "\u{1F9FE}", count: reviewCount, label: "\u0645\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", color: COLORS.gold, onClick: () => setTab("review") } : null,
           { emoji: "\u23F3", count: nearDeliveryNames.length, label: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", color: COLORS.danger, onClick: () => setHomeDrilldown({ type: "near-delivery", names: nearDeliveryNames }) },
           canSeeTab("deliveries") ? { emoji: "\u{1F69A}", count: readyNames.length, label: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", color: COLORS.teal, onClick: () => setHomeDrilldown({ type: "ready", names: readyNames }) } : null,
@@ -2140,6 +2211,7 @@ function App() {
           const TILE_GROUPS = [
             { title: "\u{1F4CB} \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0648\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", tiles: [
               { key: "new-order", label: "\u0625\u0636\u0627\u0641\u0629 \u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F", emoji: "\u2795", visible: !myRoles.every((r) => r === "viewer"), onClick: () => setShowNewOrder(true), accent: true },
+              simple("sales-approval"),
               simple("review"),
               simple("my-orders"),
               drill("technical-office", "technical-office")
@@ -2327,6 +2399,37 @@ function AutomationSettingsModal({ currentUrl, onClose, onSave }) {
     h("button", { style: primaryBtn(false), onClick: () => { onSave(url.trim()); onClose(); } }, "\u062D\u0641\u0638")
   );
 }
+function SidebarNavList({ groups, openGroups, onToggleGroup, onNavigate }) {
+  return h(React.Fragment, null,
+    h("div", { className: "sb-brand" },
+      h("div", { className: "sb-brand-mark" }, "\u0631"),
+      h("div", { className: "sb-brand-name" }, "\u0631\u0648\u0627\u0621 \u0644\u0644\u0623\u062B\u0627\u062B")
+    ),
+    groups.map((g, gi) => {
+      const visibleTiles = g.tiles.filter((t) => t.visible);
+      if (visibleTiles.length === 0) return null;
+      const gKey = "g" + gi;
+      const isOpen = openGroups[gKey] !== false;
+      return h("div", { key: gKey, style: { marginBottom: 4 } },
+        h("div", { className: "sb-group-title", onClick: () => onToggleGroup(gKey) },
+          h("span", null, g.title),
+          h("span", { className: "sb-chevron" + (isOpen ? "" : " closed") }, "\u25BE")
+        ),
+        h("div", { className: "sb-items", style: { maxHeight: isOpen ? 600 : 0 } },
+          visibleTiles.map((t) => h("div", {
+            key: t.key,
+            className: "sb-item" + (t.__active ? " active" : ""),
+            onClick: () => onNavigate(t)
+          },
+            h(Emoji, { size: 14 }, t.emoji),
+            h("span", null, t.label),
+            t.__badge > 0 ? h("span", { className: "sb-badge" }, t.__badge) : null
+          ))
+        )
+      );
+    })
+  );
+}
 function GlobalStyle() {
   return /* @__PURE__ */ React.createElement("style", null, `
       * { box-sizing: border-box; }
@@ -2340,6 +2443,42 @@ function GlobalStyle() {
       }
       ::placeholder { color: #B7A88F; }
       body { direction: rtl; }
+      .app-root { min-height: 100vh; }
+      .app-sidebar-desktop { display: none; }
+      .app-sidebar-toggle { display: inline-flex; }
+      @media (min-width: 960px) {
+        .app-root { padding-inline-end: 246px; }
+        .app-sidebar-desktop { display: block; }
+        .app-sidebar-toggle { display: none; }
+      }
+      .app-sidebar-panel {
+        position: fixed; top: 0; bottom: 0; inset-inline-end: 0; width: 246px; z-index: 40;
+        background: #FBF7EF; border-inline-start: 1px solid ${COLORS.border};
+        padding: 18px 12px; overflow-y: auto;
+      }
+      .app-drawer-overlay {
+        position: fixed; inset: 0; background: rgba(42,33,27,0.4); z-index: 60;
+        opacity: 0; pointer-events: none; transition: opacity .18s ease;
+      }
+      .app-drawer-overlay.open { opacity: 1; pointer-events: auto; }
+      .app-drawer-panel {
+        position: fixed; top: 0; bottom: 0; inset-inline-end: 0; width: 82%; max-width: 300px; z-index: 61;
+        background: #FBF7EF; padding: 18px 14px; overflow-y: auto; transform: translateX(100%);
+        transition: transform .22s cubic-bezier(.2,.8,.2,1);
+      }
+      .app-drawer-panel.open { transform: translateX(0); }
+      .sb-brand { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding:0 4px; }
+      .sb-brand-mark { width:32px; height:32px; border-radius:10px; background:linear-gradient(155deg, ${COLORS.gold}, #8A5F26); color:#fff; font-family:'Markazi Text',serif; font-weight:700; font-size:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+      .sb-brand-name { font-family:'Markazi Text',serif; font-weight:700; font-size:15.5px; color: ${COLORS.ink}; }
+      .sb-group-title { display:flex; justify-content:space-between; align-items:center; padding:8px 8px; font-weight:700; font-size:12px; cursor:pointer; border-radius:8px; color: ${COLORS.muted}; }
+      .sb-group-title:hover { background: #F1EADB; }
+      .sb-chevron { transition: transform .15s ease; font-size:10px; opacity:.6; }
+      .sb-chevron.closed { transform: rotate(-90deg); }
+      .sb-items { overflow: hidden; }
+      .sb-item { display:flex; align-items:center; gap:8px; padding:8px 10px; margin:1px 0; font-size:12px; border-radius:8px; color:${COLORS.ink}; cursor:pointer; font-weight:500; }
+      .sb-item:hover { background:#F1EADB; }
+      .sb-item.active { background:${COLORS.goldSoft}; color:#8A5F26; font-weight:700; box-shadow: inset 3px 0 0 ${COLORS.gold}; }
+      .sb-badge { margin-inline-start:auto; background:${COLORS.danger}; color:#fff; font-size:9.5px; font-weight:700; border-radius:999px; padding:1.5px 6px; min-width:16px; text-align:center; }
     `);
 }
 const STATUS_TRANSLATIONS_EN = {
@@ -4615,10 +4754,60 @@ function RevisionNoteModal({ order, onClose, onSave }) {
     h("button", { style: primaryBtn(false), onClick: () => onSave({ revisionNote: note.trim(), revisionFile: file }) }, "\u062D\u0641\u0638")
   );
 }
+function SalesApprovalPage({ orders, onOpen, onUpdateOrder, emailToName, onNotify, reviewTeamEmails, myEmail }) {
+  const [query, setQuery] = useState("");
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [subTab, setSubTab] = useState("pending");
+  const gated = orders.filter((o) => o.requiresSalesManagerApproval);
+  const pending = gated.filter((o) => !o.salesManagerApproval).filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (a.enteredAt || "").localeCompare(b.enteredAt || ""));
+  const rejected = gated.filter((o) => o.salesManagerApproval === "rejected").filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (b.salesManagerReviewedAt || "").localeCompare(a.salesManagerReviewedAt || ""));
+  const approve = (o) => {
+    onUpdateOrder(o.id, { salesManagerApproval: "approved", salesManagerReviewedAt: (/* @__PURE__ */ new Date()).toISOString(), salesManagerReviewedBy: myEmail || "" });
+    if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u062C\u062F\u064A\u062F \u064A\u062D\u062A\u0627\u062C \u0645\u0631\u0627\u062C\u0639\u0629", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0627\u0639\u062A\u0645\u062F\u0647 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", orderId: o.id, kind: "new-order" });
+  };
+  const confirmReject = (o) => {
+    if (!rejectReason.trim()) return;
+    onUpdateOrder(o.id, { salesManagerApproval: "rejected", salesManagerRejectionReason: rejectReason.trim(), salesManagerReviewedAt: (/* @__PURE__ */ new Date()).toISOString(), salesManagerReviewedBy: myEmail || "" });
+    if (onNotify && o.createdBy) onNotify({ toEmails: [o.createdBy], title: "\u0623\u0648\u0631\u062F\u0631 \u0645\u0631\u0641\u0648\u0636 \u0645\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0627\u062A\u0631\u0641\u0636: " + rejectReason.trim(), orderId: o.id, kind: "revision" });
+    setRejectingId(null);
+    setRejectReason("");
+  };
+  const card = (o, showReject) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      h("div", { onClick: () => onOpen(o.id), style: { cursor: "pointer" } },
+        h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u2014"),
+        h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, (o.category || "\u2014") + " \u00B7 \u0627\u0644\u0645\u0647\u0646\u062F\u0633: " + (o.engineerName || "\u2014"))
+      )
+    ),
+    o.salesManagerApproval === "rejected" ? h("div", { style: { marginTop: 8, background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: 8, fontSize: 12, color: COLORS.danger } }, "\u274C \u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636: " + (o.salesManagerRejectionReason || "\u2014")) : null,
+    showReject ? h("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+      h("button", { onClick: () => approve(o), style: { flex: 1, background: COLORS.green, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u2705 \u0645\u0648\u0627\u0641\u0642\u0629"),
+      h("button", { onClick: () => { setRejectingId(o.id); setRejectReason(""); }, style: { flex: 1, background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u274C \u0631\u0641\u0636")
+    ) : null,
+    rejectingId === o.id ? h("div", { style: { marginTop: 10 } },
+      h("textarea", { style: { ...fieldStyle, minHeight: 60, marginBottom: 8 }, placeholder: "\u0627\u0643\u062A\u0628\u064A \u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636 (\u0625\u062C\u0628\u0627\u0631\u064A)...", value: rejectReason, onChange: (e) => setRejectReason(e.target.value) }),
+      h("div", { style: { display: "flex", gap: 8 } },
+        h("button", { disabled: !rejectReason.trim(), onClick: () => confirmReject(o), style: { flex: 1, background: rejectReason.trim() ? COLORS.danger : COLORS.border, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12.5, cursor: rejectReason.trim() ? "pointer" : "default" } }, "\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0631\u0641\u0636"),
+        h("button", { onClick: () => { setRejectingId(null); setRejectReason(""); }, style: { flex: 1, background: "transparent", color: COLORS.muted, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u0625\u0644\u063A\u0627\u0621")
+      )
+    ) : null
+  );
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4DD}", title: "\u0645\u0648\u0627\u0641\u0642\u0629 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A" }),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+      h("button", { onClick: () => setSubTab("pending"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.gold}`, background: subTab === "pending" ? COLORS.gold : "#fff", color: subTab === "pending" ? "#fff" : COLORS.gold, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u0645\u0633\u062A\u0646\u064A\u0629 \u0645\u0648\u0627\u0641\u0642\u062A\u064A (" + pending.length + ")"),
+      h("button", { onClick: () => setSubTab("rejected"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${COLORS.border}`, background: subTab === "rejected" ? COLORS.ink : "#fff", color: subTab === "rejected" ? "#fff" : COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u0645\u0631\u0641\u0648\u0636\u0629 (" + rejected.length + ")")
+    ),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    subTab === "pending" ? (pending.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0633\u062A\u0646\u064A\u0629 \u0645\u0648\u0627\u0641\u0642\u062A\u0643" }) : h("div", null, pending.map((o) => card(o, true)))) :
+    (rejected.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0631\u0641\u0648\u0636\u0629" }) : h("div", null, rejected.map((o) => card(o, false))))
+  );
+}
 function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, onNotify, emailsWithTabAccess }) {
   const [revisingOrder, setRevisingOrder] = useState(null);
   const [subTab, setSubTab] = useState("review");
-  const queue = orders.filter((o) => o.createdBy && o.reviewStatus !== "تمت المراجعة");
+  const queue = orders.filter((o) => o.createdBy && o.reviewStatus !== "تمت المراجعة" && (!o.requiresSalesManagerApproval || o.salesManagerApproval === "approved"));
   const pendingQueue = queue.filter((o) => o.reviewStatus !== "يوجد تعديل");
   const revisionQueue = queue.filter((o) => o.reviewStatus === "يوجد تعديل");
   const activeQueue = subTab === "revisions" ? revisionQueue : pendingQueue;
@@ -5484,8 +5673,11 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
         h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
         h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, o.category || "\u2014", o.deliveryDate ? " \u00B7 \u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "")
       ),
+      o.salesManagerApproval === "rejected" ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.danger, background: "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, "\u274C \u0645\u0631\u0641\u0648\u0636 \u0645\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") :
+      o.requiresSalesManagerApproval && !o.salesManagerApproval ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, padding: "2px 8px", borderRadius: 999 } }, "\u23F3 \u0645\u0633\u062A\u0646\u064A \u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") :
       h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 999 } }, "\u{1F195} \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")
     ),
+    o.salesManagerApproval === "rejected" ? h("div", { style: { marginTop: 8, background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: 8, fontSize: 12, color: COLORS.danger } }, "\u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636: " + (o.salesManagerRejectionReason || "\u2014")) : null,
     h("button", { onClick: () => setEditingOrder(o), style: { ...addLinkStyle, marginTop: 8 } }, "\u270F\uFE0F \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
   );
   const doneCard = (o) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
@@ -10018,7 +10210,7 @@ const DEFAULT_UPHOLSTERY_SUPPLIERS = { "مصر": ["التنجيد"], "الدما
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
-const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", "sales-manager": "مدير المبيعات (موافقة على أوردرات مهندسي المبيعات قبل المراجعة)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
 const PRODUCTION_ENTITY_PAGES = {
   "مصر": [
     { key: "carpentry", label: "نجارة / مصانع" },
@@ -10089,6 +10281,7 @@ const SUB_TABS_CONFIG = {
 };
 const ALL_TABS = [
   { key: "review", label: "المراجعة", emoji: "\u{1F9FE}" },
+  { key: "sales-approval", label: "موافقة المبيعات", emoji: "\u{1F4DD}" },
   { key: "my-orders", label: "أوردراتي", emoji: "\u{1F4C1}" },
   { key: "materials-hub", label: "الخامات", emoji: "🧵" },
   { key: "distribution", label: "التوزيع", emoji: "🧭" },
@@ -10735,11 +10928,11 @@ function applyPieceStatusChange(piece, newStatus, specificTarget) {
   }
   return p;
 }
-function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection) {
+function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn) {
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = (selection ? ["\u2611\uFE0F"] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"]).concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
+  const cols = (selection ? ["\u2611\uFE0F"] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]).concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
   const fmtDuration = (ms) => {
     const days = Math.floor(ms / 86400000);
     if (days >= 1) return days + "\u064A\u0648\u0645";
@@ -10785,6 +10978,12 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stageInfo.end || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
+                h("td", { style: { padding: "8px 10px", minWidth: 160 }, onClick: (e) => e.stopPropagation() }, (canEditFn ? canEditFn(p) : true) ? h("textarea", {
+                  defaultValue: p.notes || "",
+                  placeholder: "\u0645\u0644\u0627\u062D\u0638\u0629...",
+                  onBlur: (e) => { if (onUpdate && e.target.value !== (p.notes || "")) onUpdate({ ...p, notes: e.target.value }); },
+                  style: { width: "100%", minHeight: 32, resize: "vertical", padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}`, fontSize: 11, fontFamily: "inherit" }
+                }) : (p.notes || "\u2014")),
                 activeLoc ? (() => {
                   const stillHere = p.currentLocation === activeLoc;
                   let durationMs = null;
@@ -10928,7 +11127,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
@@ -11011,7 +11210,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null),
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -11276,8 +11475,8 @@ function LocationArchiveTable({ entries, activeLoc }) {
 }
 
 
-function renderFullProductionTable(piecesList, showCustomerCol) {
-  const cols = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]);
+function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit) {
+  const cols = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]);
   return h("div", { style: { overflowX: "auto" } },
     h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 2250 : 2150 } },
       h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
@@ -11310,13 +11509,19 @@ function renderFullProductionTable(piecesList, showCustomerCol) {
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "start")),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "end")),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014")
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014"),
+          h("td", { style: { padding: "8px 10px", minWidth: 160 } }, canEdit && onUpdate ? h("textarea", {
+            defaultValue: p.notes || "",
+            placeholder: "\u0645\u0644\u0627\u062D\u0638\u0629...",
+            onBlur: (e) => { if (e.target.value !== (p.notes || "")) onUpdate({ ...p, notes: e.target.value }); },
+            style: { width: "100%", minHeight: 32, resize: "vertical", padding: "4px 6px", borderRadius: 6, border: `1px solid ${COLORS.border}`, fontSize: 11, fontFamily: "inherit" }
+          }) : (p.notes || "\u2014"))
         );
       }))
     )
   );
 }
-function FullProductionPage({ pieces }) {
+function FullProductionPage({ pieces, onUpdate, canEdit }) {
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState("customer");
   const [showFilters, setShowFilters] = useState(false);
@@ -11359,7 +11564,7 @@ function FullProductionPage({ pieces }) {
     });
     body = names.map((name) => h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 } },
       h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } }, h("span", null, name), h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")),
-      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate)))
+      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit))
     ));
   } else {
     const dateGroups = {};
@@ -11368,23 +11573,23 @@ function FullProductionPage({ pieces }) {
     body = dates.map((date) => h("div", { key: date, style: { marginBottom: 14 } },
       h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, margin: "0 0 6px" } }, h(Emoji, { size: 12 }, "🚩"), date),
       h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", padding: 10 } },
-        renderFullProductionTable(dateGroups[date], true)
+        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit)
       )
     ));
   }
   const exportExcel = () => {
-    const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"]];
+    const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""]);
+      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.notes || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
+    const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || ""];
+      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingStatus || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.notes || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
