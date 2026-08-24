@@ -10999,7 +10999,7 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles }) {
+function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles, onSubNav }) {
   const [scope, setScope] = useState(null);
   useEffect(() => {
     if (!onSubNav || !scope) return;
@@ -11283,7 +11283,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
     ),
     viewMode === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles })
+        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
     ) : (
       archiveEntries.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0624\u0631\u0634\u0641\u0629 \u0644ـ" + activeLoc + " \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
         h(LocationArchiveTable, { entries: archiveEntries, activeLoc })
