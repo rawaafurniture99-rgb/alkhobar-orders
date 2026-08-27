@@ -983,6 +983,7 @@ function App() {
   const myProductionAccess = (myMember && myMember.productionAccess) || {};
   const isAdminForProduction = isOwner || hasRole("admin");
   const canEditDistribution = hasRole("admin") || hasRole("distributor");
+  const canEditMaterials = hasRole("admin") || hasRole("materials");
   const canEditFullProduction = hasRole("admin");
   const canEditOrder = (o) => {
     if (isOwner || hasRole("admin")) return true;
@@ -997,6 +998,7 @@ function App() {
   };
   const defaultCanEditForTab = (key) => {
     if (key === "distribution") return canEditDistribution;
+    if (key === "materials-hub") return canEditMaterials;
     if (key === "full-production") return canEditFullProduction;
     if (key === "egypt-upholstery" || key === "deliveries") return !globalReadOnly;
     return hasRole("admin");
@@ -5514,9 +5516,9 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
     if (categoryFilter && o.category !== categoryFilter) return false;
     return true;
   });
-  const needsRevision = applyFilters(scoped.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644")).sort(byDeliveryDate);
+  const needsRevision = applyFilters(scoped.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" || o.salesManagerApproval === "rejected")).sort(byDeliveryDate);
   const reviewed = applyFilters(scoped.filter((o) => o.reviewStatus === "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")).sort(byDeliveryDate);
-  const pendingReview = applyFilters(scoped.filter((o) => o.reviewStatus !== "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")).sort(byDeliveryDate);
+  const pendingReview = applyFilters(scoped.filter((o) => o.reviewStatus !== "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" && o.reviewStatus !== "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" && o.salesManagerApproval !== "rejected")).sort(byDeliveryDate);
   const currentList = tab === "revisions" ? needsRevision : tab === "pending" ? pendingReview : reviewed;
   const exportRows = (list) => list.map((o) => [o.clientName || "\u2014", o.category || "\u2014", o.deliveryDate || "\u2014", resolveName(o), tab === "revisions" ? "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" : tab === "pending" ? "\u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" : "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"]);
   const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0642\u0633\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0627\u0644\u062D\u0627\u0644\u0629"];
@@ -5541,8 +5543,10 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
         h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
         h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, o.category || "\u2014", o.deliveryDate ? " \u00B7 \u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "")
       ),
+      o.salesManagerApproval === "rejected" ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.danger, background: "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, "\u274C \u0645\u0631\u0641\u0648\u0636 \u0645\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") :
       h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, padding: "2px 8px", borderRadius: 999 } }, "\u{1F4DD} \u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644")
     ),
+    o.salesManagerApproval === "rejected" ? h("div", { style: { fontSize: 12.5, color: COLORS.danger, marginTop: 8, background: "#FBEAE6", borderRadius: 8, padding: 8 } }, "\u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636: " + (o.salesManagerRejectionReason || "\u2014")) :
     o.revisionNote ? h("div", { style: { fontSize: 12.5, color: COLORS.ink, marginTop: 8, background: COLORS.bg, borderRadius: 8, padding: 8 } }, o.revisionNote) : null,
     o.revisionFile ? h("a", { href: o.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.revisionFile.name || "\u0645\u0644\u0641 \u0645\u0631\u0641\u0642")) : null,
     o.inRevisionAt ? h("div", { style: { fontSize: 11, color: COLORS.muted, marginTop: 6 } }, "\u0637\u0644\u0628 \u0627\u0644\u062A\u0639\u062F\u064A\u0644: " + o.inRevisionAt) : null,
@@ -5554,11 +5558,9 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
         h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"),
         h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, o.category || "\u2014", o.deliveryDate ? " \u00B7 \u062A\u0633\u0644\u064A\u0645: " + o.deliveryDate : "")
       ),
-      o.salesManagerApproval === "rejected" ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.danger, background: "#FBEAE6", padding: "2px 8px", borderRadius: 999 } }, "\u274C \u0645\u0631\u0641\u0648\u0636 \u0645\u0646 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") :
       o.requiresSalesManagerApproval && !o.salesManagerApproval ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, padding: "2px 8px", borderRadius: 999 } }, "\u23F3 \u0645\u0633\u062A\u0646\u064A \u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") :
       h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.teal, background: "#EAF1F1", padding: "2px 8px", borderRadius: 999 } }, "\u{1F195} \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629")
     ),
-    o.salesManagerApproval === "rejected" ? h("div", { style: { marginTop: 8, background: "#FBEAE6", border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: 8, fontSize: 12, color: COLORS.danger } }, "\u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636: " + (o.salesManagerRejectionReason || "\u2014")) : null,
     h("button", { onClick: () => setEditingOrder(o), style: { ...addLinkStyle, marginTop: 8 } }, "\u270F\uFE0F \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")
   );
   const doneCard = (o) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
@@ -8058,7 +8060,7 @@ function OrderTimelinePage({ order, pieces, onBack, orders }) {
   const steps = [
     { emoji: "\u{1F4E5}", label: "\u0627\u0633\u062A\u0644\u0627\u0645 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", done: true, detail: order.dateReceived ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.dateReceived : null },
     { emoji: "\u2705", label: "\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631", done: !!order.approved, detail: order.approved ? (order.reviewDate ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.reviewDate.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F") : "\u0644\u0633\u0647 \u0642\u064A\u062F \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629" },
-    { emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", done: !!order.materialsHandled, detail: order.materialsHandled === "not_needed" ? "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C" : order.materialsHandled ? (order.materialsHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.materialsHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062D\u0635\u0631") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A" },
+    { emoji: "\u{1F9F5}", label: "\u062D\u0635\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A", done: !!order.materialsHandled, detail: order.requiresSalesManagerApproval && order.salesManagerApproval !== "approved" ? "\u0645\u0633\u062A\u0646\u064A \u0645\u0648\u0627\u0641\u0642\u0629 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A \u0623\u0648\u0644\u0627\u064B" : order.materialsHandled === "not_needed" ? "\u2796 \u0644\u0627 \u064A\u062D\u062A\u0627\u062C" : order.materialsHandled ? (order.materialsHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.materialsHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062D\u0635\u0631") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u062D\u0635\u0631\u062A" },
     { emoji: "\u{1F4E6}", label: "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0642\u0637\u0639 \u0639\u0644\u0649 \u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646", done: !!order.distributionHandled, detail: !order.approved ? "\u0645\u0633\u062A\u0646\u064A \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0623\u0648\u0644\u0627\u064B" : order.distributionHandled ? (order.distributionHandledAt ? "\u0628\u062A\u0627\u0631\u064A\u062E " + order.distributionHandledAt.replace("T", " ").slice(0, 16) : "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639") : "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0648\u0632\u0651\u0639" },
     { emoji: "\u{1F6E0}\uFE0F", label: "\u0627\u0644\u062A\u0635\u0646\u064A\u0639", done: totalPieces > 0 && readyCount === totalPieces, detail: totalPieces === 0 ? "\u0645\u0633\u062A\u0646\u064A \u064A\u062A\u0648\u0632\u0651\u0639" : readyCount + " \u0645\u0646 " + totalPieces + " \u0642\u0637\u0639\u0629 \u062C\u0627\u0647\u0632\u0629", subItems: totalPieces > 0 && readyCount < totalPieces ? matchingPieces.filter((p) => !pieceIsReady(p)).map((p) => (p.pieceType || "\u2014") + " \u2014 " + stageLabel(p.currentLocation)) : [] },
     { emoji: "\u{1F69A}", label: "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", done: totalPieces > 0 && deliveredCount === totalPieces, detail: totalPieces === 0 ? "\u2014" : deliveredCount + " \u0645\u0646 " + totalPieces + " \u0642\u0637\u0639\u0629 \u0627\u062A\u0633\u0644\u0645\u062A" + (order.deliveryDate ? " \u00B7 \u0645\u0648\u0639\u062F \u0645\u062A\u0648\u0642\u0639: " + order.deliveryDate : "") }
@@ -10169,7 +10171,7 @@ const DEFAULT_UPHOLSTERY_SUPPLIERS = { "مصر": ["التنجيد"], "الدما
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
-const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", "sales-manager": "مدير المبيعات (موافقة على أوردرات مهندسي المبيعات قبل المراجعة)", distributor: "توزيع", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
+const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", "sales-manager": "مدير المبيعات (موافقة على أوردرات مهندسي المبيعات قبل المراجعة)", distributor: "توزيع", materials: "حصر خامات", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
 const PRODUCTION_ENTITY_PAGES = {
   "مصر": [
     { key: "carpentry", label: "نجارة / مصانع" },
@@ -10335,7 +10337,7 @@ function computeCustomerFriendlyStatus(order, matchingPieces) {
 function OrderHandoffQueue({ orders, flagKey, onUpdateOrder, onOpenOrder, doneLabel, title, emoji, onOpenCustomer, allowNotNeeded, requireApproved }) {
   const [tab, setTab] = useState("new");
   const [query, setQuery] = useState("");
-  const eligible = requireApproved === false ? orders : orders.filter((o) => o.approved);
+  const eligible = requireApproved === false ? orders.filter((o) => !o.requiresSalesManagerApproval || o.salesManagerApproval === "approved") : orders.filter((o) => o.approved);
   const fresh = eligible.filter((o) => !o[flagKey]);
   const done = eligible.filter((o) => o[flagKey]);
   const list = (tab === "new" ? fresh : done).filter((o) => !query.trim() || (o.clientName || "").includes(query.trim()) || (o.orderCode || "").includes(query.trim()));
