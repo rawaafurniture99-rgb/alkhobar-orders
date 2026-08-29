@@ -7363,8 +7363,8 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
     if (isNaN(d)) return dateStr;
     return d.getDate() + " " + (AR_MONTHS[d.getMonth()] || "");
   };
-  const listCols = ["اسم العميل", "تاريخ التسليم", "عدد القطع", "البيان", "حالة الشحن", "تاريخ الشحن", "حالة الوصول", "تاريخ الوصول", "حالة الجاهزية", "التشطيب", "نوع التشطيب"];
-  const listExportRows = () => filteredList.map((p) => [p.customerName || "—", p.customerDeliveryDate || "—", p.pieceCount || "—", p.description || "—", p.productShippingStatus || "لم يتم الشحن", p.shippingDate || "—", p.productArrivalStatus || "—", p.arrivalDate || "—", p.readinessStatus || "—", p.finishingNeeded || "—", p.finishingType || "—"]);
+  const listCols = ["اسم العميل", "تاريخ التسليم", "عدد القطع", "البيان", "المقاس", "حالة الشحن", "تاريخ الشحن", "حالة الوصول", "تاريخ الوصول", "حالة الجاهزية", "التشطيب", "نوع التشطيب"];
+  const listExportRows = () => filteredList.map((p) => [p.customerName || "—", p.customerDeliveryDate || "—", p.pieceCount || "—", p.description || "—", p.size || "—", p.productShippingStatus || "لم يتم الشحن", p.shippingDate || "—", p.productArrivalStatus || "—", p.arrivalDate || "—", p.readinessStatus || "—", p.finishingNeeded || "—", p.finishingType || "—"]);
   const disabled = !canEdit;
   return h("div", null,
     h(SectionHeader, { emoji: "🚚", title: "شحن المنتج" }),
@@ -7384,18 +7384,19 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
       ),
       filteredList.length === 0 ? h(EmptyHint, { text: "لا توجد قطع مصنّعة في مصر مطابقة" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1550 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1650 } },
           h("thead", null, h("tr", null, listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
           h("tbody", null, filteredList.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
             h("td", { style: { padding: "10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "—"),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "—"),
             h("td", { style: { padding: "10px", textAlign: "center" } }, p.pieceCount || "—"),
             h("td", { style: { padding: "10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "—"),
+            h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, p.size || "—"),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.productShippingStatus || "", disabled, onChange: (e) => onShippingStatusChange(p, e.target.value), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 110, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "لم يتم الشحن"), h("option", { value: "تم الشحن" }, "تم الشحن"))),
             h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.shippingDate || "", disabled, onChange: (e) => updatePiece(p, { shippingDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.productArrivalStatus || "", disabled, onChange: (e) => onArrivalStatusChange(p, e.target.value), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "وصل" }, "وصل"), h("option", { value: "لم يصل" }, "لم يصل"))),
             h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.arrivalDate || "", disabled, onChange: (e) => updatePiece(p, { arrivalDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
-            h("td", { style: { padding: "10px" } }, h("select", { value: p.readinessStatus || "", disabled, onChange: (e) => updatePiece(p, { readinessStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 120, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "منتج تام" }, "منتج تام"), h("option", { value: "خشب مصبوغ" }, "خشب مصبوغ"))),
+            h("td", { style: { padding: "10px" } }, h("select", { value: p.readinessStatus || "", disabled, onChange: (e) => updatePiece(p, { readinessStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 120, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "منتج تام" }, "منتج تام"), h("option", { value: "خشب مصبوغ" }, "خشب مصبوغ"), h("option", { value: "خشب ونص تنجيد" }, "خشب ونص تنجيد"))),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.finishingNeeded || "", disabled, onChange: (e) => updatePiece(p, { finishingNeeded: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "يحتاج" }, "يحتاج"), h("option", { value: "لا يحتاج" }, "لا يحتاج"))),
             h("td", { style: { padding: "10px" } }, h("input", { type: "text", value: p.finishingType || "", disabled, placeholder: "نوع التشطيب...", onChange: (e) => updatePiece(p, { finishingType: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }))
           )))
@@ -7408,14 +7409,14 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
       ),
       shipDates.length > 0 ? h(ExportButtons, {
         onExcel: () => {
-          const rows2 = [["شحنة", "اسم العميل", "البيان", "عدد القطع"]];
-          shipDates.forEach((date) => byShipDate[date].forEach((p) => rows2.push([shipmentTitle(date), p.customerName || "—", p.description || "—", p.pieceCount || "—"])));
+          const rows2 = [["اسم العميل", "عدد القطع", "البيان", "المقاس", "حالة الجاهزية", "التشطيب", "نوع التشطيب"]];
+          shipDates.forEach((date) => byShipDate[date].forEach((p) => rows2.push([p.customerName || "—", p.pieceCount || "—", p.description || "—", p.size || "—", p.readinessStatus || "—", p.finishingNeeded || "—", p.finishingType || "—"])));
           exportToExcel("شحنات-مصر", [{ name: "الشحنات", rows: rows2 }]);
         },
         onPdf: () => {
-          const headers = ["شحنة", "اسم العميل", "البيان", "عدد القطع"];
+          const headers = ["اسم العميل", "عدد القطع", "البيان", "المقاس", "حالة الجاهزية", "التشطيب", "نوع التشطيب"];
           const dataRows = [];
-          shipDates.forEach((date) => byShipDate[date].forEach((p) => dataRows.push([shipmentTitle(date), p.customerName || "—", p.description || "—", p.pieceCount || "—"])));
+          shipDates.forEach((date) => byShipDate[date].forEach((p) => dataRows.push([p.customerName || "—", p.pieceCount || "—", p.description || "—", p.size || "—", p.readinessStatus || "—", p.finishingNeeded || "—", p.finishingType || "—"])));
           printAsPdf("شحنات مصر", headers, dataRows);
         }
       }) : null,
@@ -7430,13 +7431,16 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
             h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.75 } }, rows.length + " قطعة", h(Emoji, { size: 11 }, expandedShipDate === date ? "▲" : "▼"))
           ),
           expandedShipDate === date ? h("div", { style: { overflowX: "auto" } },
-            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 520 } },
-              h("thead", null, h("tr", null, ["اسم العميل", "البيان", "عدد القطع", "حالة الوصول"].map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 800 } },
+              h("thead", null, h("tr", null, ["اسم العميل", "عدد القطع", "البيان", "المقاس", "حالة الجاهزية", "التشطيب", "نوع التشطيب"].map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
               h("tbody", null, rows.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
                 h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "—"),
-                h("td", { style: { padding: "9px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "—"),
                 h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount || "—"),
-                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.productArrivalStatus || "غير محدد")
+                h("td", { style: { padding: "9px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "—"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.size || "—"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.readinessStatus || "—"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.finishingNeeded || "—"),
+                h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.finishingType || "—")
               )))
             )
           ) : null
