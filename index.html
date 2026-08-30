@@ -2346,25 +2346,26 @@ function AutomationSettingsModal({ currentUrl, onClose, onSave }) {
   );
 }
 function FabricWarehousePage({ entries, onAdd, onDelete, onBack, canEdit }) {
-  const [subTab, setSubTab] = useState("log");
+  const [subTab, setSubTab] = useState("in");
   const [formType, setFormType] = useState(null);
-  const [fDate, setFDate] = useState(todayStr());
+  const [fCustomer, setFCustomer] = useState("");
   const [fName, setFName] = useState("");
   const [fQty, setFQty] = useState("");
   const [fUnit, setFUnit] = useState("متر");
   const [fParty, setFParty] = useState("");
+  const [fDate, setFDate] = useState(todayStr());
   const [fNotes, setFNotes] = useState("");
   const [fVoucher, setFVoucher] = useState(null);
   const [query, setQuery] = useState("");
 
   const resetForm = () => {
-    setFDate(todayStr()); setFName(""); setFQty(""); setFUnit("متر"); setFParty(""); setFNotes(""); setFVoucher(null);
+    setFCustomer(""); setFName(""); setFQty(""); setFUnit("متر"); setFParty(""); setFDate(todayStr()); setFNotes(""); setFVoucher(null);
   };
   const openForm = (type) => { resetForm(); setFormType(type); };
   const submit = () => {
     if (!fName.trim() || !fQty || Number(fQty) <= 0) return;
     onAdd({
-      id: uid(), type: formType, date: fDate || todayStr(), fabricName: fName.trim(),
+      id: uid(), type: formType, date: fDate || todayStr(), customerName: fCustomer.trim(), fabricName: fName.trim(),
       quantity: Number(fQty), unit: fUnit.trim() || "متر", party: fParty.trim(),
       voucher: fVoucher, notes: fNotes.trim(), createdAt: (/* @__PURE__ */ new Date()).toISOString()
     });
@@ -2372,98 +2373,106 @@ function FabricWarehousePage({ entries, onAdd, onDelete, onBack, canEdit }) {
     resetForm();
   };
 
-  const sorted = (entries || []).filter((e) => !query.trim() || (e.fabricName || "").includes(query.trim()) || (e.party || "").includes(query.trim())).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const matchesQuery = (e) => !query.trim() || (e.fabricName || "").includes(query.trim()) || (e.customerName || "").includes(query.trim()) || (e.party || "").includes(query.trim());
+  const inEntries = (entries || []).filter((e) => e.type === "in" && matchesQuery(e)).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const outEntries = (entries || []).filter((e) => e.type === "out" && matchesQuery(e)).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   const balances = (() => {
     const map = {};
-    (entries || []).forEach((e) => {
-      const key = (e.fabricName || "").trim();
-      if (!key) return;
-      if (!map[key]) map[key] = { name: key, unit: e.unit || "متر", balance: 0 };
+    (entries || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || "")).forEach((e) => {
+      if (!e.fabricName) return;
+      const key = (e.customerName || "\u2014") + "||" + e.fabricName.trim();
+      if (!map[key]) map[key] = { customerName: e.customerName || "\u2014", fabricName: e.fabricName, unit: e.unit || "متر", balance: 0, supplier: "" };
       map[key].balance += (e.type === "in" ? 1 : -1) * (Number(e.quantity) || 0);
+      if (e.type === "in" && e.party) map[key].supplier = e.party;
     });
-    return Object.values(map).filter((b) => !query.trim() || b.name.includes(query.trim())).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+    return Object.values(map).filter((b) => !query.trim() || b.fabricName.includes(query.trim()) || b.customerName.includes(query.trim())).sort((a, b) => a.customerName.localeCompare(b.customerName, "ar"));
   })();
 
-  const logCols = ["التاريخ", "النوع", "اسم القماش", "الكمية", "الوحدة", "الجهة", "إذن الصرف", "ملاحظات"];
-  const logExportRows = () => sorted.map((e) => [e.date || "—", e.type === "in" ? "استلام" : "صرف", e.fabricName || "—", e.quantity || "—", e.unit || "—", e.party || "—", e.voucher ? "مرفق" : "—", e.notes || "—"]);
+  const entryCard = (e) => h("div", { key: e.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
+      h("div", null,
+        h("div", { style: { fontWeight: 700, fontSize: 14 } }, e.customerName || "\u2014"),
+        h("div", { style: { fontSize: 12.5, color: COLORS.teal, marginTop: 2, fontWeight: 700 } }, e.fabricName || "\u2014"),
+        h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, e.date || "\u2014", e.party ? " \u00B7 " + e.party : "")
+      ),
+      h("div", { style: { fontSize: 14, fontWeight: 700, color: e.type === "in" ? COLORS.green : COLORS.danger } }, (e.type === "in" ? "+" : "-") + (e.quantity || 0) + " " + (e.unit || ""))
+    ),
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 } },
+      e.voucher ? h("a", { href: e.voucher.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, textDecoration: "none", display: "flex", alignItems: "center", gap: 3 } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0625\u0630\u0646 \u0627\u0644\u0635\u0631\u0641") : h("span", null),
+      canEdit ? h("button", { onClick: () => { if (window.confirm("\u062D\u0630\u0641 \u0627\u0644\u062D\u0631\u0643\u0629 \u062F\u064A\u061F")) onDelete(e.id); }, style: { ...iconBtnStyle, padding: 4 } }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null
+    ),
+    e.notes ? h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 6 } }, e.notes) : null
+  );
 
-  const typeBadge = (type) => h("span", {
-    style: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999, background: type === "in" ? "#E8F0E4" : "#FBEAE6", color: type === "in" ? COLORS.green : COLORS.danger, whiteSpace: "nowrap" }
-  }, type === "in" ? "⬇️ استلام" : "⬆️ صرف");
+  const inCols = ["التاريخ", "اسم العميل", "الكود", "الكمية", "الوحدة", "المورد", "ملاحظات"];
+  const inExportRows = () => inEntries.map((e) => [e.date || "\u2014", e.customerName || "\u2014", e.fabricName || "\u2014", e.quantity || "\u2014", e.unit || "\u2014", e.party || "\u2014", e.notes || "\u2014"]);
+  const outCols = ["التاريخ", "اسم العميل", "الكود", "الكمية", "الوحدة", "جهة الصرف", "ملاحظات"];
+  const outExportRows = () => outEntries.map((e) => [e.date || "\u2014", e.customerName || "\u2014", e.fabricName || "\u2014", e.quantity || "\u2014", e.unit || "\u2014", e.party || "\u2014", e.notes || "\u2014"]);
 
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
-      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "‹")),
-      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "🏬 مخزن الأقمشة")
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u2039")),
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F3EC} \u0645\u062E\u0632\u0646 \u0627\u0644\u0623\u0642\u0645\u0634\u0629")
     ),
 
     formType ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 16 } },
-      h("div", { style: { fontWeight: 700, fontSize: 14.5, marginBottom: 10, color: formType === "in" ? COLORS.green : COLORS.danger } }, formType === "in" ? "⬇️ تسجيل استلام قماش" : "⬆️ تسجيل صرف قماش"),
-      h("label", { style: labelStyle }, "التاريخ"),
-      h("input", { type: "date", style: fieldStyle, value: fDate, onChange: (e) => setFDate(e.target.value) }),
-      h("label", { style: labelStyle }, "اسم/كود القماش"),
-      h("input", { style: fieldStyle, value: fName, onChange: (e) => setFName(e.target.value), placeholder: "مثال: قماش بف رمادي" }),
+      h("div", { style: { fontWeight: 700, fontSize: 14.5, marginBottom: 10, color: formType === "in" ? COLORS.green : COLORS.danger } }, formType === "in" ? "\u2B07\uFE0F \u062A\u0633\u062C\u064A\u0644 \u0627\u0633\u062A\u0644\u0627\u0645 \u0642\u0645\u0627\u0634" : "\u2B06\uFE0F \u062A\u0633\u062C\u064A\u0644 \u0635\u0631\u0641 \u0642\u0645\u0627\u0634"),
+      h("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
+      h("input", { style: fieldStyle, value: fCustomer, onChange: (e) => setFCustomer(e.target.value), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644..." }),
+      h("label", { style: labelStyle }, "\u0627\u0644\u0643\u0648\u062F"),
+      h("input", { style: fieldStyle, value: fName, onChange: (e) => setFName(e.target.value), placeholder: "\u0645\u062B\u0627\u0644: 02-1335" }),
       h("div", { style: { display: "flex", gap: 8 } },
-        h("div", { style: { flex: 2 } }, h("label", { style: labelStyle }, "الكمية"), h("input", { type: "number", min: 0, style: fieldStyle, value: fQty, onChange: (e) => setFQty(e.target.value) })),
-        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الوحدة"), h("input", { style: fieldStyle, value: fUnit, onChange: (e) => setFUnit(e.target.value), placeholder: "متر" }))
+        h("div", { style: { flex: 2 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0643\u0645\u064A\u0629"), h("input", { type: "number", min: 0, style: fieldStyle, value: fQty, onChange: (e) => setFQty(e.target.value) })),
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0648\u062D\u062F\u0629"), h("input", { style: fieldStyle, value: fUnit, onChange: (e) => setFUnit(e.target.value), placeholder: "\u0645\u062A\u0631" }))
       ),
-      h("label", { style: labelStyle }, formType === "in" ? "المورد (اختياري)" : "جهة الصرف (العميل/المصنع)"),
-      h("input", { style: fieldStyle, value: fParty, onChange: (e) => setFParty(e.target.value), placeholder: formType === "in" ? "اسم المورد..." : "اسم العميل أو المصنع..." }),
-      h(FileAttachField, { label: formType === "out" ? "إذن الصرف" : "مرفق (اختياري)", file: fVoucher, onChange: setFVoucher, onRemove: () => setFVoucher(null), folder: "fabric-warehouse" }),
-      h("label", { style: labelStyle }, "ملاحظات"),
+      h("label", { style: labelStyle }, formType === "in" ? "\u0627\u0644\u0645\u0648\u0631\u062F (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)" : "\u062C\u0647\u0629 \u0627\u0644\u0635\u0631\u0641"),
+      h("input", { style: fieldStyle, value: fParty, onChange: (e) => setFParty(e.target.value), placeholder: formType === "in" ? "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062F..." : "\u0627\u0644\u0645\u0635\u0646\u0639 \u0627\u0644\u0645\u0633\u062A\u0644\u0645..." }),
+      h("label", { style: labelStyle }, "\u0627\u0644\u062A\u0627\u0631\u064A\u062E"),
+      h("input", { type: "date", style: fieldStyle, value: fDate, onChange: (e) => setFDate(e.target.value) }),
+      h(FileAttachField, { label: formType === "out" ? "\u0625\u0630\u0646 \u0627\u0644\u0635\u0631\u0641" : "\u0645\u0631\u0641\u0642 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file: fVoucher, onChange: setFVoucher, onRemove: () => setFVoucher(null), folder: "fabric-warehouse" }),
+      h("label", { style: labelStyle }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"),
       h("textarea", { style: { ...fieldStyle, minHeight: 50 }, value: fNotes, onChange: (e) => setFNotes(e.target.value) }),
       h("div", { style: { display: "flex", gap: 8 } },
-        h("button", { style: { ...primaryBtn(!(fName.trim() && fQty)), flex: 1 }, disabled: !(fName.trim() && fQty), onClick: submit }, "حفظ"),
-        h("button", { style: { ...addLinkStyle, marginTop: 0 }, onClick: () => setFormType(null) }, "إلغاء")
+        h("button", { style: { ...primaryBtn(!(fName.trim() && fQty)), flex: 1 }, disabled: !(fName.trim() && fQty), onClick: submit }, "\u062D\u0641\u0638"),
+        h("button", { style: { ...addLinkStyle, marginTop: 0 }, onClick: () => setFormType(null) }, "\u0625\u0644\u063A\u0627\u0621")
       )
     ) : h("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
-      canEdit ? h("button", { onClick: () => openForm("in"), style: { flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: COLORS.green, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "⬇️ تسجيل استلام") : null,
-      canEdit ? h("button", { onClick: () => openForm("out"), style: { flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: COLORS.danger, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "⬆️ تسجيل صرف") : null
+      canEdit ? h("button", { onClick: () => openForm("in"), style: { flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: COLORS.green, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2B07\uFE0F \u062A\u0633\u062C\u064A\u0644 \u0627\u0633\u062A\u0644\u0627\u0645") : null,
+      canEdit ? h("button", { onClick: () => openForm("out"), style: { flex: 1, padding: "12px 0", borderRadius: 10, border: "none", background: COLORS.danger, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u2B06\uFE0F \u062A\u0633\u062C\u064A\u0644 \u0635\u0631\u0641") : null
     ),
 
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
-      h(TabButton, { active: subTab === "log", onClick: () => setSubTab("log"), emoji: "📋", label: "سجل الحركة" }),
-      h(TabButton, { active: subTab === "balance", onClick: () => setSubTab("balance"), emoji: "📊", label: "الرصيد الحالي" })
+      h(TabButton, { active: subTab === "in", onClick: () => setSubTab("in"), emoji: "\u2B07\uFE0F", label: "\u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645" }),
+      h(TabButton, { active: subTab === "out", onClick: () => setSubTab("out"), emoji: "\u2B06\uFE0F", label: "\u0627\u0644\u0635\u0631\u0641" }),
+      h(TabButton, { active: subTab === "balance", onClick: () => setSubTab("balance"), emoji: "\u{1F4CA}", label: "\u0627\u0644\u0631\u0635\u064A\u062F" })
     ),
-    h("input", { style: fieldStyle, placeholder: "ابحثي باسم القماش أو الجهة...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F \u0623\u0648 \u0627\u0644\u062C\u0647\u0629...", value: query, onChange: (e) => setQuery(e.target.value) }),
 
-    subTab === "log" ? h(React.Fragment, null,
-      sorted.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("مخزن-الأقمشة", [{ name: "سجل الحركة", rows: [logCols].concat(logExportRows()) }]), onPdf: () => printAsPdf("مخزن الأقمشة", logCols, logExportRows()) }) : null,
-      sorted.length === 0 ? h(EmptyHint, { text: "لا توجد حركات مسجلة بعد" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, sorted.map((e) => h("div", { key: e.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
-          h("div", null,
-            h("div", { style: { fontWeight: 700, fontSize: 14 } }, e.fabricName || "—"),
-            h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, e.date || "—", e.party ? " · " + e.party : "")
-          ),
-          typeBadge(e.type)
-        ),
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 } },
-          h("div", { style: { fontSize: 13, fontWeight: 700, color: e.type === "in" ? COLORS.green : COLORS.danger } }, (e.type === "in" ? "+" : "-") + (e.quantity || 0) + " " + (e.unit || "")),
-          h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
-            e.voucher ? h("a", { href: e.voucher.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, textDecoration: "none", display: "flex", alignItems: "center", gap: 3 } }, h(Emoji, { size: 12 }, "📎"), "إذن الصرف") : null,
-            canEdit ? h("button", { onClick: () => { if (window.confirm("حذف الحركة دي؟")) onDelete(e.id); }, style: { ...iconBtnStyle, padding: 4 } }, h(Emoji, { size: 15, color: COLORS.danger }, "🗑️")) : null
-          )
-        ),
-        e.notes ? h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 6 } }, e.notes) : null
-      )))
+    subTab === "in" ? h(React.Fragment, null,
+      inEntries.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("استلام-الأقمشة", [{ name: "الاستلام", rows: [inCols].concat(inExportRows()) }]), onPdf: () => printAsPdf("استلام الأقمشة", inCols, inExportRows()) }) : null,
+      inEntries.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0639\u0645\u0644\u064A\u0627\u062A \u0627\u0633\u062A\u0644\u0627\u0645 \u0645\u0633\u062C\u0644\u0629 \u0628\u0639\u062F" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, inEntries.map(entryCard))
+    ) : subTab === "out" ? h(React.Fragment, null,
+      outEntries.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("صرف-الأقمشة", [{ name: "الصرف", rows: [outCols].concat(outExportRows()) }]), onPdf: () => printAsPdf("صرف الأقمشة", outCols, outExportRows()) }) : null,
+      outEntries.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0639\u0645\u0644\u064A\u0627\u062A \u0635\u0631\u0641 \u0645\u0633\u062C\u0644\u0629 \u0628\u0639\u062F" }) :
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, outEntries.map(entryCard))
     ) : h(React.Fragment, null,
-      balances.length === 0 ? h(EmptyHint, { text: "لا يوجد رصيد مسجل بعد" }) :
+      balances.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0631\u0635\u064A\u062F \u0645\u0633\u062C\u0644 \u0628\u0639\u062F" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 13 } },
-          h("thead", null, h("tr", null, ["اسم القماش", "الرصيد الحالي", "الوحدة"].map((c) => h("th", { key: c, style: { padding: "10px 12px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11.5 } }, c)))),
-          h("tbody", null, balances.map((b) => h("tr", { key: b.name, style: { borderBottom: `1px solid ${COLORS.border}` } },
-            h("td", { style: { padding: "10px 12px", fontWeight: 700 } }, b.name),
-            h("td", { style: { padding: "10px 12px", fontWeight: 700, color: b.balance <= 0 ? COLORS.danger : COLORS.ink } }, b.balance),
-            h("td", { style: { padding: "10px 12px", color: COLORS.muted } }, b.unit)
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 560 } },
+          h("thead", null, h("tr", null, ["اسم العميل", "الكود", "الكمية المتبقية", "المورد"].map((c) => h("th", { key: c, style: { padding: "10px 12px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11.5, whiteSpace: "nowrap" } }, c)))),
+          h("tbody", null, balances.map((b, i) => h("tr", { key: i, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            h("td", { style: { padding: "10px 12px", fontWeight: 700, whiteSpace: "nowrap" } }, b.customerName),
+            h("td", { style: { padding: "10px 12px", fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, b.fabricName),
+            h("td", { style: { padding: "10px 12px", fontWeight: 700, color: b.balance <= 0 ? COLORS.danger : COLORS.ink, whiteSpace: "nowrap" } }, b.balance + " " + b.unit),
+            h("td", { style: { padding: "10px 12px", color: COLORS.muted, whiteSpace: "nowrap" } }, b.supplier || "\u2014")
           )))
         )
       )
     )
   );
 }
-
 function GlobalStyle() {
   return /* @__PURE__ */ React.createElement("style", null, `
       * { box-sizing: border-box; }
