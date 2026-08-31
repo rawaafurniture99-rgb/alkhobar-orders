@@ -1843,6 +1843,9 @@ function App() {
     const withOwner = { id: uid(), employeeEmail: (user && user.email) || "", employeeName: myDisplayName || "", managerEmails: (mine && mine.managerEmails) || [], text, media: media || [], at: (/* @__PURE__ */ new Date()).toISOString() };
     persistRecordWrite(dailyLogsColRef().doc(withOwner.id).set(withOwner));
   };
+  const deleteDailyLog = (id) => {
+    persistRecordWrite(dailyLogsColRef().doc(id).delete());
+  };
   const trackingOrderId = (() => { try { return new URLSearchParams(window.location.search).get("track"); } catch (e) { return null; } })();
   if (trackingOrderId) {
     return h(CustomerTrackingPage, { orderId: trackingOrderId });
@@ -1944,7 +1947,7 @@ function App() {
         homeDrilldown.type === "custom-report" ? h(CustomReportPage, { orders: activeOrders, pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "health-check" ? h(SystemHealthCheckPage, { orders, pieces: productionPieces, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); } }) :
         homeDrilldown.type === "escalations" ? h(EscalationHubPage, { escalations, orders: activeOrders, isAdminUser: isOwner || hasRole("admin"), onAdd: addEscalation, onUpdate: updateEscalation, onOpenOrder: (id) => { openOrder(id); }, onBack: () => setHomeDrilldown(null) }) :
-        homeDrilldown.type === "employee-followup" ? h(EmployeeFollowUpPage, { myLogs: myDailyLogs, teamLogs: teamDailyLogs, emailToName, onAdd: addDailyLog, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "employee-followup" ? h(EmployeeFollowUpPage, { myLogs: myDailyLogs, teamLogs: teamDailyLogs, emailToName, onAdd: addDailyLog, onDelete: deleteDailyLog, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "legacy-piece-linking" ? h(LegacyPieceLinkingPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "universal-search" ? h(UniversalSearchPage, { orders: activeOrders, pieces: productionPieces, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onOpenCustomer: (name) => { setHomeDrilldown(null); setTab("customers"); setSelectedId(null); setPendingCustomer(name); } }) :
         homeDrilldown.type === "technical-office" ? h(TechnicalOfficeHubPage, { orders: activeOrders, pieces: productionPieces, onUpdate: updateOrder, onUpdatePiece: updateProductionPiece, onBack: () => setHomeDrilldown(null) }) : null
@@ -3597,7 +3600,7 @@ function LegacyPieceLinkingPage({ orders, pieces, onUpdatePiece, onBack }) {
     }))
   );
 }
-function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onBack }) {
+function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onDelete, onBack }) {
   const [text, setText] = useState("");
   const [media, setMedia] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -3660,9 +3663,12 @@ function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onBack }) 
       h("div", { style: { fontSize: 13, fontWeight: 700, margin: "20px 0 10px" } }, "\u0645\u0647\u0627\u0645\u064A"),
       myDays.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0645\u0647\u0627\u0645 \u0645\u0633\u062C\u0644\u0629 \u0644\u0633\u0629" }) : myDays.map((day) => h("div", { key: day, style: { marginBottom: 14 } },
         h("div", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted, marginBottom: 6 } }, day),
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, myGrouped[day].map((l) => h("div", { key: l.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "8px 12px", fontSize: 13 } },
-          h("span", { style: { color: COLORS.muted, fontSize: 11, marginInlineEnd: 8 } }, l.at ? l.at.slice(11, 16) : ""), l.text,
-          renderMedia(l.media)
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, myGrouped[day].map((l) => h("div", { key: l.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "8px 12px", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } },
+          h("div", { style: { flex: 1 } },
+            h("span", { style: { color: COLORS.muted, fontSize: 11, marginInlineEnd: 8 } }, l.at ? l.at.slice(11, 16) : ""), l.text,
+            renderMedia(l.media)
+          ),
+          onDelete ? h("button", { onClick: () => { if (window.confirm("\u062D\u0630\u0641 \u0627\u0644\u0645\u0647\u0645\u0629 \u062F\u064A\u061F")) onDelete(l.id); }, style: { ...iconBtnStyle, padding: 4, flexShrink: 0 } }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null
         )))
       )),
       employees.length > 0 ? h("div", { style: { marginTop: 24 } },
