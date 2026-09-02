@@ -1896,7 +1896,7 @@ function App() {
     isOffline && h("div", { style: { background: COLORS.goldSoft, color: COLORS.gold, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", textAlign: "center" } }, "\u{1F50C} \u0645\u0641\u064A\u0634 \u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u2014 \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0647\u062A\u062A\u062D\u0641\u0638 \u0648\u062A\u062A\u0632\u0627\u0645\u0646 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0644\u0645\u0627 \u0627\u0644\u0646\u062A \u064A\u0631\u062C\u0639"),
     h("div", { style: { display: selectedOrder ? "none" : "contents" } }, homeDrilldown ? h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null),
       h("div", { style: { padding: 16 } },
-        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
+        homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: myScopedProductionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: myScopedProductionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
@@ -2019,7 +2019,7 @@ function App() {
       ),
       orders.some(orderIsOverdue) && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F0"), orders.filter(orderIsOverdue).length, " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u2014 \u0631\u0627\u062C\u0639\u064A \u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0628\u062A\u0627\u0639\u062A\u0647\u0645"),
       (() => {
-        const upcoming = productionPieces.filter((p) => {
+        const upcoming = myScopedProductionPieces.filter((p) => {
           if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
           const d = pieceDeadlineDiff(p);
           return d !== null && d >= 0 && d <= 3;
@@ -2075,7 +2075,8 @@ function App() {
           if (!o.deliveryDate) return false;
           const d = daysUntil(o.deliveryDate);
           if (d === null || d < 1 || d > 5) return false;
-          const orderPieces = productionPieces.filter((p) => pieceMatchesOrder(p, o, orders));
+          const orderPieces = myScopedProductionPieces.filter((p) => pieceMatchesOrder(p, o, orders));
+          if (mySupplierScope && mySupplierScope.length > 0 && !hasRole("admin") && orderPieces.length === 0) return false;
           if (orderPieces.length > 0 && orderPieces.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return false;
           return true;
         }).map((o) => o.clientName).filter(Boolean)));
@@ -2143,16 +2144,16 @@ function App() {
               drill("technical-office", "technical-office")
             ] },
             { title: "\u{1F3ED} \u0627\u0644\u0625\u0646\u062A\u0627\u062C", tiles: [
-              simple("production-board"),
               simple("distribution"),
               simple("materials-hub"),
               simple("egypt-upholstery"),
+              { key: "fabric-warehouse", label: "\u0645\u062E\u0632\u0646 \u0627\u0644\u0623\u0642\u0645\u0634\u0629", emoji: "\u{1F3EC}", visible: isOwner || hasRole("admin") || hasRole("production") || hasRole("materials"), onClick: () => setHomeDrilldown({ type: "fabric-warehouse" }) },
+              simple("production-board"),
+              simple("full-production"),
               drill("finishing", "finishing"),
               drill("product-shipments", "product-shipments", null, null),
-              simple("full-production"),
               simple("today-queue"),
-              simple("deliveries"),
-              { key: "fabric-warehouse", label: "\u0645\u062E\u0632\u0646 \u0627\u0644\u0623\u0642\u0645\u0634\u0629", emoji: "\u{1F3EC}", visible: isOwner || hasRole("admin") || hasRole("production") || hasRole("materials"), onClick: () => setHomeDrilldown({ type: "fabric-warehouse" }) }
+              simple("deliveries")
             ] },
             { title: "\u{1F465} \u0627\u0644\u0639\u0645\u0644\u0627\u0621", tiles: [
               simple("customers"),
@@ -11115,7 +11116,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = (selection ? ["\u2611\uFE0F"] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]).concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
+  const cols = (selection ? ["\u2611\uFE0F"] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]).concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
   const fmtDuration = (ms) => {
     const days = Math.floor(ms / 86400000);
     if (days >= 1) return days + "\u064A\u0648\u0645";
@@ -11134,9 +11135,12 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
       return h("div", { key: dateKey, style: { marginBottom: 18 } },
         h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, marginBottom: 8 } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
         names.map((name) => h("div", { key: name, style: { marginBottom: 12 } },
-          h("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 6 } }, name),
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
+            h("div", { style: { fontWeight: 700, fontSize: 14 } }, name),
+            orderFileFor(customerGroups[name][0]) ? h("a", { href: orderFileFor(customerGroups[name][0]).dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+          ),
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10 } },
-            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 920 } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 820 } },
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
               h("tbody", null, customerGroups[name].map((p) => {
                 const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
@@ -11152,7 +11156,6 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: delivered ? "#E8F0E4" : COLORS.goldSoft, color: delivered ? COLORS.green : COLORS.gold, whiteSpace: "nowrap" } }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2705" : p.status)),
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: tBg, color: tColor, whiteSpace: "nowrap" } }, (delivered ? "\u2705 " : "\u23F1\uFE0F ") + tLabel)),
                 h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, orderFileFor(p) ? h("a", { href: orderFileFor(p).dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641") : "\u2014"),
                 h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
