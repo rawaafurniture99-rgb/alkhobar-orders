@@ -981,6 +981,7 @@ function App() {
   const emailToName = {};
   (access && access.members || []).forEach((m) => { if (m.name && m.name.trim()) emailToName[m.email] = m.name.trim(); });
   const mySupplierScope = myMember ? myMember.supplierScope || [] : [];
+  const myScopedProductionPieces = (!hasRole("admin") && mySupplierScope && mySupplierScope.length > 0) ? productionPieces.filter((p) => pieceMatchesSupplierScope(p, mySupplierScope)) : productionPieces;
   const myProductionAccess = (myMember && myMember.productionAccess) || {};
   const isAdminForProduction = isOwner || hasRole("admin");
   const canEditDistribution = hasRole("admin") || hasRole("distributor");
@@ -1897,7 +1898,7 @@ function App() {
       h("div", { style: { padding: 16 } },
         homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
-        homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: myScopedProductionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k), canEditSub: (k) => canEditSubTab("pricing", k), myRoles, mySupplierScope }) :
         homeDrilldown.type === "accounting" ? h(AccountingHubPage, { orders: activeOrders, pieces: productionPieces, expenses: generalExpenses, onAddExpense: addExpense, onUpdateExpense: updateExpense, onDeleteExpense: deleteExpense, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), canSeeSub: (k) => canSeeSubTab("accounting", k), canEditSub: (k) => canEditSubTab("accounting", k) }) :
@@ -1945,7 +1946,7 @@ function App() {
         tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder, onSubNav: subNavApi }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, orders: activeOrders, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
         tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production"), orders: activeOrders }),
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
@@ -2084,7 +2085,7 @@ function App() {
           const d = daysUntil(p.customerDeliveryDate);
           return d !== null && d <= 0;
         }).map((p) => p.customerName || "\u2014")).size;
-        const productionDelayCount = new Set(productionPieces.filter((p) => {
+        const productionDelayCount = new Set(myScopedProductionPieces.filter((p) => {
           if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
           const d = pieceDeadlineDiff(p);
           return d !== null && d < 0;
@@ -11027,7 +11028,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
+function ProductionBoardPage({ pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
   const supplierOnlyLoc = (!myRoles.includes("admin") && myRoles.length === 1 && myRoles.includes("supplier") && mySupplierScope && mySupplierScope.length === 1) ? mySupplierScope[0] : null;
   const effectiveDeepLink = deepLink || (supplierOnlyLoc ? { entity: findEntityForLocation(supplierOnlyLoc, productionSuppliers, upholsterySuppliers), location: supplierOnlyLoc } : null);
   const [entity, setEntity] = useState((effectiveDeepLink && effectiveDeepLink.entity) || null);
@@ -11058,7 +11059,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers,
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink: effectiveDeepLink, hideArchive: !!supplierOnlyLoc, canSeeSub, canEditSub, onSubNav });
+  return h(EntityProductionPage, { entity, pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink: effectiveDeepLink, hideArchive: !!supplierOnlyLoc, canSeeSub, canEditSub, onSubNav });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -11105,11 +11106,16 @@ function applyPieceStatusChange(piece, newStatus, specificTarget) {
   }
   return p;
 }
-function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn) {
+function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn, orders) {
+  const orderFileFor = (p) => {
+    if (!orders) return null;
+    const o = orders.find((x) => pieceMatchesOrder(p, x, orders));
+    return (o && o.manufacturingOrderFile) || null;
+  };
   const dateGroups = {};
   pieces.forEach((p) => { const k = p.customerDeliveryDate || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E"; (dateGroups[k] = dateGroups[k] || []).push(p); });
   const dateKeys = Object.keys(dateGroups).sort((a, b) => (a === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? 1 : b === "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" ? -1 : a.localeCompare(b)));
-  const cols = (selection ? ["\u2611\uFE0F"] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]).concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
+  const cols = (selection ? ["\u2611\uFE0F"] : []).concat(["\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0639\u062F\u062F", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062D\u062F\u062F", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]).concat(activeLoc ? ["\u0627\u0644\u0645\u062F\u0629 \u0647\u0646\u0627", "\u0627\u0644\u0645\u0648\u0642\u0639 \u0627\u0644\u062D\u0627\u0644\u064A"] : []);
   const fmtDuration = (ms) => {
     const days = Math.floor(ms / 86400000);
     if (days >= 1) return days + "\u064A\u0648\u0645";
@@ -11130,7 +11136,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
         names.map((name) => h("div", { key: name, style: { marginBottom: 12 } },
           h("div", { style: { fontWeight: 700, fontSize: 14, marginBottom: 6 } }, name),
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10 } },
-            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 820 } },
+            h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 920 } },
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
               h("tbody", null, customerGroups[name].map((p) => {
                 const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
@@ -11146,6 +11152,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: delivered ? "#E8F0E4" : COLORS.goldSoft, color: delivered ? COLORS.green : COLORS.gold, whiteSpace: "nowrap" } }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2705" : p.status)),
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: tBg, color: tColor, whiteSpace: "nowrap" } }, (delivered ? "\u2705 " : "\u23F1\uFE0F ") + tLabel)),
                 h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, orderFileFor(p) ? h("a", { href: orderFileFor(p).dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641") : "\u2014"),
                 h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
@@ -11187,7 +11194,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
     })
   );
 }
-function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
+function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -11307,13 +11314,13 @@ function DatePiecesTablePage({ pieces, activeLoc, scope, onUpdate, onDelete, onA
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn),
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles, onSubNav }) {
+function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles, onSubNav }) {
   const [scope, setScope] = useState(null);
   useEffect(() => {
     if (!onSubNav || !scope) return;
@@ -11393,7 +11400,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn),
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -11401,7 +11408,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
+    return h(DatePiecesTablePage, { pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
   }
 
   return h("div", null,
@@ -11415,7 +11422,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, hideArchive, canSeeSub, canEditSub, onSubNav }) {
+function EntityProductionPage({ entity, pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, hideArchive, canSeeSub, canEditSub, onSubNav }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -11437,6 +11444,7 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     .concat([{ key: "delays", label: "\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A", emoji: "\u23F0", locations: [], allowAdd: false, special: true }]);
   const trueDelays = entityPieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+    if (mySupplierScope && mySupplierScope.length > 0 && !pieceMatchesSupplierScope(p, mySupplierScope)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
@@ -11509,13 +11517,13 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     );
   }
   const group = STAGE_GROUPS.find((g) => g.key === stageKey);
-  return h(StageLocationsPage, { entity, group, entityPieces, onUpdate, onDelete, onAddPiece,
+  return h(StageLocationsPage, { entity, group, entityPieces, orders, onUpdate, onDelete, onAddPiece,
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
     myRoles, onBack: () => setStageKey(null), deepLink, hideArchive, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
+function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
   const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
@@ -11600,7 +11608,7 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
     ),
     (hideArchive ? "current" : viewMode) === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-        h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
+        h(LocationPiecesTable, { pieces: locPieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
     ) : (
       archiveEntries.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0624\u0631\u0634\u0641\u0629 \u0644ـ" + activeLoc + " \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
         h(LocationArchiveTable, { entries: archiveEntries, activeLoc })
