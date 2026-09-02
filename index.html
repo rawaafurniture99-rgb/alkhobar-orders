@@ -1896,27 +1896,7 @@ function App() {
     h(GlobalStyle, null),
     syncError && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 12.5, padding: "8px 14px", textAlign: "center" } }, syncError),
     isOffline && h("div", { style: { background: COLORS.goldSoft, color: COLORS.gold, fontSize: 12.5, fontWeight: 700, padding: "8px 14px", textAlign: "center" } }, "\u{1F50C} \u0645\u0641\u064A\u0634 \u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u2014 \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0647\u062A\u062A\u062D\u0641\u0638 \u0648\u062A\u062A\u0632\u0627\u0645\u0646 \u062A\u0644\u0642\u0627\u0626\u064A\u064B\u0627 \u0644\u0645\u0627 \u0627\u0644\u0646\u062A \u064A\u0631\u062C\u0639"),
-    selectedOrder ? h(OrderDetail, {
-      order: selectedOrder,
-      orders: activeOrders,
-      pieces: productionPieces,
-      branding,
-      onBack: () => { setSelectedId(null); setSelectedOrderSection(null); },
-      onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
-      onUpdatePiece: updateProductionPiece,
-      onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); setSelectedOrderSection(null); },
-      canEdit: canEditOrder(selectedOrder),
-      canEditMaterials: canEditTab("materials-hub"),
-      isAdminUser: isOwner || hasRole("admin"),
-      canSeePricing: canSeeTab("pricing"),
-      canEditPricingOverride: canEditSubTab("pricing", "customers"),
-      onNotify: notify,
-      emailsWithTabAccess,
-      reviewTeamEmails,
-      unreadCount,
-      onOpenNotifPanel: openNotifPanel,
-      initialSection: selectedOrderSection
-    }) : homeDrilldown ? h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null),
+    h("div", { style: { display: selectedOrder ? "none" : "contents" } }, homeDrilldown ? h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 60 } }, h(GlobalStyle, null),
       h("div", { style: { padding: 16 } },
         homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
@@ -2218,7 +2198,29 @@ function App() {
           }));
         })()
       )
-    )),
+    ))
+    ),
+    selectedOrder ? h(OrderDetail, {
+      order: selectedOrder,
+      orders: activeOrders,
+      pieces: productionPieces,
+      branding,
+      onBack: () => { setSelectedId(null); setSelectedOrderSection(null); },
+      onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
+      onUpdatePiece: updateProductionPiece,
+      onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); setSelectedOrderSection(null); },
+      canEdit: canEditOrder(selectedOrder),
+      canEditMaterials: canEditTab("materials-hub"),
+      isAdminUser: isOwner || hasRole("admin"),
+      canSeePricing: canSeeTab("pricing"),
+      canEditPricingOverride: canEditSubTab("pricing", "customers"),
+      onNotify: notify,
+      emailsWithTabAccess,
+      reviewTeamEmails,
+      unreadCount,
+      onOpenNotifPanel: openNotifPanel,
+      initialSection: selectedOrderSection
+    }) : null,
     showNewOrder && h(NewOrderModal, { engineerName: myDisplayName, existingCategories: [...new Set(activeOrders.map((o) => (o.category || "").trim()).filter(Boolean))], onClose: () => setShowNewOrder(false), onSave: (o) => {
       addOrder(o);
       setShowNewOrder(false);
@@ -5752,7 +5754,8 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       ),
       list.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(list), onPdf: () => exportPdf(list) }) : null,
       list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard))
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
+      editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => { if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); }) }) : null
     );
   }
   return h("div", null,
@@ -6235,8 +6238,22 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
     if (isNaN(d)) return dateStr;
     return d.getDate() + " " + (AR_MONTHS[d.getMonth()] || "");
   };
-  const listCols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0643\u0648\u062F", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0623\u0645\u062A\u0627\u0631", "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
-  const listExportRows = () => filteredRows.map((r) => [r.clientName, r.deliveryDate || "", normalizeDigits(r.itemCode || ""), r.companyName || "", (r.quantity || "") + " " + (r.unit || ""), r.availability || "", r.fabricShippingStatus || "", r.fabricShippingDate || "", r.fabricArrivalStatus || "", r.fabricArrivalDate || ""]);
+  const listCols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u062A\u0628\u0642\u064A", "\u0627\u0644\u0643\u0648\u062F", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0623\u0645\u062A\u0627\u0631", "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631", "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"];
+  const remainingLabel = (dateStr) => {
+    const d = daysUntil(dateStr);
+    if (d === null) return "\u2014";
+    if (d < 0) return "\u0645\u062A\u0623\u062E\u0631 " + arabicDaysPhrase(Math.abs(d));
+    if (d === 0) return "\u0627\u0644\u064A\u0648\u0645";
+    return "\u0628\u0627\u0642\u064A " + arabicDaysPhrase(d);
+  };
+  const remainingColor = (dateStr) => {
+    const d = daysUntil(dateStr);
+    if (d === null) return COLORS.muted;
+    if (d < 0) return COLORS.danger;
+    if (d <= 3) return COLORS.gold;
+    return COLORS.green;
+  };
+  const listExportRows = () => filteredRows.map((r) => [r.clientName, r.deliveryDate || "", remainingLabel(r.deliveryDate), normalizeDigits(r.itemCode || ""), r.companyName || "", (r.quantity || "") + " " + (r.unit || ""), r.availability || "", r.fabricShippingStatus || "", r.fabricShippingDate || "", r.fabricArrivalStatus || "", r.fabricArrivalDate || ""]);
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F6CB}\uFE0F", title: "\u062A\u0646\u062C\u064A\u062F \u0645\u0635\u0631" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
@@ -6275,11 +6292,12 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
       ),
       filteredRows.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0646\u062A\u0627\u0626\u062C" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1200 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1320 } },
           h("thead", null, h("tr", null, listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
           h("tbody", null, filteredRows.map((row) => h("tr", { key: row.orderId + row.materialId, style: { borderBottom: `1px solid ${COLORS.border}` } },
             h("td", { style: { padding: "10px", fontWeight: 700, whiteSpace: "nowrap" } }, row.clientName),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, row.deliveryDate || "\u2014"),
+            h("td", { style: { padding: "10px", whiteSpace: "nowrap", fontWeight: 700, color: remainingColor(row.deliveryDate) } }, remainingLabel(row.deliveryDate)),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, normalizeDigits(row.itemCode || "\u2014")),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, row.companyName || "\u2014"),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, (row.quantity || "\u2014") + " " + (row.unit || "")),
@@ -10513,6 +10531,7 @@ function pieceIsReady(p) {
 function isSofaType(t) { return (t || "").includes("كنب"); }
 function isWoodType(t) { return (t || "").includes("خشب"); }
 function isCurtainOrCarpetType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("سجاد"); }
+function isNonFabricPieceType(t) { const s = t || ""; return s.includes("خشب") || s.includes("مسطحات") || s.includes("جيبورد"); }
 function isSoftGoodType(t) { const s = t || ""; return s.includes("ستائر") || s.includes("مخدات") || s.includes("سجاد"); }
 const FRIENDLY_STAGE_LABELS = {
   "\u0627\u0644\u062F\u0647\u0627\u0646": "\u0642\u064A\u062F \u0627\u0644\u062F\u0647\u0627\u0646",
@@ -10658,7 +10677,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
   }
   return h("div", null,
     h(SectionHeader, { emoji: "📦", title: "توزيع أوردر جديد" }),
-    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", onOpenCustomer: (name) => setSelectedDistCustomer((name || "").trim()) }) : null,
+    orders ? h(OrderHandoffQueue, { orders, flagKey: "distributionHandled", onUpdateOrder, title: "\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0645\u0639\u062A\u0645\u062F\u0629 \u062A\u062D\u062A\u0627\u062C \u062A\u0648\u0632\u064A\u0639", emoji: "\u{1F4E6}", doneLabel: "\u062A\u0645 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", onOpenCustomer: (name) => setSelectedDistCustomer((name || "").trim()), allowNotNeeded: true }) : null,
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 } },
       orders && orders.length > 0 ? h("div", { style: { marginBottom: 14, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: 10 } },
         h("label", { style: { ...labelStyle, marginBottom: 6 } }, "🔗 اربطيها بأوردر موجود (بيضمن إن حالتها منتظبطش مع أوردر تاني لنفس العميل)"),
@@ -10976,35 +10995,31 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
 
 function SupplierPortalPage({ pieces, mySupplierScope, onUpdate, onSignOut }) {
   const [showDelivered, setShowDelivered] = useState(false);
+  const [openPiece, setOpenPiece] = useState(null);
   const myPieces = (pieces || []).filter((p) => scopeCoversLocation(mySupplierScope, p.currentLocation, p.manufacturingEntity));
-  const activePieces = myPieces.filter((p) => p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
-  const deliveredPieces = myPieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645");
+  const activePieces = myPieces.filter((p) => p.deliveryConfirmed !== "تم التسليم");
+  const deliveredPieces = myPieces.filter((p) => p.deliveryConfirmed === "تم التسليم");
   const list = showDelivered ? deliveredPieces : activePieces;
-  const sorted = list.slice().sort((a, b) => {
-    const da = pieceDeadlineDiff(a);
-    const db = pieceDeadlineDiff(b);
-    if (da === null && db === null) return 0;
-    if (da === null) return 1;
-    if (db === null) return -1;
-    return da - db;
-  });
+  const activeLoc = (mySupplierScope || []).length === 1 ? mySupplierScope[0] : null;
+  const canEditFn = () => !showDelivered;
   return h("div", { dir: "rtl", style: { ...body, background: COLORS.bg, minHeight: "100vh", color: COLORS.ink, padding: 16 } },
     h(GlobalStyle, null),
     h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 } },
       h("div", null,
-        h("div", { style: { fontSize: 20, fontWeight: 700 } }, "\u{1F44B} " + (mySupplierScope[0] || "\u0627\u0644\u0645\u0648\u0631\u062F")),
-        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, activePieces.length + " \u0642\u0637\u0639\u0629 \u0639\u0646\u062F\u0643 \u062F\u0644\u0648\u0642\u062A\u064A")
+        h("div", { style: { fontSize: 20, fontWeight: 700 } }, "👋 " + (mySupplierScope[0] || "المورد")),
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, activePieces.length + " قطعة عندك دلوقتي")
       ),
-      h("button", { onClick: onSignOut, style: { fontSize: 12.5, color: COLORS.danger, background: "transparent", border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "\u062A\u0633\u062C\u064A\u0644 \u062E\u0631\u0648\u062C")
+      h("button", { onClick: onSignOut, style: { fontSize: 12.5, color: COLORS.danger, background: "transparent", border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer" } }, "تسجيل خروج")
     ),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
-      h(TabButton, { active: !showDelivered, onClick: () => setShowDelivered(false), emoji: "\u{1F4E6}", label: "\u0627\u0644\u062D\u0627\u0644\u064A\u0629 (" + activePieces.length + ")" }),
-      h(TabButton, { active: showDelivered, onClick: () => setShowDelivered(true), emoji: "\u2705", label: "\u0627\u0644\u0645\u064F\u0633\u0644َّ\u0645\u0629 (" + deliveredPieces.length + ")" })
+      h(TabButton, { active: !showDelivered, onClick: () => setShowDelivered(false), emoji: "📦", label: "الحالية (" + activePieces.length + ")" }),
+      h(TabButton, { active: showDelivered, onClick: () => setShowDelivered(true), emoji: "✅", label: "المُسلَّمة (" + deliveredPieces.length + ")" })
     ),
-    sorted.length === 0 ? h(EmptyHint, { text: showDelivered ? "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0633\u0644َّ\u0645\u0629 \u0644\u0633\u0647" : "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0639\u0646\u062F\u0643 \u062F\u0644\u0648\u0642\u062A\u064A" }) :
-    h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
-      sorted.map((p) => h(PieceBoardCard, { key: p.id, piece: p, onUpdate, canEdit: !showDelivered, canEditDeadline: false, isAdminUser: false, statusOnly: true }))
-    )
+    list.length === 0 ? h(EmptyHint, { text: showDelivered ? "مفيش قطع مُسلَّمة لسه" : "مفيش قطع عندك دلوقتي" }) :
+    renderGroupedPiecesTable(list, null, openPiece, setOpenPiece, activeLoc, null, onUpdate, canEditFn),
+    openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
+      h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, canEdit: canEditFn(openPiece), canEditDeadline: false, isAdminUser: false, statusOnly: true })
+    ) : null
   );
 }
 function countDistinctOrders(piecesAtLocation) {
@@ -11699,7 +11714,7 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
           showCustomerCol ? h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName) : null,
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, computeFabricStatus(p.customerName) || "\u2014"),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isNonFabricPieceType(p.pieceType) ? "\u2014" : (computeFabricStatus(p.customerName) || "\u2014")),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "\u2014") : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "\u2014") : "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
@@ -11818,7 +11833,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", computeFabricStatusFP(p.customerName), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""]);
+      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
@@ -11826,7 +11841,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", computeFabricStatusFP(p.customerName), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""];
+      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
@@ -12032,7 +12047,7 @@ function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers
             h("input", { type: "checkbox", checked: !!m.receivesAllNotifications, onChange: () => updateMember(m.email, { receivesAllNotifications: !m.receivesAllNotifications }), style: { display: "none" } }),
             h(Emoji, { size: 13 }, "\u{1F514}"), "\u064A\u0633\u062A\u0642\u0628\u0644 \u0643\u0644 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0627\u0644\u062A\u0637\u0628\u064A\u0642 (\u0632\u064A \u0627\u0644\u0645\u062F\u064A\u0631)"
           ) : null,
-          ((m.permittedTabs || []).includes("pricing") || roles.includes("supplier")) ? h(React.Fragment, null,
+          ((m.permittedTabs || []).includes("pricing") || (m.permittedTabs || []).includes("production-board") || roles.includes("supplier")) ? h(React.Fragment, null,
             h("div", { style: { fontSize: 11, color: COLORS.muted, marginBottom: 4 } }, roles.includes("supplier") ? "\u062D\u062F\u062F\u064A \u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0644\u064A \u0647\u064A\u0634\u0648\u0641 \u0642\u0637\u0639\u0647 \u0628\u0633 (\u0645\u0648\u0631\u062F \u0648\u0627\u062D\u062F \u0644\u0644\u062D\u0633\u0627\u0628 \u062F\u0647)" : "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0624\u064A\u0629 \u0628\u064A\u0627\u0646\u0627\u062A\u0647\u0645 \u0641\u064A \u0623\u0642\u0633\u0627\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0648\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A (\u0627\u062A\u0631\u0643\u064A\u0647 \u0641\u0627\u0631\u063A\u064B\u0627 \u0644\u0625\u0638\u0647\u0627\u0631 \u0643\u0644 \u0627\u0644\u0645\u0648\u0627\u0642\u0639/\u0627\u0644\u0645\u0648\u0631\u062F\u064A\u0646)"),
             h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 } }, allSuppliers.map((opt) =>
               h("label", { key: opt.value, style: { fontSize: 11.5, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${(m.supplierScope || []).includes(opt.value) ? COLORS.gold : COLORS.border}`, borderRadius: 999, padding: "3px 8px", cursor: "pointer", background: (m.supplierScope || []).includes(opt.value) ? COLORS.goldSoft : "#fff" } },
