@@ -1959,7 +1959,7 @@ function App() {
         tab === "deliveries" && h(DeliveriesPage, { pieces: productionPieces, onUpdate: updateProductionPiece, readOnly: !canEditTab("deliveries"), canSeeSub: (k) => canSeeSubTab("deliveries", k), canEditSub: (k) => canEditSubTab("deliveries", k), onSubNav: subNavApi }),
         tab === "review" && h(ReviewPage, { orders: activeOrders, onOpen: (id, section) => openOrder(id, section), onUpdateOrder: updateOrder, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager") || hasRole("reviewer"), emailToName, onNotify: notify, emailsWithTabAccess }),
         tab === "sales-approval" && h(SalesApprovalPage, { orders: activeOrders, onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, reviewTeamEmails, myEmail: user && user.email }),
-        tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails, onSubNav: subNavApi }),
+        tab === "my-orders" && h(MyOrdersPage, { orders: activeOrders, pieces: productionPieces, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin") || hasRole("engineers-manager"), onOpen: (id) => openOrder(id), onUpdateOrder: updateOrder, emailToName, onNotify: notify, adminEmails: reviewTeamEmails, emailsWithTabAccess, onSubNav: subNavApi }),
         tab === "materials-hub" && h(MaterialsHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpenOrder: (id) => openOrder(id, "menu"), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("materials-hub", k), canEditSub: (k) => canEditSubTab("materials-hub", k), onSubNav: subNavApi })
         )
       ),
@@ -5643,7 +5643,7 @@ function TechnicalReviewControls({ onApprove, onSendBack, sendLabel, approveLabe
     h("button", { onClick: () => setShowNote(true), style: { flex: 1, background: "#fff", color: COLORS.gold, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "9px 0", fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F504} \u064A\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644")
   );
 }
-function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails, onSubNav }) {
+function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOrder, emailToName, onNotify, adminEmails: reviewTeamEmails, emailsWithTabAccess, onSubNav }) {
   const [tab, setTab] = useState("pending");
   const [selectedEngineer, setSelectedEngineer] = useState(null);
   useEffect(() => {
@@ -5758,7 +5758,17 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       list.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(list), onPdf: () => exportPdf(list) }) : null,
       list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
-      editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => { if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); }) }) : null
+      editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => {
+      const wasSalesRejected = editingOrder.salesManagerApproval === "rejected";
+      const extra = wasSalesRejected ? { salesManagerApproval: "", salesManagerRejectionReason: "" } : {};
+      return onUpdateOrder(editingOrder.id, { ...patch, ...extra, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => {
+        if (wasSalesRejected) {
+          if (onNotify && emailsWithTabAccess) onNotify({ toEmails: emailsWithTabAccess("sales-approval"), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0648\u0627\u0641\u0642\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" });
+        } else if (onNotify && reviewTeamEmails) {
+          onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" });
+        }
+      });
+    } }) : null
     );
   }
   return h("div", null,
@@ -5768,7 +5778,17 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
     currentList.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(currentList), onPdf: () => exportPdf(currentList) }) : null,
     currentList.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
     h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, currentList.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
-    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => onUpdateOrder(editingOrder.id, { ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => { if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" }); }) }) : null
+    editingOrder ? h(NewOrderModal, { existing: editingOrder, onClose: () => setEditingOrder(null), onSave: (patch) => {
+      const wasSalesRejected = editingOrder.salesManagerApproval === "rejected";
+      const extra = wasSalesRejected ? { salesManagerApproval: "", salesManagerRejectionReason: "" } : {};
+      return onUpdateOrder(editingOrder.id, { ...patch, ...extra, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(editingOrder), editCount: (editingOrder.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() }).then(() => {
+        if (wasSalesRejected) {
+          if (onNotify && emailsWithTabAccess) onNotify({ toEmails: emailsWithTabAccess("sales-approval"), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0648\u0627\u0641\u0642\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" });
+        } else if (onNotify && reviewTeamEmails) {
+          onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (editingOrder.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((editingOrder.editCount || 0) + 1), orderId: editingOrder.id, kind: "resubmit" });
+        }
+      });
+    } }) : null
   );
 }
 function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
@@ -7572,7 +7592,10 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
   const listExportRows = () => filteredList.map((p) => [p.customerName || "—", p.customerDeliveryDate || "—", p.pieceCount || "—", p.description || "—", p.size || "—", p.productShippingStatus || "لم يتم الشحن", p.shippingDate || "—", p.productArrivalStatus || "—", p.arrivalDate || "—", p.readinessStatus || "—", p.finishingNeeded || "—", p.finishingType || "—"]);
   const disabled = !canEdit;
   return h("div", null,
-    h(SectionHeader, { emoji: "🚚", title: "شحن المنتج" }),
+    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "‹")),
+      h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "🚚 شحن المنتج")
+    ),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       h(TabButton, { active: subTab === "list", onClick: () => setSubTab("list"), emoji: "🚛", label: "تصنيع مصر" }),
       h(TabButton, { active: subTab === "shipments", onClick: () => setSubTab("shipments"), emoji: "🚚", label: "شحنات مصر" })
@@ -10639,6 +10662,8 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
   const [editingPiece, setEditingPiece] = useState(null);
   const [entity, setEntity] = useState(ENTITIES[0]);
   const [supplierName, setSupplierName] = useState((productionSuppliers[ENTITIES[0]] || [])[0] || "");
+  const [secondSupplierEnabled, setSecondSupplierEnabled] = useState(false);
+  const [secondSupplierName, setSecondSupplierName] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerDeliveryDate, setCustomerDeliveryDate] = useState("");
   const [linkedOrderId, setLinkedOrderId] = useState("");
@@ -10674,9 +10699,11 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
       image, peopleCount: isSofaType(pieceType) ? (Number(peopleCount) || 0) : "", metersCount: isWoodType(pieceType) ? (Number(metersCount) || 0) : "",
       fabricShippingStatus: isSofaType(pieceType) ? pieceFabricStatus : "",
       upholsteryLocation: isSofaType(pieceType) ? (upholsteryLocation.trim() || "\u2014") : "\u2014",
-      status: "لم يتم البدء", agreedDeadline, stages: {}, shippingDate: "", arrivalDate: "", productShippingStatus: "", productArrivalStatus: "", finishingNeeded: "", finishingType: "", createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      status: "لم يتم البدء", agreedDeadline, stages: {}, shippingDate: "", arrivalDate: "", productShippingStatus: "", productArrivalStatus: "", finishingNeeded: "", finishingType: "",
+      secondaryLocation: (secondSupplierEnabled && secondSupplierName) ? secondSupplierName : "", secondaryStatus: (secondSupplierEnabled && secondSupplierName) ? "لم يتم البدء" : "",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
     });
-    setCustomerName(""); setCustomerDeliveryDate(""); setLinkedOrderId(""); setOrderPickerQuery(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setUpholsteryLocation(""); setImage(null); setAgreedDeadline("");
+    setCustomerName(""); setCustomerDeliveryDate(""); setLinkedOrderId(""); setOrderPickerQuery(""); setPieceType(""); setPieceCount(1); setSize(""); setDescription(""); setPeopleCount(""); setMetersCount(""); setPieceFabricStatus(""); setUpholsteryLocation(""); setImage(null); setAgreedDeadline(""); setSecondSupplierEnabled(false); setSecondSupplierName("");
   };
   const [recentQuery, setRecentQuery] = useState("");
   const [selectedDistCustomer, setSelectedDistCustomer] = useState(null);
@@ -10775,6 +10802,17 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
       h("select", { style: fieldStyle, value: entity, onChange: (e) => setEntity(e.target.value) }, ENTITIES.map((en) => h("option", { key: en, value: en }, en))),
       h("label", { style: labelStyle }, "المورد"),
       h("select", { style: fieldStyle, value: supplierName, onChange: (e) => setSupplierName(e.target.value) }, (productionSuppliers[entity] || []).map((s) => h("option", { key: s, value: s }, s))),
+      h("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: COLORS.ink, margin: "4px 0 10px", cursor: "pointer" } },
+        h("input", { type: "checkbox", checked: secondSupplierEnabled, onChange: (e) => { setSecondSupplierEnabled(e.target.checked); if (!e.target.checked) setSecondSupplierName(""); } }),
+        "🔀 القطعة دي محتاجة تتوزع على مورد تاني كمان (بنفس القطعة، من غير ما يتضاعف العدد)"
+      ),
+      secondSupplierEnabled ? h(React.Fragment, null,
+        h("label", { style: labelStyle }, "المورد الإضافي"),
+        h("select", { style: fieldStyle, value: secondSupplierName, onChange: (e) => setSecondSupplierName(e.target.value) },
+          h("option", { value: "" }, "اختاري المورد الإضافي..."),
+          (productionSuppliers[entity] || []).filter((s) => s !== supplierName).map((s) => h("option", { key: s, value: s }, s))
+        )
+      ) : null,
       !showAddSupplier
         ? h("button", { onClick: () => setShowAddSupplier(true), style: { ...addLinkStyle, marginBottom: 10 } }, "+ إضافة مورد جديد لـ " + entity)
         : h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
@@ -11013,6 +11051,11 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
         h("input", { style: fieldStyle, type: "date", disabled: !(canEditDeadline !== undefined ? canEditDeadline : canEdit), value: piece.agreedDeadline || "", onChange: (e) => { if (canEditDeadline !== undefined ? canEditDeadline : canEdit) onUpdate({ ...piece, agreedDeadline: e.target.value }); } })
       )
     ),
+    h("div", { style: { background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+      h("label", { style: labelStyle }, "🔀 مورد إضافي (توزيع نفس القطعة على مورد تاني كمان)"),
+      h("input", { style: { ...fieldStyle, marginBottom: piece.secondaryLocation ? 8 : 0 }, disabled: !canEdit, value: piece.secondaryLocation || "", onChange: (e) => onUpdate({ ...piece, secondaryLocation: e.target.value, secondaryStatus: e.target.value ? (piece.secondaryStatus || "لم يتم البدء") : "" }), placeholder: "اكتبي اسم المورد الإضافي بالظبط زي ما هو مسجل..." }),
+      piece.secondaryLocation ? h("select", { style: { ...fieldStyle, marginBottom: 0 }, disabled: !canEdit, value: piece.secondaryStatus || "لم يتم البدء", onChange: (e) => onUpdate({ ...piece, secondaryStatus: e.target.value }) }, ["لم يتم البدء", "جارى", "تم الإنتاج", "جاهز للتسليم"].map((s) => h("option", { key: s, value: s }, s))) : null
+    ),
     (piece.manufacturingEntity === "\u0645\u0635\u0631" && piece.currentLocation === "\u0627\u0644\u0634\u062D\u0646") ? h("div", null,
       h("label", { style: labelStyle }, "\u062C\u0627\u0647\u0632\u064A\u0629 \u0627\u0644\u0642\u0637\u0639\u0629"),
       h("select", { style: fieldStyle, disabled: !canEdit || statusOnly, value: piece.readinessStatus || "", onChange: (e) => updateField("readinessStatus", e.target.value) },
@@ -11208,7 +11251,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 const stageInfo = (p.stages && p.stages[pieceStageKey]) || {};
                 return h("tr", { key: p.id, onClick: () => setOpenPiece(p), style: { borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer", background: (selection && selection.selected.includes(p.id)) ? COLORS.goldSoft : "transparent" } },
                 selection ? h("td", { style: { padding: "8px 10px" }, onClick: (e) => e.stopPropagation() }, h("input", { type: "checkbox", checked: selection.selected.includes(p.id), onChange: () => selection.onToggle(p.id) })) : null,
-                h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: delivered ? "#E8F0E4" : COLORS.goldSoft, color: delivered ? COLORS.green : COLORS.gold, whiteSpace: "nowrap" } }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2705" : p.status)),
+                h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: delivered ? "#E8F0E4" : COLORS.goldSoft, color: delivered ? COLORS.green : COLORS.gold, whiteSpace: "nowrap" } }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u2705" : p.status + (p.secondaryLocation ? " - " + p.currentLocation + " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : ""))),
                 h("td", { style: { padding: "8px 10px" } }, h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: tBg, color: tColor, whiteSpace: "nowrap" } }, (delivered ? "\u2705 " : "\u23F1\uFE0F ") + tLabel)),
                 h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
                 h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
@@ -11617,7 +11660,7 @@ function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onD
       visibleLocations.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0645\u0648\u0627\u0642\u0639/\u0645\u0648\u0631\u062F\u064A\u0646 \u0645\u062E\u0635\u0635\u0635\u0629 \u0644\u0643 \u0647\u0646\u0627" }) : null,
       h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 14 } },
         visibleLocations.map((loc) => {
-          const locPieces = entityPieces.filter((p) => p.currentLocation === loc);
+          const locPieces = entityPieces.filter((p) => p.currentLocation === loc || p.secondaryLocation === loc);
           const count = countDistinctOrders(locPieces);
           return h("div", { key: loc, style: { position: "relative" } },
             h(NavTile, { active: false, onClick: () => setActiveLoc(loc), emoji: "\u{1F3E2}", label: loc + (count ? " (" + count + ")" : "") }),
@@ -11648,7 +11691,7 @@ function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onD
     )
     );
   }
-  const locPieces = entityPieces.filter((p) => p.currentLocation === activeLoc);
+  const locPieces = entityPieces.filter((p) => p.currentLocation === activeLoc || p.secondaryLocation === activeLoc);
   const archiveEntries = [];
   entityPieces.forEach((p) => {
     (p.locationHistory || []).forEach((hh, idx) => {
@@ -11775,7 +11818,7 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
       h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
       h("tbody", null, piecesList.map((p) => {
         const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
-        const stageStatus = delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "");
+        const stageStatus = delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
         const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "\u2014";
         return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           h("td", { style: { padding: "8px 10px" } }, canEdit && onUpdate ? h("button", {
@@ -11833,7 +11876,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
   const [fStageFrom, setFStageFrom] = useState("");
   const [fStageTo, setFStageTo] = useState("");
   const searched = query.trim() ? pieces.filter((p) => p.customerName.includes(query)) : pieces;
-  const stageStatusOf = (p) => (p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "");
+  const stageStatusOf = (p) => (p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
   const statusOptions = Array.from(new Set(pieces.map(stageStatusOf))).sort();
   const typeOptions = Array.from(new Set(pieces.map((p) => p.pieceType).filter(Boolean)));
   const entityOptions = Array.from(new Set(pieces.map((p) => p.manufacturingEntity).filter(Boolean)));
