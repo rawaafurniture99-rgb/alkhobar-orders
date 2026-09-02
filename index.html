@@ -1875,9 +1875,6 @@ function App() {
   if (!dataLoaded) {
     return /* @__PURE__ */ React.createElement(CenteredMessage, { text: "\u062C\u0627\u0631\u064D \u062A\u062D\u0645\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A\u0643..." });
   }
-  if (!isOwner && myRoles.length === 1 && myRoles.includes("supplier")) {
-    return h(SupplierPortalPage, { pieces: productionPieces, mySupplierScope, onUpdate: updateProductionPiece, onSignOut: () => auth.signOut() });
-  }
   const SECTION_TITLE = tab === "review" ? "\u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"
     : tab === "my-orders" ? "\u0623\u0648\u0631\u062F\u0631\u0627\u062A\u064A"
     : tab === "customers" ? "\u0627\u0644\u0639\u0645\u0644\u0627\u0621"
@@ -11031,7 +11028,9 @@ function countDistinctOrders(piecesAtLocation) {
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
 function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
-  const [entity, setEntity] = useState((deepLink && deepLink.entity) || null);
+  const supplierOnlyLoc = (!myRoles.includes("admin") && myRoles.length === 1 && myRoles.includes("supplier") && mySupplierScope && mySupplierScope.length === 1) ? mySupplierScope[0] : null;
+  const effectiveDeepLink = deepLink || (supplierOnlyLoc ? { entity: findEntityForLocation(supplierOnlyLoc, productionSuppliers, upholsterySuppliers), location: supplierOnlyLoc } : null);
+  const [entity, setEntity] = useState((effectiveDeepLink && effectiveDeepLink.entity) || null);
   const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
     if (!onSubNav || !entity) return;
@@ -11059,7 +11058,7 @@ function ProductionBoardPage({ pieces, productionSuppliers, upholsterySuppliers,
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink, canSeeSub, canEditSub, onSubNav });
+  return h(EntityProductionPage, { entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink: effectiveDeepLink, hideArchive: !!supplierOnlyLoc, canSeeSub, canEditSub, onSubNav });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -11069,6 +11068,12 @@ function stageGroupForLocation(location, isDammam) {
 }
 const LOCATION_TO_STAGE_KEY = { "\u0627\u0644\u062F\u0647\u0627\u0646": "\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F": "\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641": "\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646": "\u0634\u062D\u0646" };
 let CURRENT_UPHOLSTERY_SUPPLIERS = null;
+function findEntityForLocation(loc, productionSuppliers, upholsterySuppliers) {
+  for (const en of ENTITIES) {
+    if ((productionSuppliers[en] || []).includes(loc) || (upholsterySuppliers[en] || []).includes(loc)) return en;
+  }
+  return ENTITIES[0];
+}
 function resolveStageKey(loc) {
   if (LOCATION_TO_STAGE_KEY[loc]) return LOCATION_TO_STAGE_KEY[loc];
   const all = [].concat(...Object.values(CURRENT_UPHOLSTERY_SUPPLIERS || {}));
@@ -11410,7 +11415,7 @@ function LocationPiecesTable({ pieces, activeLoc, onUpdate, onDelete, onAddPiece
     )
   );
 }
-function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, canSeeSub, canEditSub, onSubNav }) {
+function EntityProductionPage({ entity, pieces, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, hideArchive, canSeeSub, canEditSub, onSubNav }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -11508,9 +11513,9 @@ function EntityProductionPage({ entity, pieces, productionSuppliers, upholsteryS
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
-    myRoles, onBack: () => setStageKey(null), deepLink, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
+    myRoles, onBack: () => setStageKey(null), deepLink, hideArchive, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
 }
-function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, canEditStage, onSubNav }) {
+function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
   const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
@@ -11586,14 +11591,14 @@ function StageLocationsPage({ entity, group, entityPieces, onUpdate, onDelete, o
   archiveEntries.sort((a, b) => (b.leftAt || "").localeCompare(a.leftAt || ""));
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
-      h("button", { onClick: () => setActiveLoc(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("button", { onClick: () => hideArchive ? onBack() : setActiveLoc(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, activeLoc)
     ),
-    h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+    hideArchive ? null : h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       h("button", { onClick: () => setViewMode("current"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${viewMode === "current" ? COLORS.gold : COLORS.border}`, background: viewMode === "current" ? COLORS.goldSoft : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F4CC} \u0627\u0644\u062D\u0627\u0644\u064A (" + locPieces.length + ")"),
       h("button", { onClick: () => setViewMode("archive"), style: { flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${viewMode === "archive" ? COLORS.teal : COLORS.border}`, background: viewMode === "archive" ? "#EAF1F1" : "#fff", color: COLORS.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" } }, "\u{1F4C1} \u0627\u0644\u0623\u0631\u0634\u064A\u0641 (" + archiveEntries.length + ")")
     ),
-    viewMode === "current" ? (
+    (hideArchive ? "current" : viewMode) === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
         h(LocationPiecesTable, { pieces: locPieces, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
     ) : (
