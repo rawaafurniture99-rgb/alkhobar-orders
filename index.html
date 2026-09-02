@@ -342,6 +342,8 @@ function pieceMatchesOrder(p, order, allOrders) {
   if (p.orderId) return p.orderId === order.id;
   const normName = (s) => (s || "").trim();
   if (normName(p.customerName) !== normName(order.clientName)) return false;
+  const sameNameOrders = allOrders ? allOrders.filter((o2) => normName(o2.clientName) === normName(order.clientName)) : [order];
+  if (sameNameOrders.length <= 1) return true;
   const dateOk = order.deliveryDate ? (!p.customerDeliveryDate || p.customerDeliveryDate === order.deliveryDate) : !p.customerDeliveryDate;
   if (!dateOk) return false;
   if (allOrders && p.pieceType) {
@@ -2154,8 +2156,8 @@ function App() {
               { key: "fabric-warehouse", label: "\u0645\u062E\u0632\u0646 \u0627\u0644\u0623\u0642\u0645\u0634\u0629", emoji: "\u{1F3EC}", visible: isOwner || hasRole("admin") || hasRole("production") || hasRole("materials"), onClick: () => setHomeDrilldown({ type: "fabric-warehouse" }) },
               simple("production-board"),
               simple("full-production"),
-              drill("finishing", "finishing"),
               drill("product-shipments", "product-shipments", null, null),
+              drill("finishing", "finishing"),
               simple("today-queue"),
               simple("deliveries")
             ] },
@@ -2209,7 +2211,15 @@ function App() {
       pieces: productionPieces,
       branding,
       onBack: () => { setSelectedId(null); setSelectedOrderSection(null); },
-      onUpdate: (patch) => updateOrder(selectedOrder.id, patch),
+      onUpdate: (patch) => {
+        const needsResubmit = selectedOrder.salesManagerApproval === "rejected" && patch.salesManagerApproval === undefined;
+        const extra = needsResubmit ? { salesManagerApproval: "", salesManagerRejectionReason: "" } : {};
+        const result = updateOrder(selectedOrder.id, { ...patch, ...extra });
+        if (needsResubmit && emailsWithTabAccess) {
+          notify({ toEmails: emailsWithTabAccess("sales-approval"), title: "أوردر اتعدل وجاهز للمراجعة", body: (selectedOrder.clientName || "") + " — بعد رفض مدير المبيعات", orderId: selectedOrder.id, kind: "resubmit" });
+        }
+        return result;
+      },
       onUpdatePiece: updateProductionPiece,
       onDelete: () => { deleteOrder(selectedOrder.id); setSelectedId(null); setSelectedOrderSection(null); },
       canEdit: canEditOrder(selectedOrder),
