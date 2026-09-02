@@ -336,7 +336,7 @@ function orderStatusLabel(order) {
     const isLast = lastDoneIndex.key === PRODUCTION_STAGE_DEFS[PRODUCTION_STAGE_DEFS.length - 1].key;
     return isLast ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : `\u062A\u0645: ${lastDoneIndex.label}`;
   }
-  return "\u0644\u0645 \u064A\u0628\u062F\u0623 \u0627\u0644\u0625\u0646\u062A\u0627\u062C";
+  return "\u0644\u0633\u0647 \u0645\u0627 \u0627\u062A\u0648\u0632\u0651\u0639\u062A\u0634 \u0642\u0637\u0639 \u0644\u0644\u0623\u0648\u0631\u062F\u0631 \u062F\u0647";
 }
 function pieceMatchesOrder(p, order, allOrders) {
   if (p.orderId) return p.orderId === order.id;
@@ -359,16 +359,17 @@ function pieceMatchesOrder(p, order, allOrders) {
 function orderPieceStatusText(p) {
   return p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : (p.status || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621");
 }
-function computeOrderPiecesStatusLabel(orderPieces, fallbackLabel) {
+function computeOrderPiecesStatusLabel(orderPieces, fallbackLabel, includeLocation) {
   if (!orderPieces || orderPieces.length === 0) return fallbackLabel;
-  const distinct = Array.from(new Set(orderPieces.map(orderPieceStatusText)));
+  const textFn = (p) => orderPieceStatusText(p) + (includeLocation && p.currentLocation && p.deliveryConfirmed !== "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? " \u2014 " + p.currentLocation : "");
+  const distinct = Array.from(new Set(orderPieces.map(textFn)));
   if (distinct.length === 1) return distinct[0];
   const byType = {};
   const order = [];
   orderPieces.forEach((p) => {
     const t = p.pieceType || "\u0642\u0637\u0639";
     if (!byType[t]) { byType[t] = new Set(); order.push(t); }
-    byType[t].add(orderPieceStatusText(p));
+    byType[t].add(textFn(p));
   });
   return order.map((t) => {
     const sts = Array.from(byType[t]);
@@ -989,6 +990,7 @@ function App() {
   const canEditFullProduction = hasRole("admin");
   const canEditOrder = (o) => {
     if (isOwner || hasRole("admin")) return true;
+    if (hasRole("viewer")) return false;
     if (hasRole("engineer")) return !!(o && o.createdBy && user && o.createdBy === user.email && !o.approved);
     return false;
   };
@@ -1008,6 +1010,7 @@ function App() {
   const myEditableTabs = (myMember && myMember.editableTabs) || null;
   const canEditTab = (key) => {
     if (isOwner || hasRole("admin")) return true;
+    if (hasRole("viewer")) return false;
     if (myEditableTabs) return myEditableTabs.includes(key);
     return defaultCanEditForTab(key);
   };
@@ -1021,6 +1024,7 @@ function App() {
   };
   const canEditSubTab = (mainKey, subKey) => {
     if (isOwner || hasRole("admin")) return true;
+    if (hasRole("viewer")) return false;
     const v = mySubPermissions[mainKey] && mySubPermissions[mainKey][subKey];
     if (v === "edit") return true;
     if (v === "view" || v === "none") return false;
@@ -5715,7 +5719,7 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       h("div", null, "\u062A\u0633\u0644\u064A\u0645: " + (o.deliveryDate || "\u2014")),
       h("div", null, "\u0627\u0644\u0642\u0633\u0645: " + (o.category || "\u2014")),
       h("div", null, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634: " + (o.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")),
-      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => pieceMatchesOrder(p, o, orders)), orderStatusLabel(o))),
+      h("div", { style: { color: COLORS.gold, fontWeight: 600 } }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + computeOrderPiecesStatusLabel((pieces || []).filter((p) => pieceMatchesOrder(p, o, orders)), orderStatusLabel(o), true)),
       o.manufacturingOrderFile ? h("a", { href: o.manufacturingOrderFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), " " + (o.manufacturingOrderFile.name || "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631")) : null
     )
   );
@@ -5858,6 +5862,19 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
       onUpdateOrder(m.orderId, { materials });
     }
   };
+  const measuredRows = isMeasured ? filtered.flatMap((m) => ((m.pieces && m.pieces.length > 0) ? m.pieces.map((p) => ({ m, p })) : [{ m, p: {} }])) : [];
+  const measuredCols = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628", ""];
+  const measuredSizeStr = (p) => (p.length || "\u2014") + " \u00D7 " + (p.width || "\u2014") + " " + (p.unit || "");
+  const exportMeasuredExcel = () => {
+    const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628"]];
+    measuredRows.forEach(({ m, p }) => rows.push([m.clientName, m.materialName || "\u2014", p.pieceCount || "\u2014", m.description || "\u2014", measuredSizeStr(p), p.edgeFinish || "\u2014", m.availability || "\u2014"]));
+    exportToExcel(selectedType + "-\u062C\u0645\u064A\u0639-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: selectedType.slice(0, 28), rows }]);
+  };
+  const exportMeasuredPdf = () => {
+    const headers = ["\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0633\u0645 \u0627\u0644\u062E\u0627\u0645\u0629", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062D\u0648\u0627\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628"];
+    const dataRows = measuredRows.map(({ m, p }) => [m.clientName, m.materialName || "\u2014", p.pieceCount || "\u2014", m.description || "\u2014", measuredSizeStr(p), p.edgeFinish || "\u2014", m.availability || "\u2014"]);
+    printAsPdf(selectedType + " \u2014 \u062C\u0645\u064A\u0639 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", headers, dataRows);
+  };
   const thStyle = { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" };
   const exportExcel = () => {
     const rows = [["\u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0627\u0633\u0645/\u0627\u0644\u0648\u0635\u0641", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644", "\u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0648\u0631\u064A\u062F", "\u0627\u0644\u062D\u0627\u0644\u0629"]];
@@ -5892,7 +5909,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
     companyOptions.length > 0 ? h("select", { style: fieldStyle, value: fCompanyFilter, onChange: (e) => setFCompanyFilter(e.target.value) },
       h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A"), companyOptions.map((c) => h("option", { key: c, value: c }, c))
     ) : null,
-    filtered.length > 0 ? h(ExportButtons, { onExcel: exportExcel, onPdf: exportPdf }) : null,
+    (isMeasured ? measuredRows.length > 0 : filtered.length > 0) ? h(ExportButtons, { onExcel: isMeasured ? exportMeasuredExcel : exportExcel, onPdf: isMeasured ? exportMeasuredPdf : exportPdf }) : null,
     isQmash && filteredKeys.length > 0 ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, margin: "4px 0 8px" } }, "غيّري جهة كود واحد وهيسألك تطبقها على باقي أكواد نفس العميل ولا لأ \u2014 أو ابحثي باسم عميل وحدّدي الكل عشان تغيّري جهة كل أكواده دفعة واحدة") : null,
     isQmash && selectedKeys.length > 0 ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, flexWrap: "wrap" } },
       h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.ink } }, "محدد: " + selectedKeys.length),
@@ -5902,6 +5919,30 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
       h("button", { disabled: !bulkEntity, onClick: applyBulkEntity, style: { background: bulkEntity ? COLORS.teal : COLORS.border, color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, cursor: bulkEntity ? "pointer" : "default" } }, "تطبيق على المحدد"),
       h("button", { onClick: () => setSelectedKeys([]), style: { background: "transparent", border: "none", color: COLORS.muted, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" } }, "إلغاء التحديد")
     ) : null,
+    isMeasured ? (measuredRows.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
+    h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 760 } },
+        h("thead", null, h("tr", null, measuredCols.map((c, i) => h("th", { key: i, style: thStyle }, c)))),
+        h("tbody", null, measuredRows.map(({ m, p }, idx) => {
+          const availColor = m.availability === "\u0645\u062A\u0648\u0641\u0631" ? COLORS.green : (m.availability === "\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631" ? COLORS.danger : COLORS.gold);
+          return h("tr", { key: idx, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, m.clientName),
+            h("td", { style: { padding: "9px 10px" } }, p.image ? h("img", { src: p.image.dataUrl || p.image, onClick: () => openImageLightbox(p.image.dataUrl || p.image), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
+            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, normalizeDigits(m.materialName || "\u2014")),
+            h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount || "\u2014"),
+            h("td", { style: { padding: "9px 10px", maxWidth: 160, whiteSpace: "normal" } }, m.description || "\u2014"),
+            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, normalizeDigits(measuredSizeStr(p))),
+            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.edgeFinish || "\u2014"),
+            h("td", { style: { padding: "6px 10px", whiteSpace: "nowrap" } }, onUpdateOrder ? h("select", {
+              value: m.availability || "",
+              onChange: (e) => updateAvailability(m, e.target.value),
+              style: { fontSize: 11, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, borderRadius: 6, padding: "4px 6px", cursor: "pointer" }
+            }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), (STONE_TYPES_WITH_CUSTOM_AVAILABILITY.includes(selectedType) ? STONE_AVAILABILITY_OPTIONS : AVAILABILITY_OPTIONS).map((a) => h("option", { key: a, value: a }, a))) : (m.availability ? h("span", { style: { fontSize: 10.5, fontWeight: 700, color: availColor, background: "#fff", border: `1px solid ${availColor}`, padding: "1px 8px", borderRadius: 6 } }, m.availability) : "\u2014")),
+            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, onOpenOrder && m.orderId ? h("button", { onClick: () => onOpenOrder(m.orderId), title: "\u0641\u062A\u062D \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644 \u0644\u0644\u0623\u0648\u0631\u062F\u0631 \u062F\u0647", style: { background: "transparent", border: "none", cursor: "pointer", padding: 4 } }, h(Emoji, { size: 16, color: COLORS.teal }, "\u2190")) : null)
+          );
+        }))
+      )
+    )) : (
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
       h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 620 } },
@@ -5936,7 +5977,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
           );
         }))
       )
-    )
+    ))
   );
 }
 
@@ -7496,7 +7537,7 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
   const [expandedShipDate, setExpandedShipDate] = useState(null);
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [fArrivalStatus, setFArrivalStatus] = useState("");
-  const egyptPieces = pieces.filter((p) => p.manufacturingEntity === "مصر" && (p.currentLocation === "الشحن" || p.currentLocation === "التغليف")).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || "", "ar"));
+  const egyptPieces = pieces.filter((p) => p.manufacturingEntity === "مصر" && (p.currentLocation === "الشحن" || p.currentLocation === "التغليف" || p.productShippingStatus === "تم الشحن" || p.shippingDate)).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || "", "ar"));
   const queryNorm = query.trim();
   const filteredList = egyptPieces.filter((p) =>
     (!queryNorm || (p.customerName || "").includes(queryNorm)) &&
@@ -7513,7 +7554,10 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
   };
   const onArrivalStatusChange = (p, val) => {
     const patch = { productArrivalStatus: val };
-    if (val === "وصل" && !p.arrivalDate) patch.arrivalDate = todayStr();
+    if (val === "وصل") {
+      if (!p.arrivalDate) patch.arrivalDate = todayStr();
+      if (p.currentLocation === "الشحن" || !p.currentLocation) patch.currentLocation = "وصل من الشحن";
+    }
     updatePiece(p, patch);
   };
   const byShipDate = {};
@@ -7641,10 +7685,15 @@ function FinishingPage({ pieces, onUpdate, onBack, canEdit, productionSuppliers 
         h("thead", null, h("tr", null, cols.map((c, i) => h("th", { key: i, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
         h("tbody", null, needFinishing.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           h("td", { style: { padding: "9px 10px" } }, canEdit ? h("select", {
-            value: dammamFactories.includes(p.currentLocation) ? p.currentLocation : "",
+            value: dammamFactories.includes(p.currentLocation) ? p.currentLocation : (["الشحن", "وصل من الشحن"].includes(p.currentLocation) ? p.currentLocation : ""),
             onChange: (e) => assignToFactory(p, e.target.value),
             style: { fontSize: 12.5, padding: "8px 6px", minHeight: 38, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" }
-          }, h("option", { value: "" }, "اختاري مصنع..."), dammamFactories.map((f) => h("option", { key: f, value: f }, f))) : (p.currentLocation || "—")),
+          },
+            h("option", { value: "" }, "اختاري مصنع..."),
+            p.currentLocation === "الشحن" ? h("option", { value: "الشحن", disabled: true }, "الشحن (لسه ما وصلش)") : null,
+            p.currentLocation === "وصل من الشحن" ? h("option", { value: "وصل من الشحن", disabled: true }, "وصل من الشحن (مستني تحديد المصنع)") : null,
+            dammamFactories.map((f) => h("option", { key: f, value: f }, f))
+          ) : (p.currentLocation || "—")),
           h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "—"),
           h("td", { style: { padding: "9px 10px", textAlign: "center" } }, p.pieceCount || "—"),
           h("td", { style: { padding: "9px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "—"),
@@ -10380,6 +10429,9 @@ const DEFAULT_PRODUCTION_SUPPLIERS = {
 };
 const DEFAULT_UPHOLSTERY_SUPPLIERS = { "مصر": ["التنجيد"], "الدمام": ["التنجيد"] };
 const BOARD_STATUS = ["لم يتم البدء", "جارى", "تم الإنتاج", "إلى الدهان", "إلى التنجيد", "إلى التغليف", "إلى الشحن", "جاهز للتسليم"];
+function statusOptionsForLocation(loc) {
+  return loc === "الشحن" ? ["لم يتم الشحن", "تم الشحن"] : BOARD_STATUS;
+}
 const STATUS_TARGET = { "إلى الدهان": "الدهان", "إلى التنجيد": "التنجيد", "إلى التغليف": "التغليف", "إلى الشحن": "الشحن" };
 const STATUS_STAGE_KEY = { "الدهان": "دهان", "التنجيد": "تنجيد", "التغليف": "تغليف", "الشحن": "شحن" };
 const ROLE_LABELS = { admin: "مدير (كل الصلاحيات)", "engineers-manager": "مسؤول المهندسين (مراجعة + كل أوردرات المهندسين)", reviewer: "مراجع (صلاحية كاملة على المراجعة فقط)", "sales-manager": "مدير المبيعات (موافقة على أوردرات مهندسي المبيعات قبل المراجعة)", distributor: "توزيع", materials: "حصر خامات", production: "تحديث تصنيع", engineer: "مهندس مبيعات (يضيف ويعدل أوردراته)", "pre-approval-engineering": "المكتب الهندسي (ما قبل الاعتماد)", "pre-approval-technical": "المكتب الفني (مراجعة ما قبل الاعتماد)", viewer: "مشاهدة فقط", supplier: "مورد (واجهة بسيطة، يشوف قطعه بس)" };
@@ -10522,6 +10574,9 @@ function pieceNeedsFinishing(p) {
 }
 function pieceIsReady(p) {
   if (p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") return false;
+  if (p.manufacturingEntity === "\u0645\u0635\u0631" && p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646") {
+    return p.readinessStatus === "\u0645\u0646\u062A\u062C \u062A\u0627\u0645" && !!p.arrivalDate && p.productArrivalStatus === "\u0648\u0635\u0644";
+  }
   if (p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645") return true;
   if (!p.arrivalDate) return false;
   if (pieceNeedsFinishing(p)) return false;
@@ -10944,7 +10999,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
       )
     ) : null,
     h("div", { style: { display: "flex", gap: 8 } },
-      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الحالة"), h("select", { style: fieldStyle, disabled: !canEdit, value: piece.status, onChange: (e) => handleStatusChange(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s)))),
+      h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "الحالة"), h("select", { style: fieldStyle, disabled: !canEdit, value: piece.status, onChange: (e) => handleStatusChange(e.target.value) }, statusOptionsForLocation(piece.currentLocation).map((s) => h("option", { key: s, value: s }, s)))),
       h("div", { style: { flex: 1 } },
         h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } },
           h("label", { style: labelStyle }, "الموعد المتفق عليه"),
@@ -11314,7 +11369,7 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
     ) : null,
     (canBulkEdit && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
       h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
-      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
     renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
@@ -11400,7 +11455,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
       ) : null,
       (canBulkEdit && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
         h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.teal, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, BOARD_STATUS.map((s) => h("option", { key: s, value: s }, s))),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
       renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
@@ -11454,6 +11509,7 @@ function EntityProductionPage({ entity, pieces, orders, productionSuppliers, uph
   const statusOnly = myRoles.includes("production") && !myRoles.includes("admin");
   const pageAccessLevel = (pageKey) => {
     if (isAdminForProduction) return "edit";
+    if (myRoles.includes("viewer")) return "view";
     if (!myRoles.includes("production")) return "edit";
     return productionAccessLevel(myProductionAccess, entity, pageKey, false);
   };
@@ -11719,7 +11775,7 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
       h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
       h("tbody", null, piecesList.map((p) => {
         const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
-        const stageStatus = (delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : (p.status || "\u2014")) + (p.currentLocation ? " - " + p.currentLocation : "");
+        const stageStatus = delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "");
         const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "\u2014";
         return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           h("td", { style: { padding: "8px 10px" } }, canEdit && onUpdate ? h("button", {
@@ -11777,7 +11833,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
   const [fStageFrom, setFStageFrom] = useState("");
   const [fStageTo, setFStageTo] = useState("");
   const searched = query.trim() ? pieces.filter((p) => p.customerName.includes(query)) : pieces;
-  const stageStatusOf = (p) => ((p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : (p.status || "\u2014")) + (p.currentLocation ? " - " + p.currentLocation : "");
+  const stageStatusOf = (p) => (p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "");
   const statusOptions = Array.from(new Set(pieces.map(stageStatusOf))).sort();
   const typeOptions = Array.from(new Set(pieces.map((p) => p.pieceType).filter(Boolean)));
   const entityOptions = Array.from(new Set(pieces.map((p) => p.manufacturingEntity).filter(Boolean)));
@@ -11820,10 +11876,20 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
       const dateB = groups[b].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
       return dateA.localeCompare(dateB);
     });
-    body = names.map((name) => h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 } },
-      h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between" } }, h("span", null, name), h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")),
+    body = names.map((name) => {
+      const groupOrder = orders && orders.find((o) => pieceMatchesOrder(groups[name][0], o, orders));
+      const groupFile = groupOrder && groupOrder.manufacturingOrderFile;
+      return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 } },
+      h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+          h("span", null, name),
+          groupFile ? h("a", { href: groupFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.gold, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none", fontWeight: 600 } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+        ),
+        h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")
+      ),
       h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders))
-    ));
+    );
+    });
   } else {
     const dateGroups = {};
     filtered.forEach((p) => { const k = p.customerDeliveryDate || "بدون تاريخ"; (dateGroups[k] = dateGroups[k] || []).push(p); });
@@ -11849,7 +11915,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
     filtered.slice().sort(byDate).forEach((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""]);
+      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.productShippingStatus === "تم الشحن" ? "تم الشحن" : (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : "")), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""]);
     });
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
@@ -11857,7 +11923,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
     const dataRows = filtered.slice().sort(byDate).map((p) => {
       const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : ""), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""];
+      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.productShippingStatus === "تم الشحن" ? "تم الشحن" : (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : "")), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""];
     });
     printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
   };
