@@ -1222,7 +1222,7 @@ function App() {
       });
       return Array.from(emails);
     };
-    const eligible = productionPieces.filter((p) => p.agreedDeadline && p.status !== "إلى الشحن" && p.status !== "تم الإنتاج" && !pieceStageEndRecorded(p) && p.deadlineLastReminderDate !== today);
+    const eligible = productionPieces.filter((p) => p.agreedDeadline && p.status !== "إلى الشحن" && p.status !== "تم الإنتاج" && p.status !== "جاهز للتسليم" && p.productShippingStatus !== "تم الشحن" && p.deliveryConfirmed !== "تم التسليم" && !pieceStageEndRecorded(p) && p.deadlineLastReminderDate !== today);
     const groups = {};
     eligible.forEach((p) => {
       const d = pieceDeadlineDiff(p);
@@ -1770,7 +1770,7 @@ function App() {
     logActivity("\u0623\u0636\u0627\u0641 \u0633\u062C\u0644 \u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F \u062C\u062F\u064A\u062F: " + (r.clientName || ""));
     const engEmails = new Set(adminEmails());
     (access && access.members || []).forEach((m) => { if (memberHasRole(m, "pre-approval-engineering")) engEmails.add(m.email); });
-    notify({ toEmails: Array.from(engEmails), title: "\u{1F5D2}\uFE0F \u0633\u062C\u0644 \u062C\u062F\u064A\u062F \u0641\u064A \u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F", body: (r.clientName || "") + " \u2014 \u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", kind: "pre-approval-new" });
+    notify({ toEmails: Array.from(engEmails), title: "\u{1F5D2}\uFE0F \u0633\u062C\u0644 \u062C\u062F\u064A\u062F \u0641\u064A \u0645\u0627 \u0642\u0628\u0644 \u0627\u0644\u0627\u0639\u062A\u0645\u0627\u062F", body: (r.clientName || "") + " \u2014 \u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", refId: withOwner.id, kind: "pre-approval-new" });
   };
   const updatePreApprovalRecord = (id, patch) => {
     persistRecordWrite(preApprovalColRef().doc(id).update(patch));
@@ -1784,7 +1784,7 @@ function App() {
     const withOwner = { ...r, id: uid(), createdBy: (user && user.email) || "", enteredAt: (/* @__PURE__ */ new Date()).toISOString(), status: "\u062C\u062F\u064A\u062F" };
     persistRecordWrite(warrantyColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0628\u0644\u0627\u063A \u0636\u0645\u0627\u0646 \u062C\u062F\u064A\u062F: " + (r.clientName || "") + " (" + (r.issueType || "") + ")");
-    notify({ toEmails: reviewTeamEmails(), title: "\u{1F9F0} \u0628\u0644\u0627\u063A \u0636\u0645\u0627\u0646/\u0635\u064A\u0627\u0646\u0629 \u062C\u062F\u064A\u062F", body: (r.clientName || "") + " \u2014 " + (r.issueType || ""), kind: "warranty" });
+    notify({ toEmails: reviewTeamEmails(), title: "\u{1F9F0} \u0628\u0644\u0627\u063A \u0636\u0645\u0627\u0646/\u0635\u064A\u0627\u0646\u0629 \u062C\u062F\u064A\u062F", body: (r.clientName || "") + " \u2014 " + (r.issueType || ""), refId: withOwner.id, kind: "warranty" });
   };
   const updateWarrantyRequest = (id, patch) => {
     const w = warrantyRequests.find((x) => x.id === id);
@@ -1812,7 +1812,7 @@ function App() {
     persistRecordWrite(quickTasksColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0645\u0647\u0645\u0629 \u062C\u062F\u064A\u062F\u0629: " + (t.title || ""));
     if (t.assignedToEmail) {
-      notify({ toEmails: [t.assignedToEmail], title: "\u2705 \u0645\u0647\u0645\u0629 \u062C\u062F\u064A\u062F\u0629 \u0644\u064A\u0643", body: t.title || "", kind: "quick-task" });
+      notify({ toEmails: [t.assignedToEmail], title: "\u2705 \u0645\u0647\u0645\u0629 \u062C\u062F\u064A\u062F\u0629 \u0644\u064A\u0643", body: t.title || "", refId: withOwner.id, kind: "quick-task" });
     }
   };
   const updateQuickTask = (id, patch) => {
@@ -1840,7 +1840,7 @@ function App() {
     const withOwner = { ...e, id: uid(), raisedBy: (user && user.email) || "", raisedByName: myDisplayName || "", status: "\u0645\u0641\u062A\u0648\u062D", createdAt: (/* @__PURE__ */ new Date()).toISOString() };
     persistRecordWrite(escalationsColRef().doc(withOwner.id).set(withOwner));
     logActivity("\u0637\u0644\u0628 \u0645\u0633\u0627\u0639\u062F\u0629 \u0639\u0627\u062C\u0644\u0629: " + (e.description || "").slice(0, 40));
-    notify({ toEmails: adminEmails(), title: "\u{1F198} \u0637\u0644\u0628 \u0645\u0633\u0627\u0639\u062F\u0629 \u0639\u0627\u062C\u0644", body: (myDisplayName || "") + ": " + (e.description || ""), orderId: e.orderId || null, kind: "escalation" });
+    notify({ toEmails: adminEmails(), title: "\u{1F198} \u0637\u0644\u0628 \u0645\u0633\u0627\u0639\u062F\u0629 \u0639\u0627\u062C\u0644", body: (myDisplayName || "") + ": " + (e.description || ""), orderId: e.orderId || null, refId: withOwner.id, kind: "escalation" });
   };
   const updateEscalation = (id, patch) => {
     persistRecordWrite(escalationsColRef().doc(id).update(patch));
@@ -2026,7 +2026,7 @@ function App() {
       orders.some(orderIsOverdue) && h("div", { style: { background: "#FBEAE6", color: COLORS.danger, fontSize: 13, padding: "10px 16px", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } }, h(Emoji, { size: 15 }, "\u23F0"), orders.filter(orderIsOverdue).length, " \u0623\u0648\u0631\u062F\u0631 \u0645\u062A\u0623\u062E\u0631 \u0639\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0648\u0642\u0639 \u2014 \u0631\u0627\u062C\u0639\u064A \u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0628\u062A\u0627\u0639\u062A\u0647\u0645"),
       (() => {
         const upcoming = myScopedProductionPieces.filter((p) => {
-          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
           const d = pieceDeadlineDiff(p);
           return d !== null && d >= 0 && d <= 3;
         });
@@ -2093,7 +2093,7 @@ function App() {
           return d !== null && d <= 0;
         }).map((p) => p.customerName || "\u2014")).size;
         const productionDelayCount = new Set(myScopedProductionPieces.filter((p) => {
-          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+          if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
           const d = pieceDeadlineDiff(p);
           return d !== null && d < 0;
         }).map((p) => p.customerName || "\u2014")).size;
@@ -2279,7 +2279,7 @@ function App() {
       notifications.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0625\u0634\u0639\u0627\u0631\u0627\u062A \u0644\u0633\u0629" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, notifications.map((n) => {
         const isRead = (n.readBy || []).includes(user && user.email);
-        const resolved = isNotificationResolved(n, orders, productionPieces);
+        const resolved = isNotificationResolved(n, orders, productionPieces, escalations, [...quickTasksAssigned, ...quickTasksCreated], warrantyRequests, preApprovalRecords);
         return h("div", {
           key: n.id,
           onClick: () => openNotification(n),
@@ -6755,11 +6755,11 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePi
   const [query, setQuery] = useState("");
   const [locFilter, setLocFilter] = useState("");
   const todayPieces = pieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d === 0;
   }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!locFilter || p.currentLocation === locFilter));
-  const allLocationOptions = Array.from(new Set(pieces.filter((p) => { if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false; return pieceDeadlineDiff(p) === 0; }).map((p) => p.currentLocation).filter(Boolean)));
+  const allLocationOptions = Array.from(new Set(pieces.filter((p) => { if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false; return pieceDeadlineDiff(p) === 0; }).map((p) => p.currentLocation).filter(Boolean)));
   const byLocation = {};
   todayPieces.forEach((p) => {
     const loc = p.currentLocation || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0642\u0639";
@@ -6820,7 +6820,7 @@ function DashboardPage({ orders, pieces, warrantyRequests, emailToName, isAdminU
   let heaviestSupplier = null, heaviestCount = 0;
   Object.keys(locCounts).forEach((s) => { if (locCounts[s] > heaviestCount) { heaviestCount = locCounts[s]; heaviestSupplier = s; } });
   const overdueCount = new Set(pieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).map((p) => p.customerName || "\u2014")).size;
@@ -7745,7 +7745,7 @@ function ProductionDelaysPage({ pieces, onBack }) {
   const [query, setQuery] = useState("");
   const [fLocation, setFLocation] = useState("");
   const delayedRaw = pieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fLocation || p.currentLocation === fLocation));
@@ -8189,13 +8189,18 @@ function GlobalSuppliersPage({ orders }) {
 }
 const DEFAULT_ORDER_CATEGORY_OPTIONS = ["\u0643\u0646\u0628", "\u0645\u0633\u0637\u062D\u0627\u062A", "\u062C\u064A\u0628\u0648\u0631\u062F", "\u0633\u062A\u0627\u0626\u0631", "\u062A\u0646\u062C\u064A\u062F", "\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F", "\u0643\u0646\u0628 \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062E\u0634\u0628\u064A\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u062C\u064A\u0628\u0648\u0631\u062F \u0648\u0633\u062A\u0627\u0626\u0631", "\u0643\u0646\u0628 \u0648\u0645\u0633\u0637\u062D\u0627\u062A \u0648\u0633\u062A\u0627\u0626\u0631", "\u0633\u062C\u0627\u062F", "\u0645\u062E\u062F\u0627\u062A"];
 const DEPARTMENT_KEYWORDS = ["كنب", "مسطحات", "جيبورد", "ستائر", "تنجيد", "خشبيات", "سجاد", "مخدات"];
-function isNotificationResolved(n, orders, productionPieces) {
+function isNotificationResolved(n, orders, productionPieces, escalations, quickTasks, warrantyRequests, preApprovalRecords) {
+  if (n.kind === "escalation") { const rec = escalations && escalations.find((x) => x.id === n.refId); return rec ? rec.status === "\u062A\u0645 \u0627\u0644\u062D\u0644" : false; }
+  if (n.kind === "quick-task") { const rec = quickTasks && quickTasks.find((x) => x.id === n.refId); return rec ? !!rec.done : false; }
+  if (n.kind === "warranty") { const rec = warrantyRequests && warrantyRequests.find((x) => x.id === n.refId); return rec ? rec.status === "\u062A\u0645 \u0627\u0644\u062D\u0644" : false; }
+  if (n.kind === "pre-approval-new") { const rec = preApprovalRecords && preApprovalRecords.find((x) => x.id === n.refId); return rec ? !!rec.orderCreated : false; }
   if (!n.orderId) return false;
   const o = orders.find((x) => x.id === n.orderId);
   if (!o) return true;
   if (o.archived) return true;
-  if (n.kind === "materials-deadline") return !!o.materialsHandled;
-  if (n.kind === "distribution-deadline") return !!o.distributionHandled;
+  if (n.kind === "missing-code") return !!o.orderCode;
+  if (n.kind === "materials-deadline") return !!o.materialsHandled || !o.approved;
+  if (n.kind === "distribution-deadline") return !!o.distributionHandled || !o.approved;
   if ((n.kind === "near-delivery" || n.kind === "deadline" || n.kind === "ready-for-delivery") && productionPieces) {
     const matching = productionPieces.filter((p) => pieceMatchesOrder(p, o, orders));
     if (matching.length > 0 && matching.every((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) return true;
@@ -11554,7 +11559,7 @@ function EntityProductionPage({ entity, pieces, orders, productionSuppliers, uph
   ].concat(isDammam ? [] : [{ key: "packing_shipping", label: "\u062A\u063A\u0644\u064A\u0641 \u0648\u0634\u062D\u0646", emoji: "\u{1F4E6}", locations: ["\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"], allowAdd: false } ])
     .concat([{ key: "delays", label: "\u0627\u0644\u062A\u0623\u062E\u064A\u0631\u0627\u062A", emoji: "\u23F0", locations: [], allowAdd: false, special: true }]);
   const trueDelays = entityPieces.filter((p) => {
-    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || pieceStageEndRecorded(p)) return false;
+    if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
     if (mySupplierScope && mySupplierScope.length > 0 && !pieceMatchesSupplierScope(p, mySupplierScope)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
