@@ -2983,6 +2983,36 @@ function StageTracker({ stage, size = "normal", onSelect }) {
 function EmptyHint({ text }) {
   return /* @__PURE__ */ React.createElement("p", { style: { fontSize: 13, color: COLORS.muted, marginBottom: 10 } }, text);
 }
+function MultiSelectFilter({ options, selected, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const safeSelected = selected || [];
+  const normOptions = (options || []).map((o) => (o && typeof o === "object") ? o : { value: o, label: o });
+  const labelFor = (val) => { const m = normOptions.find((o) => o.value === val); return m ? m.label : val; };
+  useEffect(() => {
+    const onDocClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+  const toggleValue = (val) => {
+    onChange(safeSelected.includes(val) ? safeSelected.filter((v) => v !== val) : [...safeSelected, val]);
+  };
+  const summary = safeSelected.length === 0 ? (placeholder || "الكل") : safeSelected.length === 1 ? labelFor(safeSelected[0]) : safeSelected.length + " مختارة";
+  return /* @__PURE__ */ React.createElement("div", { ref: boxRef, style: { position: "relative" } },
+    /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => setOpen((o) => !o), style: { ...fieldStyle, marginBottom: 0, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", textAlign: "start", fontFamily: "inherit", fontSize: 15 } },
+      /* @__PURE__ */ React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: safeSelected.length ? COLORS.ink : COLORS.muted } }, summary),
+      /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: COLORS.muted, marginInlineStart: 8, flexShrink: 0 } }, open ? "▲" : "▼")
+    ),
+    open ? /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", insetInlineStart: 0, insetInlineEnd: 0, top: "calc(100% + 4px)", background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", padding: 6, zIndex: 40, maxHeight: 240, overflowY: "auto" } },
+      normOptions.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: COLORS.muted, padding: "8px 6px" } }, "لا توجد خيارات") : null,
+      safeSelected.length > 0 ? /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => onChange([]), style: { display: "block", width: "100%", textAlign: "start", background: "transparent", border: "none", borderBottom: `1px solid ${COLORS.border}`, color: COLORS.gold, fontWeight: 700, fontSize: 12.5, padding: "6px 6px 8px", marginBottom: 4, cursor: "pointer" } }, "✕ مسح الكل") : null,
+      normOptions.map((opt) => /* @__PURE__ */ React.createElement("label", { key: opt.value, style: { display: "flex", alignItems: "center", gap: 8, padding: "7px 6px", fontSize: 13.5, borderRadius: 8, cursor: "pointer" } },
+        /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: safeSelected.includes(opt.value), onChange: () => toggleValue(opt.value), style: { width: 16, height: 16, cursor: "pointer", flexShrink: 0 } }),
+        /* @__PURE__ */ React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, opt.label)
+      ))
+    ) : null
+  );
+}
 function generateWebAuthnChallenge() {
   const arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
@@ -3103,9 +3133,9 @@ function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
 function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [fCategory, setFCategory] = useState("");
-  const [fStatus, setFStatus] = useState("");
-  const [fTag, setFTag] = useState("");
+  const [fCategory, setFCategory] = useState([]);
+  const [fStatus, setFStatus] = useState([]);
+  const [fTag, setFTag] = useState([]);
   const piecesForOrder = (o) => (pieces || []).filter((p) => pieceMatchesOrder(p, o, orders));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
@@ -3114,9 +3144,9 @@ function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const map = {};
   orders.forEach((o) => {
     if (query.trim() && !(o.clientName || "").includes(query.trim())) return;
-    if (fCategory && o.category !== fCategory) return;
-    if (fStatus && liveStatus(o) !== fStatus) return;
-    if (fTag && !(o.tags || []).includes(fTag)) return;
+    if (fCategory.length && !fCategory.includes(o.category)) return;
+    if (fStatus.length && !fStatus.includes(liveStatus(o))) return;
+    if (fTag.length && !(o.tags || []).some((t) => fTag.includes(t))) return;
     const key = (o.clientName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
     if (!map[key]) map[key] = { name: key, engineerName: "", orders: [] };
     if (o.createdBy || o.engineerName) map[key].engineerName = o.engineerName || (emailToName && emailToName[o.createdBy]) || "";
@@ -3129,21 +3159,15 @@ function CustomersList({ orders, onOpen, emailToName, pieces }) {
     showFilters ? /* @__PURE__ */ React.createElement("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginTop: 10, display: "flex", flexDirection: "column", gap: 10 } },
       /* @__PURE__ */ React.createElement("div", null,
         /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"),
-        /* @__PURE__ */ React.createElement("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
-          /* @__PURE__ */ React.createElement("option", { value: "" }, "\u0627\u0644\u0643\u0644"), categoryOptions.map((c) => /* @__PURE__ */ React.createElement("option", { key: c, value: c }, c))
-        )
+        /* @__PURE__ */ React.createElement(MultiSelectFilter, { options: categoryOptions, selected: fCategory, onChange: setFCategory })
       ),
       /* @__PURE__ */ React.createElement("div", null,
         /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
-        /* @__PURE__ */ React.createElement("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          /* @__PURE__ */ React.createElement("option", { value: "" }, "\u0627\u0644\u0643\u0644"), statusOptions.map((s) => /* @__PURE__ */ React.createElement("option", { key: s, value: s }, s))
-        )
+        /* @__PURE__ */ React.createElement(MultiSelectFilter, { options: statusOptions, selected: fStatus, onChange: setFStatus })
       ),
       tagOptions.length > 0 ? /* @__PURE__ */ React.createElement("div", null,
         /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0644\u0648\u0633\u0645"),
-        /* @__PURE__ */ React.createElement("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fTag, onChange: (e) => setFTag(e.target.value) },
-          /* @__PURE__ */ React.createElement("option", { value: "" }, "\u0627\u0644\u0643\u0644"), tagOptions.map((t) => /* @__PURE__ */ React.createElement("option", { key: t, value: t }, t))
-        )
+        /* @__PURE__ */ React.createElement(MultiSelectFilter, { options: tagOptions, selected: fTag, onChange: setFTag })
       ) : null
     ) : null
   );
@@ -4161,7 +4185,7 @@ const REPORT_SOURCES = {
 };
 function UniversalSearchPage({ orders, pieces, onBack, onOpenOrder, onOpenCustomer }) {
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState([]);
   const active = orders.filter((o) => !o.archived);
   const q = normalizeDigits(query.trim()).toLowerCase();
   const results = [];
@@ -4190,7 +4214,7 @@ function UniversalSearchPage({ orders, pieces, onBack, onOpenOrder, onOpenCustom
     });
   }
   const types = ["\u0623\u0648\u0631\u062F\u0631", "\u0639\u0645\u064A\u0644", "\u062E\u0627\u0645\u0629", "\u0642\u0637\u0639\u0629 \u0625\u0646\u062A\u0627\u062C"];
-  const filtered = results.filter((r) => !typeFilter || r.type === typeFilter);
+  const filtered = results.filter((r) => typeFilter.length === 0 || typeFilter.includes(r.type));
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -4200,8 +4224,8 @@ function UniversalSearchPage({ orders, pieces, onBack, onOpenOrder, onOpenCustom
       h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 12 } }, "\u062F\u0648\u0631\u064A \u0641\u064A \u0643\u0644 \u062D\u0627\u062C\u0629 \u0645\u0631\u0629 \u0648\u0627\u062D\u062F\u0629: \u0623\u0648\u0631\u062F\u0631\u0627\u062A\u060C \u0639\u0645\u0644\u0627\u0621\u060C \u062E\u0627\u0645\u0627\u062A\u060C \u0642\u0637\u0639 \u0625\u0646\u062A\u0627\u062C."),
       h("input", { style: { ...fieldStyle, marginBottom: 10 }, value: query, onChange: (e) => setQuery(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0633\u0645 \u0639\u0645\u064A\u0644\u060C \u0643\u0648\u062F \u0623\u0648\u0631\u062F\u0631\u060C \u0627\u0633\u0645 \u062E\u0627\u0645\u0629..." }),
       q ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
-        h("button", { onClick: () => setTypeFilter(""), style: { fontSize: 11.5, padding: "5px 12px", borderRadius: 999, border: `1px solid ${!typeFilter ? COLORS.gold : COLORS.border}`, background: !typeFilter ? COLORS.goldSoft : "#fff", color: COLORS.ink, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644 (" + results.length + ")"),
-        types.map((t) => { const n = results.filter((r) => r.type === t).length; return n > 0 ? h("button", { key: t, onClick: () => setTypeFilter(t), style: { fontSize: 11.5, padding: "5px 12px", borderRadius: 999, border: `1px solid ${typeFilter === t ? COLORS.gold : COLORS.border}`, background: typeFilter === t ? COLORS.goldSoft : "#fff", color: COLORS.ink, cursor: "pointer" } }, t + " (" + n + ")") : null; })
+        h("button", { onClick: () => setTypeFilter([]), style: { fontSize: 11.5, padding: "5px 12px", borderRadius: 999, border: `1px solid ${typeFilter.length === 0 ? COLORS.gold : COLORS.border}`, background: typeFilter.length === 0 ? COLORS.goldSoft : "#fff", color: COLORS.ink, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644 (" + results.length + ")"),
+        types.map((t) => { const n = results.filter((r) => r.type === t).length; return n > 0 ? h("button", { key: t, onClick: () => setTypeFilter((cur) => cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]), style: { fontSize: 11.5, padding: "5px 12px", borderRadius: 999, border: `1px solid ${typeFilter.includes(t) ? COLORS.gold : COLORS.border}`, background: typeFilter.includes(t) ? COLORS.goldSoft : "#fff", color: COLORS.ink, cursor: "pointer" } }, t + " (" + n + ")") : null; })
       ) : null,
       q && filtered.length > 0 ? h(ExportButtons, {
         onExcel: () => exportToExcel("\u0628\u062D\u062B-\u0634\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0646\u062A\u0627\u0626\u062C", rows: [["\u0627\u0644\u0646\u0648\u0639", "\u0627\u0644\u0639\u0646\u0648\u0627\u0646", "\u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644"]].concat(filtered.map((r) => [r.type, r.title, r.subtitle])) }]),
@@ -4919,14 +4943,14 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const cols = ["", "الكود", "تاريخ دخول القسم", "الحالة", "اسم العميل", "نوع الأوردر", "اسم المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم"];
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [fCategory, setFCategory] = useState("");
-  const [fEngineer, setFEngineer] = useState("");
+  const [fCategory, setFCategory] = useState([]);
+  const [fEngineer, setFEngineer] = useState([]);
   const categoryOptions = Array.from(new Set(sorted.map((o) => o.category).filter(Boolean)));
   const engineerOptions = Array.from(new Set(sorted.map((o) => o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy).filter(Boolean)));
   const filtered = sorted.filter((o) => {
     if (query.trim() && !(o.clientName || "").includes(query.trim())) return false;
-    if (fCategory && o.category !== fCategory) return false;
-    if (fEngineer && (o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy) !== fEngineer) return false;
+    if (fCategory.length && !fCategory.includes(o.category)) return false;
+    if (fEngineer.length && !fEngineer.includes(o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy)) return false;
     return true;
   });
   const buildDeptRowsForOrder = (o) => {
@@ -4995,15 +5019,11 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "نوع الأوردر"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
-          h("option", { value: "" }, "الكل"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
-        )
+        h(MultiSelectFilter, { options: categoryOptions, selected: fCategory, onChange: setFCategory })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "المهندس"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fEngineer, onChange: (e) => setFEngineer(e.target.value) },
-          h("option", { value: "" }, "الكل"), engineerOptions.map((e2) => h("option", { key: e2, value: e2 }, e2))
-        )
+        h(MultiSelectFilter, { options: engineerOptions, selected: fEngineer, onChange: setFEngineer })
       )
     ) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "مفيش أوردرات مطابقة" }) :
@@ -5155,13 +5175,13 @@ function fmtDurationHuman(ms) {
 function EngineeringReportsPage({ records, designerReports, engineeringReferences, myEmail, myDisplayName, isAdminUser, onAddReport, onDeleteReport, onAddReference, onDeleteReference, onBack }) {
   const [tab, setTab] = useState("table");
   const [query, setQuery] = useState("");
-  const [designerFilter, setDesignerFilter] = useState("");
+  const [designerFilter, setDesignerFilter] = useState([]);
   const rows = (records || []).map((r) => {
     const stats = computeStageStats(r.stageTimeline, "engineering");
     return { id: r.id, clientName: r.clientName || "\u2014", engineerName: r.engineerName || "\u2014", designerName: r.designerName || "\u2014", totalMs: stats.totalMs, revisions: stats.revisions };
   });
   const designerOptions = Array.from(new Set(rows.map((r) => r.designerName).filter((n) => n && n !== "\u2014"))).sort((a, b) => a.localeCompare(b, "ar"));
-  const filtered = rows.filter((r) => (!query.trim() || r.clientName.includes(query.trim())) && (!designerFilter || r.designerName === designerFilter));
+  const filtered = rows.filter((r) => (!query.trim() || r.clientName.includes(query.trim())) && (designerFilter.length === 0 || designerFilter.includes(r.designerName)));
   const exportRows = () => filtered.map((r) => [r.clientName, r.engineerName, r.designerName, fmtDurationHuman(r.totalMs), r.revisions]);
   const exportHeaders = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633", "\u0627\u0644\u0645\u0635\u0645\u0645", "\u0627\u0644\u0648\u0642\u062A \u0627\u0644\u0645\u0633\u062A\u063A\u0631\u0642", "\u0639\u062F\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A"];
 
@@ -5169,7 +5189,7 @@ function EngineeringReportsPage({ records, designerReports, engineeringReference
   const [reportDate, setReportDate] = useState(todayStr());
   const [reportText, setReportText] = useState("");
   const [reportOrderIds, setReportOrderIds] = useState([]);
-  const [reportDesignerFilter, setReportDesignerFilter] = useState("");
+  const [reportDesignerFilter, setReportDesignerFilter] = useState([]);
   const [reportDateFilter, setReportDateFilter] = useState("");
   const toggleOrderId = (id) => setReportOrderIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const submitReport = () => {
@@ -5179,7 +5199,7 @@ function EngineeringReportsPage({ records, designerReports, engineeringReference
   };
   const reportDesignerOptions = Array.from(new Set((designerReports || []).map((d) => d.designerName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const filteredReports = (designerReports || [])
-    .filter((d) => (!reportDesignerFilter || d.designerName === reportDesignerFilter) && (!reportDateFilter || d.date === reportDateFilter))
+    .filter((d) => (reportDesignerFilter.length === 0 || reportDesignerFilter.includes(d.designerName)) && (!reportDateFilter || d.date === reportDateFilter))
     .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   const [delayThreshold, setDelayThreshold] = useState(3);
@@ -5231,9 +5251,7 @@ function EngineeringReportsPage({ records, designerReports, engineeringReference
     }, h(Emoji, { size: 14 }, t.emoji), t.label))),
     tab === "table" ? h("div", null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-      designerOptions.length > 0 ? h("select", { style: fieldStyle, value: designerFilter, onChange: (e) => setDesignerFilter(e.target.value) },
-        h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0645\u0635\u0645\u0645\u064A\u0646"), designerOptions.map((d) => h("option", { key: d, value: d }, d))
-      ) : null,
+      designerOptions.length > 0 ? h(MultiSelectFilter, { options: designerOptions, selected: designerFilter, onChange: setDesignerFilter, placeholder: "\u0643\u0644 \u0627\u0644\u0645\u0635\u0645\u0645\u064A\u0646" }) : null,
       filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0642\u0627\u0631\u064A\u0631-\u0627\u0644\u0645\u0643\u062A\u0628-\u0627\u0644\u0647\u0646\u062F\u0633\u064A", [{ name: "\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631", rows: [exportHeaders].concat(exportRows()) }]), onPdf: () => printAsPdf("\u062A\u0642\u0627\u0631\u064A\u0631 \u0627\u0644\u0645\u0643\u062A\u0628 \u0627\u0644\u0647\u0646\u062F\u0633\u064A", exportHeaders, exportRows()) }) : null,
       filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
@@ -5265,9 +5283,7 @@ function EngineeringReportsPage({ records, designerReports, engineeringReference
         h("button", { style: primaryBtn(!reportDesignerName.trim() || !reportText.trim()), disabled: !reportDesignerName.trim() || !reportText.trim(), onClick: submitReport }, "\u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631")
       ),
       h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-        reportDesignerOptions.length > 0 ? h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: reportDesignerFilter, onChange: (e) => setReportDesignerFilter(e.target.value) },
-          h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0645\u0635\u0645\u0645\u064A\u0646"), reportDesignerOptions.map((d) => h("option", { key: d, value: d }, d))
-        ) : null,
+        reportDesignerOptions.length > 0 ? h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: reportDesignerOptions, selected: reportDesignerFilter, onChange: setReportDesignerFilter, placeholder: "\u0643\u0644 \u0627\u0644\u0645\u0635\u0645\u0645\u064A\u0646" })) : null,
         h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, type: "date", value: reportDateFilter, onChange: (e) => setReportDateFilter(e.target.value) })
       ),
       filteredReports.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0637\u0627\u0628\u0642\u0629" }) :
@@ -5662,18 +5678,18 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
     onSubNav.push(handler);
     return () => onSubNav.pop(handler);
   }, [selectedEngineer]);
-  const [monthFilter, setMonthFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState([]);
   const [editingOrder, setEditingOrder] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState([]);
   const resolveName = (o) => o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy || "\u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641";
   const byDeliveryDate = (a, b) => (a.deliveryDate || "9999-99-99").localeCompare(b.deliveryDate || "9999-99-99");
   const scoped = isAdminUser ? orders.filter((o) => o.createdBy) : orders.filter((o) => o.createdBy && myEmail && o.createdBy === myEmail);
   const categoryOptions = Array.from(new Set(scoped.map((o) => o.category).filter(Boolean)));
   const applyFilters = (list) => list.filter((o) => {
     if (query.trim() && !(o.clientName || "").includes(query.trim())) return false;
-    if (categoryFilter && o.category !== categoryFilter) return false;
+    if (categoryFilter.length && !categoryFilter.includes(o.category)) return false;
     return true;
   });
   const needsRevision = applyFilters(scoped.filter((o) => o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" || o.salesManagerApproval === "rejected")).sort(byDeliveryDate);
@@ -5691,9 +5707,7 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
     ),
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
       h("label", { style: labelStyle }, "\u0627\u0644\u0642\u0633\u0645"),
-      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: categoryFilter, onChange: (e) => setCategoryFilter(e.target.value) },
-        h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
-      )
+      h(MultiSelectFilter, { options: categoryOptions, selected: categoryFilter, onChange: setCategoryFilter })
     ) : null
   );
   const MONTHS = ["\u064A\u0646\u0627\u064A\u0631", "\u0641\u0628\u0631\u0627\u064A\u0631", "\u0645\u0627\u0631\u0633", "\u0623\u0628\u0631\u064A\u0644", "\u0645\u0627\u064A\u0648", "\u064A\u0648\u0646\u064A\u0648", "\u064A\u0648\u0644\u064A\u0648", "\u0623\u063A\u0633\u0637\u0633", "\u0633\u0628\u062A\u0645\u0628\u0631", "\u0623\u0643\u062A\u0648\u0628\u0631", "\u0646\u0648\u0641\u0645\u0628\u0631", "\u062F\u064A\u0633\u0645\u0628\u0631"];
@@ -5764,16 +5778,13 @@ function MyOrdersPage({ orders, pieces, myEmail, isAdminUser, onOpen, onUpdateOr
       );
     }
     let list = (byEngineer[selectedEngineer] || []);
-    if (monthFilter) list = list.filter((o) => o.deliveryDate && o.deliveryDate.slice(5, 7) === monthFilter);
+    if (monthFilter.length) list = list.filter((o) => o.deliveryDate && monthFilter.includes(o.deliveryDate.slice(5, 7)));
     return h("div", null,
       h("button", { onClick: () => setSelectedEngineer(null), style: { background: "transparent", border: "none", color: COLORS.teal, fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 10 } }, "\u203A \u0631\u062C\u0648\u0639 \u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646"),
       h(SectionHeader, { emoji: "\u{1F464}", title: selectedEngineer }),
       tabsRow,
       searchFilterBar,
-      h("select", { style: { ...fieldStyle }, value: monthFilter, onChange: (e) => setMonthFilter(e.target.value) },
-        h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631"),
-        MONTHS.map((mn, idx) => h("option", { key: idx, value: String(idx + 1).padStart(2, "0") }, (idx + 1) + " - " + mn))
-      ),
+      h(MultiSelectFilter, { options: MONTHS.map((mn, idx) => ({ value: String(idx + 1).padStart(2, "0"), label: (idx + 1) + " - " + mn })), selected: monthFilter, onChange: setMonthFilter, placeholder: "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631" }),
       list.length > 0 ? h(ExportButtons, { onExcel: () => exportExcel(list), onPdf: () => exportPdf(list) }) : null,
       list.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u064A\u0648\u062C\u062F \u0634\u064A\u0621 \u0647\u0646\u0627" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map(tab === "revisions" ? revisionCard : tab === "pending" ? pendingCard : doneCard)),
@@ -5819,8 +5830,8 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
     return () => onSubNav.pop(handler);
   }, [selectedType]);
   const [query, setQuery] = useState("");
-  const [fAvailability, setFAvailability] = useState("");
-  const [fCompanyFilter, setFCompanyFilter] = useState("");
+  const [fAvailability, setFAvailability] = useState([]);
+  const [fCompanyFilter, setFCompanyFilter] = useState([]);
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [bulkEntity, setBulkEntity] = useState("");
   const byType = {};
@@ -5862,8 +5873,8 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
       const hay = normalizeDigits([m.clientName, m.materialName, m.description, m.itemCode, m.companyName].filter(Boolean).join(" ")).toLowerCase();
       if (!hay.includes(normalizeDigits(query.trim()).toLowerCase())) return false;
     }
-    if (fAvailability && m.availability !== fAvailability) return false;
-    if (fCompanyFilter && m.companyName !== fCompanyFilter) return false;
+    if (fAvailability.length && !fAvailability.includes(m.availability)) return false;
+    if (fCompanyFilter.length && !fCompanyFilter.includes(m.companyName)) return false;
     return true;
   });
   const rowKey = (m) => m.orderId + "::" + m.id;
@@ -5942,12 +5953,8 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
       h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, selectedType)
     ),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u062E\u0627\u0645\u0629...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    availabilityOptions.length > 0 ? h("select", { style: fieldStyle, value: fAvailability, onChange: (e) => setFAvailability(e.target.value) },
-      h("option", { value: "" }, "\u0643\u0644 \u062D\u0627\u0644\u0627\u062A \u0627\u0644\u062A\u0648\u0627\u0641\u0631"), availabilityOptions.map((a) => h("option", { key: a, value: a }, a))
-    ) : null,
-    companyOptions.length > 0 ? h("select", { style: fieldStyle, value: fCompanyFilter, onChange: (e) => setFCompanyFilter(e.target.value) },
-      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A"), companyOptions.map((c) => h("option", { key: c, value: c }, c))
-    ) : null,
+    availabilityOptions.length > 0 ? h(MultiSelectFilter, { options: availabilityOptions, selected: fAvailability, onChange: setFAvailability, placeholder: "\u0643\u0644 \u062D\u0627\u0644\u0627\u062A \u0627\u0644\u062A\u0648\u0627\u0641\u0631" }) : null,
+    companyOptions.length > 0 ? h(MultiSelectFilter, { options: companyOptions, selected: fCompanyFilter, onChange: setFCompanyFilter, placeholder: "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A" }) : null,
     (isMeasured ? measuredRows.length > 0 : filtered.length > 0) ? h(ExportButtons, { onExcel: isMeasured ? exportMeasuredExcel : exportExcel, onPdf: isMeasured ? exportMeasuredPdf : exportPdf }) : null,
     isQmash && filteredKeys.length > 0 ? h("div", { style: { fontSize: 11.5, color: COLORS.muted, margin: "4px 0 8px" } }, "غيّري جهة كود واحد وهيسألك تطبقها على باقي أكواد نفس العميل ولا لأ \u2014 أو ابحثي باسم عميل وحدّدي الكل عشان تغيّري جهة كل أكواده دفعة واحدة") : null,
     isQmash && selectedKeys.length > 0 ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, flexWrap: "wrap" } },
@@ -6022,7 +6029,7 @@ function ByTypeMaterialsPage({ orders, onOpenOrder, onUpdateOrder, onSubNav }) {
 
 function TopRequestedMaterialsPage({ orders }) {
   const [query, setQuery] = useState("");
-  const [fType, setFType] = useState("");
+  const [fType, setFType] = useState([]);
   const groups = {};
   orders.forEach((o) => {
     (o.materials || []).forEach((m) => {
@@ -6039,16 +6046,14 @@ function TopRequestedMaterialsPage({ orders }) {
   });
   const allRows = Object.values(groups).sort((a, b) => b.count - a.count);
   const typeOptions = Array.from(new Set(allRows.map((r) => r.type)));
-  const filtered = allRows.filter((r) => (!query.trim() || r.label.includes(query.trim())) && (!fType || r.type === fType));
+  const filtered = allRows.filter((r) => (!query.trim() || r.label.includes(query.trim())) && (fType.length === 0 || fType.includes(r.type)));
   const cols = ["\u0627\u0644\u0643\u0648\u062F/\u0627\u0644\u0627\u0633\u0645", "\u0627\u0644\u0646\u0648\u0639", "\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629", "\u0639\u062F\u062F \u0645\u0631\u0627\u062A \u0627\u0644\u0637\u0644\u0628", "\u0639\u062F\u062F \u0627\u0644\u0639\u0645\u0644\u0627\u0621 \u0627\u0644\u0645\u062E\u062A\u0644\u0641\u064A\u0646", "\u0622\u062E\u0631 \u0637\u0644\u0628"];
   const exportRows = () => filtered.map((r) => [r.label, r.type, r.companyName || "\u2014", r.count, r.customers.size, r.lastDate || "\u2014"]);
   return h("div", { style: { marginTop: 16 } },
     h(SectionHeader, { emoji: "\u{1F4CA}", title: "\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0643\u062B\u0631 \u0637\u0644\u0628\u064B\u0627" }),
     h("p", { style: { fontSize: 12.5, color: COLORS.muted, margin: "0 0 12px" } }, "\u0623\u0643\u062A\u0631 \u0627\u0644\u0623\u0643\u0648\u0627\u062F/\u0627\u0644\u0623\u0633\u0645\u0627\u0621 \u062A\u0643\u0631\u0627\u0631\u064B\u0627 \u0639\u0628\u0631 \u0643\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u2014 \u062A\u0641\u064A\u062F \u0641\u064A \u0627\u0644\u062A\u0641\u0627\u0648\u0636 \u0645\u0639 \u0627\u0644\u0645\u0648\u0631\u062F \u0648\u0645\u0639\u0631\u0641\u0629 \u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u0637\u0644\u0628."),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0644\u0643\u0648\u062F \u0623\u0648 \u0627\u0644\u0627\u0633\u0645...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    typeOptions.length > 0 ? h("select", { style: fieldStyle, value: fType, onChange: (e) => setFType(e.target.value) },
-      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0646\u0648\u0627\u0639"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
-    ) : null,
+    typeOptions.length > 0 ? h(MultiSelectFilter, { options: typeOptions, selected: fType, onChange: setFType, placeholder: "\u0643\u0644 \u0627\u0644\u0623\u0646\u0648\u0627\u0639" }) : null,
     filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0627\u0644\u0623\u0643\u062B\u0631-\u0637\u0644\u0628\u064B\u0627", [{ name: "\u0627\u0644\u0623\u0643\u062B\u0631 \u0637\u0644\u0628\u064B\u0627", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0623\u0643\u062B\u0631 \u0637\u0644\u0628\u064B\u0627", cols, exportRows()) }) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
@@ -6076,10 +6081,10 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
   }, [view]);
   const [summarySearch, setSummarySearch] = useState("");
   const [rollupSearch, setRollupSearch] = useState("");
-  const [rollupType, setRollupType] = useState("");
+  const [rollupType, setRollupType] = useState([]);
   const [missingSearch, setMissingSearch] = useState("");
-  const [missingCompany, setMissingCompany] = useState("");
-  const [missingType, setMissingType] = useState("");
+  const [missingCompany, setMissingCompany] = useState([]);
+  const [missingType, setMissingType] = useState([]);
   const customerGroups = {};
   orders.forEach((o) => {
     const key = (o.clientName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645";
@@ -6094,7 +6099,7 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
   const rollupSearchNorm = rollupSearch.trim();
   const customerRollups = customerRollupsAll
     .filter((c) => !rollupSearchNorm || c.name.includes(rollupSearchNorm))
-    .map((c) => ({ name: c.name, rollup: rollupType ? c.rollup.filter((r) => r.type === rollupType) : c.rollup }))
+    .map((c) => ({ name: c.name, rollup: rollupType.length ? c.rollup.filter((r) => rollupType.includes(r.type)) : c.rollup }))
     .filter((c) => c.rollup.length > 0);
   const summarySearchNorm = summarySearch.trim();
   const byCustomerNames = Object.keys(customerGroups).filter((name) => customerGroups[name].length > 0 && (!summarySearchNorm || name.includes(summarySearchNorm))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -6106,8 +6111,8 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
   const missingCompanyOptions = Array.from(new Set(missingMaterials.map((item) => (item.material.companyName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const missingTypeOptions = Array.from(new Set(missingMaterials.map((item) => item.material.type).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const filteredMissing = missingMaterials.filter((item) => {
-    if (missingCompany && (item.material.companyName || "").trim() !== missingCompany) return false;
-    if (missingType && item.material.type !== missingType) return false;
+    if (missingCompany.length && !missingCompany.includes((item.material.companyName || "").trim())) return false;
+    if (missingType.length && !missingType.includes(item.material.type)) return false;
     if (!missingSearchNorm) return true;
     const hay = normalizeDigits([item.customerName, item.orderTitle, item.material.type, item.material.companyName, item.material.itemCode, item.material.description, item.material.materialName].filter(Boolean).join(" ")).toLowerCase();
     return hay.includes(missingSearchNorm);
@@ -6193,12 +6198,8 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
       h(React.Fragment, null,
       h("input", { style: fieldStyle, value: missingSearch, onChange: (e) => setMissingSearch(e.target.value), placeholder: "\u0628\u062D\u062B \u0628\u0627\u0633\u0645 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0648 \u0627\u0644\u0639\u0645\u064A\u0644 \u0623\u0648 \u0627\u0644\u0643\u0648\u062F..." }),
       h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-        missingCompanyOptions.length > 0 ? h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: missingCompany, onChange: (e) => setMissingCompany(e.target.value) },
-          h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A"), missingCompanyOptions.map((c) => h("option", { key: c, value: c }, c))
-        ) : null,
-        missingTypeOptions.length > 1 ? h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: missingType, onChange: (e) => setMissingType(e.target.value) },
-          h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0646\u0648\u0627\u0639"), missingTypeOptions.map((t) => h("option", { key: t, value: t }, t))
-        ) : null
+        missingCompanyOptions.length > 0 ? h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: missingCompanyOptions, selected: missingCompany, onChange: setMissingCompany, placeholder: "\u0643\u0644 \u0627\u0644\u0634\u0631\u0643\u0627\u062A" })) : null,
+        missingTypeOptions.length > 1 ? h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: missingTypeOptions, selected: missingType, onChange: setMissingType, placeholder: "\u0643\u0644 \u0627\u0644\u0623\u0646\u0648\u0627\u0639" })) : null
       ),
       h(ExportButtons, { onExcel: exportMissingExcel, onPdf: exportMissingPdf }),
       missingGroups.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C \u0645\u0637\u0627\u0628\u0642\u0629 \u0644\u0644\u0628\u062D\u062B" }) :
@@ -6218,8 +6219,8 @@ function MaterialsHubPage({ orders, pieces, onOpenOrder, onUpdateOrder, canSeeSu
     ) : h(React.Fragment, null,
       h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: rollupSearch, onChange: (e) => setRollupSearch(e.target.value) }),
       rollupTypeOptions.length > 1 ? h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 } },
-        h("button", { onClick: () => setRollupType(""), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: !rollupType ? COLORS.teal : "#fff", color: !rollupType ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
-        rollupTypeOptions.map((t) => h("button", { key: t, onClick: () => setRollupType(t), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: rollupType === t ? COLORS.teal : "#fff", color: rollupType === t ? "#fff" : COLORS.teal, cursor: "pointer" } }, t))
+        h("button", { onClick: () => setRollupType([]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: rollupType.length === 0 ? COLORS.teal : "#fff", color: rollupType.length === 0 ? "#fff" : COLORS.teal, cursor: "pointer" } }, "\u0627\u0644\u0643\u0644"),
+        rollupTypeOptions.map((t) => h("button", { key: t, onClick: () => setRollupType((cur) => cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]), style: { fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, border: `1px solid ${COLORS.teal}`, background: rollupType.includes(t) ? COLORS.teal : "#fff", color: rollupType.includes(t) ? "#fff" : COLORS.teal, cursor: "pointer" } }, t))
       ) : null,
       customerRollups.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0629 \u0645\u0641\u064A\u0634 \u062E\u0627\u0645\u0627\u062A \u0645\u062A\u0633\u062C\u0644\u0629 \u0641\u064A \u0623\u064A \u0623\u0648\u0631\u062F\u0631" }) :
       h(React.Fragment, null,
@@ -6262,11 +6263,11 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [expandedShipDate, setExpandedShipDate] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [fAvailability, setFAvailability] = useState("");
-  const [fShipStatus, setFShipStatus] = useState("");
-  const [fCompanyFilter, setFCompanyFilter] = useState("");
+  const [fAvailability, setFAvailability] = useState([]);
+  const [fShipStatus, setFShipStatus] = useState([]);
+  const [fCompanyFilter, setFCompanyFilter] = useState([]);
   const [showShipFilters, setShowShipFilters] = useState(false);
-  const [fArrivalStatus, setFArrivalStatus] = useState("");
+  const [fArrivalStatus, setFArrivalStatus] = useState([]);
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [selectedShipments, setSelectedShipments] = useState([]);
   const rows = [];
@@ -6286,10 +6287,12 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
       const hay = normalizeDigits([r.clientName, r.companyName, r.itemCode].filter(Boolean).join(" ")).toLowerCase();
       if (!hay.includes(queryNorm)) return false;
     }
-    if (fAvailability && r.availability !== fAvailability) return false;
-    if (fCompanyFilter && r.companyName !== fCompanyFilter) return false;
-    if (fShipStatus === "__unset__" && r.fabricShippingStatus) return false;
-    if (fShipStatus && fShipStatus !== "__unset__" && r.fabricShippingStatus !== fShipStatus) return false;
+    if (fAvailability.length && !fAvailability.includes(r.availability)) return false;
+    if (fCompanyFilter.length && !fCompanyFilter.includes(r.companyName)) return false;
+    if (fShipStatus.length) {
+      const shipMatches = (r.fabricShippingStatus && fShipStatus.includes(r.fabricShippingStatus)) || (!r.fabricShippingStatus && fShipStatus.includes("__unset__"));
+      if (!shipMatches) return false;
+    }
     return true;
   });
   const updateMaterialField = (orderId, materialId, patch) => {
@@ -6349,23 +6352,15 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
         showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
           h("div", null,
             h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0648\u0627\u0641\u0631"),
-            h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fAvailability, onChange: (e) => setFAvailability(e.target.value) },
-              h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), Array.from(new Set(rows.map((r) => r.availability).filter(Boolean))).map((a) => h("option", { key: a, value: a }, a))
-            )
+            h(MultiSelectFilter, { options: Array.from(new Set(rows.map((r) => r.availability).filter(Boolean))), selected: fAvailability, onChange: setFAvailability })
           ),
           h("div", null,
             h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"),
-            h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fShipStatus, onChange: (e) => setFShipStatus(e.target.value) },
-              h("option", { value: "" }, "\u0627\u0644\u0643\u0644"),
-              h("option", { value: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" }, "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646"),
-              h("option", { value: "__unset__" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")
-            )
+            h(MultiSelectFilter, { options: [{ value: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646", label: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" }, { value: "__unset__", label: "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F" }], selected: fShipStatus, onChange: setFShipStatus })
           ),
           h("div", null,
             h("label", { style: labelStyle }, "\u0634\u0631\u0643\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
-            h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCompanyFilter, onChange: (e) => setFCompanyFilter(e.target.value) },
-              h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), Array.from(new Set(rows.map((r) => r.companyName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar")).map((c) => h("option", { key: c, value: c }, c))
-            )
+            h(MultiSelectFilter, { options: Array.from(new Set(rows.map((r) => r.companyName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar")), selected: fCompanyFilter, onChange: setFCompanyFilter })
           )
         ) : null
       ),
@@ -6419,21 +6414,15 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
         ),
         h("div", null,
           h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0634\u062D\u0646"),
-          h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fShipStatus, onChange: (e) => setFShipStatus(e.target.value) },
-            h("option", { value: "" }, "\u0627\u0644\u0643\u0644"),
-            h("option", { value: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" }, "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646"),
-            h("option", { value: "__unset__" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F")
-          )
+          h(MultiSelectFilter, { options: [{ value: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646", label: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" }, { value: "__unset__", label: "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F" }], selected: fShipStatus, onChange: setFShipStatus })
         ),
         h("div", null,
           h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0648\u0635\u0648\u0644"),
-          h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fArrivalStatus, onChange: (e) => setFArrivalStatus(e.target.value) },
-            h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644")
-          )
+          h(MultiSelectFilter, { options: ["\u0648\u0635\u0644", "\u0644\u0645 \u064A\u0635\u0644"], selected: fArrivalStatus, onChange: setFArrivalStatus })
         )
       ) : null,
       shipDates.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0634\u062D\u0646\u0627\u062A \u0645\u0633\u062C\u0644\u0629 \u0628\u0639\u062F" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.filter((date) => (selectedShipments.length === 0 || selectedShipments.includes(date)) && (!shipmentQuery.trim() || shipmentTitle(date).includes(shipmentQuery.trim()) || date.includes(shipmentQuery.trim())) && (!fArrivalStatus || byShipDate[date].some((r) => r.fabricArrivalStatus === fArrivalStatus)) && (!fShipStatus || byShipDate[date].some((r) => fShipStatus === "__unset__" ? !r.fabricShippingStatus : r.fabricShippingStatus === fShipStatus))).map((date) => {
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.filter((date) => (selectedShipments.length === 0 || selectedShipments.includes(date)) && (!shipmentQuery.trim() || shipmentTitle(date).includes(shipmentQuery.trim()) || date.includes(shipmentQuery.trim())) && (fArrivalStatus.length === 0 || byShipDate[date].some((r) => fArrivalStatus.includes(r.fabricArrivalStatus))) && (fShipStatus.length === 0 || byShipDate[date].some((r) => (fShipStatus.includes("__unset__") && !r.fabricShippingStatus) || (r.fabricShippingStatus && fShipStatus.includes(r.fabricShippingStatus))))).map((date) => {
         const rows = byShipDate[date];
         const arrivalDates = Array.from(new Set(rows.map((r) => r.fabricArrivalDate).filter(Boolean)));
         const uniformArrival = arrivalDates.length === 1 ? arrivalDates[0] : null;
@@ -6590,11 +6579,11 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
   const readOnly = readOnlyProp || (canEditSub && view ? !canEditSub(view) : false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [fType, setFType] = useState("");
+  const [fType, setFType] = useState([]);
   const typeOptions = Array.from(new Set(pieces.map((p) => p.pieceType).filter(Boolean)));
   const ready = pieces.filter(pieceIsReady)
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
-    .filter((p) => !fType || p.pieceType === fType)
+    .filter((p) => fType.length === 0 || fType.includes(p.pieceType))
     .sort((a, b) => (a.customerDeliveryDate || "9999-99-99").localeCompare(b.customerDeliveryDate || "9999-99-99"));
   const dayPieces = selectedDay ? pieces.filter((p) => p.customerDeliveryDate === selectedDay) : [];
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u0635\u0646\u0641", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0627\u0644\u0625\u0646\u062C\u0627\u0632/\u0627\u0644\u062A\u0623\u062E\u064A\u0631"];
@@ -6607,7 +6596,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
   };
   const delivered = pieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
     .filter((p) => !query.trim() || (p.customerName || "").includes(query.trim()))
-    .filter((p) => !fType || p.pieceType === fType)
+    .filter((p) => fType.length === 0 || fType.includes(p.pieceType))
     .sort((a, b) => (b.actualDeliveryDate || "").localeCompare(a.actualDeliveryDate || ""));
   const delayed = pieces.filter((p) => {
     if (!p.customerDeliveryDate || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") return false;
@@ -6720,9 +6709,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
       ),
       showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
         h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
-        )
+        h(MultiSelectFilter, { options: typeOptions, selected: fType, onChange: setFType })
       ) : null,
       view === "list" ? (
         ready.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645 \u062D\u0627\u0644\u064A\u064B\u0627" }) :
@@ -6762,12 +6749,12 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePi
     return () => onSubNav.pop(handler);
   }, [selectedCustomer]);
   const [query, setQuery] = useState("");
-  const [locFilter, setLocFilter] = useState("");
+  const [locFilter, setLocFilter] = useState([]);
   const todayPieces = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d === 0;
-  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!locFilter || p.currentLocation === locFilter));
+  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (locFilter.length === 0 || locFilter.includes(p.currentLocation)));
   const allLocationOptions = Array.from(new Set(pieces.filter((p) => { if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false; return pieceDeadlineDiff(p) === 0; }).map((p) => p.currentLocation).filter(Boolean)));
   const byLocation = {};
   todayPieces.forEach((p) => {
@@ -6785,9 +6772,7 @@ function TodayQueuePage({ pieces, orders, onUpdateOrder, emailToName, onUpdatePi
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F4CB}", title: "\u0645/ \u0627\u0644\u0645\u0635\u0646\u0639 \u0627\u0644\u064A\u0648\u0645" }),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    allLocationOptions.length > 0 ? h("select", { style: fieldStyle, value: locFilter, onChange: (e) => setLocFilter(e.target.value) },
-      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646"), allLocationOptions.map((l) => h("option", { key: l, value: l }, l))
-    ) : null,
+    allLocationOptions.length > 0 ? h(MultiSelectFilter, { options: allLocationOptions, selected: locFilter, onChange: setLocFilter, placeholder: "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646" }) : null,
     todayPieces.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0645-\u0627\u0644\u0645\u0635\u0646\u0639-\u0627\u0644\u064A\u0648\u0645", [{ name: "\u0627\u0644\u064A\u0648\u0645", rows: [exportHeaders].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0645/ \u0627\u0644\u0645\u0635\u0646\u0639 \u0627\u0644\u064A\u0648\u0645", exportHeaders, exportRows()) }) : null,
     todayPieces.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0648\u0639\u062F\u0647\u0627 \u0627\u0644\u0646\u0647\u0627\u0631\u062F\u0629 \u{1F389}" }) :
       h("div", null,
@@ -7175,11 +7160,11 @@ function SupplierPerformancePage({ pieces }) {
 function ActivityLogPage({ log, emailToName }) {
   const [showFilters, setShowFilters] = useState(false);
   const [query, setQuery] = useState("");
-  const [fUser, setFUser] = useState("");
+  const [fUser, setFUser] = useState([]);
   const userOptions = Array.from(new Set(log.map((e) => e.userEmail).filter(Boolean)));
   const filtered = log.filter((e) => {
     if (query.trim() && !(e.text || "").includes(query.trim())) return false;
-    if (fUser && e.userEmail !== fUser) return false;
+    if (fUser.length && !fUser.includes(e.userEmail)) return false;
     return true;
   });
   const exportExcel = () => {
@@ -7200,9 +7185,7 @@ function ActivityLogPage({ log, emailToName }) {
     ),
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
       h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645"),
-      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fUser, onChange: (e) => setFUser(e.target.value) },
-        h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), userOptions.map((u) => h("option", { key: u, value: u }, (emailToName && emailToName[u]) || u))
-      )
+      h(MultiSelectFilter, { options: userOptions.map((u) => ({ value: u, label: (emailToName && emailToName[u]) || u })), selected: fUser, onChange: setFUser })
     ) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0644\u0633\u0647 \u0645\u0641\u064A\u0634 \u0623\u064A \u0646\u0634\u0627\u0637 \u0645\u0633\u062C\u0644" }) :
       h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, filtered.map((entry) => h("div", { key: entry.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "10px 12px" } },
@@ -7414,10 +7397,10 @@ function CustomerFilesPaymentPage({ orders, onOpenOrder, hideHeader, canEdit }) 
 function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCustomer, onOpenOrder, hideHeader }) {
   const [showFilters, setShowFilters] = useState(false);
   const [query, setQuery] = useState("");
-  const [fCategory, setFCategory] = useState("");
-  const [fStatus, setFStatus] = useState("");
-  const [fFabric, setFFabric] = useState("");
-  const [fTag, setFTag] = useState("");
+  const [fCategory, setFCategory] = useState([]);
+  const [fStatus, setFStatus] = useState([]);
+  const [fFabric, setFFabric] = useState([]);
+  const [fTag, setFTag] = useState([]);
   const piecesForOrder = (o) => (pieces || []).filter((p) => pieceMatchesOrder(p, o, orders));
   const liveStatus = (o) => computeOrderPiecesStatusLabel(piecesForOrder(o), orderStatusLabel(o));
   const statusOptions = Array.from(new Set(orders.map((o) => liveStatus(o))));
@@ -7430,12 +7413,12 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
     return true;
   });
   scoped = scoped.filter((o) => {
-    if (fCategory && o.category !== fCategory) return false;
-    if (fStatus && liveStatus(o) !== fStatus) return false;
-    if (fTag && !(o.tags || []).includes(fTag)) return false;
-    if (fFabric) {
-      if (fFabric === "\u0641\u0627\u0631\u063A") { if (o.fabricShippingStatus) return false; }
-      else if (o.fabricShippingStatus !== fFabric) return false;
+    if (fCategory.length && !fCategory.includes(o.category)) return false;
+    if (fStatus.length && !fStatus.includes(liveStatus(o))) return false;
+    if (fTag.length && !(o.tags || []).some((t) => fTag.includes(t))) return false;
+    if (fFabric.length) {
+      const fabricMatches = (fFabric.includes("\u0641\u0627\u0631\u063A") && !o.fabricShippingStatus) || (o.fabricShippingStatus && fFabric.includes(o.fabricShippingStatus));
+      if (!fabricMatches) return false;
     }
     return true;
   });
@@ -7502,27 +7485,19 @@ function CustomerFilteredListPage({ orders, pieces, filterKey, onBack, onOpenCus
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "\u0646\u0648\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
-        )
+        h(MultiSelectFilter, { options: categoryOptions, selected: fCategory, onChange: setFCategory })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), statusOptions.map((s) => h("option", { key: s, value: s }, s))
-        )
+        h(MultiSelectFilter, { options: statusOptions, selected: fStatus, onChange: setFStatus })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fFabric, onChange: (e) => setFFabric(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), Array.from(new Set(orders.map((o) => o.fabricShippingStatus).filter(Boolean))).map((s) => h("option", { key: s, value: s }, s)), h("option", { value: "\u0641\u0627\u0631\u063A" }, "\u0641\u0627\u0631\u063A")
-        )
+        h(MultiSelectFilter, { options: [...Array.from(new Set(orders.map((o) => o.fabricShippingStatus).filter(Boolean))), "\u0641\u0627\u0631\u063A"], selected: fFabric, onChange: setFFabric })
       ),
       tagOptions.length > 0 ? h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0633\u0645"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fTag, onChange: (e) => setFTag(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), tagOptions.map((t) => h("option", { key: t, value: t }, t))
-        )
+        h(MultiSelectFilter, { options: tagOptions, selected: fTag, onChange: setFTag })
       ) : null
     ) : null,
     names.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621 \u0645\u0637\u0627\u0628\u0642\u064A\u0646" }) :
@@ -7572,15 +7547,15 @@ function CustomerNameListPage({ names, orders, pieces, title, emoji, onBack, onO
 function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTabAccess, canEdit }) {
   const [subTab, setSubTab] = useState("list");
   const [query, setQuery] = useState("");
-  const [fShipStatus, setFShipStatus] = useState("");
+  const [fShipStatus, setFShipStatus] = useState([]);
   const [expandedShipDate, setExpandedShipDate] = useState(null);
   const [shipmentQuery, setShipmentQuery] = useState("");
-  const [fArrivalStatus, setFArrivalStatus] = useState("");
+  const [fArrivalStatus, setFArrivalStatus] = useState([]);
   const egyptPieces = pieces.filter((p) => p.manufacturingEntity === "مصر" && (p.currentLocation === "الشحن" || p.currentLocation === "التغليف" || p.productShippingStatus === "تم الشحن" || p.shippingDate)).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || "", "ar"));
   const queryNorm = query.trim();
   const filteredList = egyptPieces.filter((p) =>
     (!queryNorm || (p.customerName || "").includes(queryNorm)) &&
-    (!fShipStatus || (fShipStatus === "__unset__" ? !p.productShippingStatus : p.productShippingStatus === fShipStatus))
+    (fShipStatus.length === 0 || (fShipStatus.includes("__unset__") && !p.productShippingStatus) || (p.productShippingStatus && fShipStatus.includes(p.productShippingStatus)))
   );
   const updatePiece = (p, patch) => { if (onUpdate) onUpdate({ ...p, ...patch }); };
   const onShippingStatusChange = (p, val) => {
@@ -7622,11 +7597,7 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
     subTab === "list" ? h(React.Fragment, null,
       h("input", { style: fieldStyle, placeholder: "ابحثي باسم العميل...", value: query, onChange: (e) => setQuery(e.target.value) }),
       h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
-        h("select", { style: { ...fieldStyle, flex: 1 }, value: fShipStatus, onChange: (e) => setFShipStatus(e.target.value) },
-          h("option", { value: "" }, "كل حالات الشحن"),
-          h("option", { value: "تم الشحن" }, "تم الشحن"),
-          h("option", { value: "__unset__" }, "لم يتم الشحن")
-        ),
+        h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: [{ value: "تم الشحن", label: "تم الشحن" }, { value: "__unset__", label: "لم يتم الشحن" }], selected: fShipStatus, onChange: setFShipStatus, placeholder: "كل حالات الشحن" })),
         filteredList.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("شحن-المنتج-تصنيع-مصر", [{ name: "تصنيع مصر", rows: [listCols].concat(listExportRows()) }]), onPdf: () => printAsPdf("شحن المنتج — تصنيع مصر", listCols, listExportRows()) }) : null
       ),
       filteredList.length === 0 ? h(EmptyHint, { text: "لا توجد قطع مصنّعة في مصر مطابقة" }) :
@@ -7651,9 +7622,7 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
       )
     ) : h(React.Fragment, null,
       h("input", { style: fieldStyle, placeholder: "ابحثي باسم الشحنة...", value: shipmentQuery, onChange: (e) => setShipmentQuery(e.target.value) }),
-      h("select", { style: fieldStyle, value: fArrivalStatus, onChange: (e) => setFArrivalStatus(e.target.value) },
-        h("option", { value: "" }, "كل حالات الوصول"), h("option", { value: "وصل" }, "وصل"), h("option", { value: "لم يصل" }, "لم يصل")
-      ),
+      h(MultiSelectFilter, { options: ["وصل", "لم يصل"], selected: fArrivalStatus, onChange: setFArrivalStatus, placeholder: "كل حالات الوصول" }),
       shipDates.length > 0 ? h(ExportButtons, {
         onExcel: () => {
           const rows2 = [["اسم العميل", "عدد القطع", "البيان", "المقاس", "حالة الجاهزية", "التشطيب", "نوع التشطيب"]];
@@ -7668,7 +7637,7 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
         }
       }) : null,
       shipDates.length === 0 ? h(EmptyHint, { text: "لا توجد شحنات مسجلة بعد" }) :
-      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.filter((date) => (!shipmentQuery.trim() || shipmentTitle(date).includes(shipmentQuery.trim()) || date.includes(shipmentQuery.trim())) && (!fArrivalStatus || byShipDate[date].some((p) => p.productArrivalStatus === fArrivalStatus))).map((date) => {
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, shipDates.filter((date) => (!shipmentQuery.trim() || shipmentTitle(date).includes(shipmentQuery.trim()) || date.includes(shipmentQuery.trim())) && (fArrivalStatus.length === 0 || byShipDate[date].some((p) => fArrivalStatus.includes(p.productArrivalStatus)))).map((date) => {
         const rows = byShipDate[date];
         const arrivalDates = Array.from(new Set(rows.map((p) => p.arrivalDate).filter(Boolean)));
         const uniformArrival = arrivalDates.length === 1 ? arrivalDates[0] : null;
@@ -7752,12 +7721,12 @@ function FinishingPage({ pieces, onUpdate, onBack, canEdit, productionSuppliers 
 }
 function ProductionDelaysPage({ pieces, onBack }) {
   const [query, setQuery] = useState("");
-  const [fLocation, setFLocation] = useState("");
+  const [fLocation, setFLocation] = useState([]);
   const delayedRaw = pieces.filter((p) => {
     if (!p.agreedDeadline || p.status === "\u0625\u0644\u0649 \u0627\u0644\u0634\u062D\u0646" || p.status === "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" || p.status === "\u062C\u0627\u0647\u0632 \u0644\u0644\u062A\u0633\u0644\u064A\u0645" || p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" || p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" || pieceStageEndRecorded(p)) return false;
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
-  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (!fLocation || p.currentLocation === fLocation));
+  }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (fLocation.length === 0 || fLocation.includes(p.currentLocation)));
   const groupKey = (p) => p.splitGroupId || p.id;
   const groupsMap = {};
   delayedRaw.forEach((p) => { (groupsMap[groupKey(p)] = groupsMap[groupKey(p)] || []).push(p); });
@@ -7780,9 +7749,7 @@ function ProductionDelaysPage({ pieces, onBack }) {
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F6E0}\uFE0F \u0645\u062A\u0623\u062E\u0631\u0627\u062A \u062A\u0635\u0646\u064A\u0639")
     ),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
-    locationOptions.length > 0 ? h("select", { style: fieldStyle, value: fLocation, onChange: (e) => setFLocation(e.target.value) },
-      h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646"), locationOptions.map((l) => h("option", { key: l, value: l }, l))
-    ) : null,
+    locationOptions.length > 0 ? h(MultiSelectFilter, { options: locationOptions, selected: fLocation, onChange: setFLocation, placeholder: "\u0643\u0644 \u0627\u0644\u0623\u0645\u0627\u0643\u0646" }) : null,
     delayed.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u0645\u062A\u0623\u062E\u0631\u0627\u062A-\u062A\u0635\u0646\u064A\u0639", [{ name: "\u0645\u062A\u0623\u062E\u0631\u0627\u062A", rows: [cols].concat(exportRows()) }]), onPdf: () => printAsPdf("\u0645\u062A\u0623\u062E\u0631\u0627\u062A \u062A\u0635\u0646\u064A\u0639", cols, exportRows()) }) : null,
     delayed.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u062A\u0623\u062E\u0631\u0629 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646 \u0645\u0648\u0627\u0639\u064A\u062F\u0647\u0627 \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647\u0627" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
@@ -7886,14 +7853,14 @@ function DeliveryDelaysPage({ pieces, onBack, onUpdate, canEdit, isAdminUser }) 
 function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateOrder, emailToName }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [fStatus, setFStatus] = useState("");
-  const [fType, setFType] = useState("");
+  const [fStatus, setFStatus] = useState([]);
+  const [fType, setFType] = useState([]);
   const allPieces = pieces || [];
   const statusOptions = Array.from(new Set(allPieces.map((p) => p.status).filter(Boolean)));
   const typeOptions = Array.from(new Set(allPieces.map((p) => p.pieceType).filter(Boolean)));
   const matchesFilters = (p) => {
-    if (fStatus && p.status !== fStatus) return false;
-    if (fType && p.pieceType !== fType) return false;
+    if (fStatus.length && !fStatus.includes(p.status)) return false;
+    if (fType.length && !fType.includes(p.pieceType)) return false;
     return true;
   };
   const allNames = Array.from(new Set(allPieces.filter(matchesFilters).map((p) => p.customerName).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
@@ -7939,15 +7906,11 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), statusOptions.map((s) => h("option", { key: s, value: s }, s))
-        )
+        h(MultiSelectFilter, { options: statusOptions, selected: fStatus, onChange: setFStatus })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
-        )
+        h(MultiSelectFilter, { options: typeOptions, selected: fType, onChange: setFType })
       )
     ) : null,
     names.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621 \u0645\u0637\u0627\u0628\u0642\u064A\u0646" }) :
@@ -7995,8 +7958,8 @@ function AllCustomersDetailPage({ orders, pieces, onBack, onOpenOrder, onUpdateO
 }
 function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpdateOrder, emailToName, onUpdatePiece, canBulkUpdatePieces }) {
   const [showFilters, setShowFilters] = useState(false);
-  const [fStatus, setFStatus] = useState("");
-  const [fType, setFType] = useState("");
+  const [fStatus, setFStatus] = useState([]);
+  const [fType, setFType] = useState([]);
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
@@ -8009,8 +7972,8 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
   const pieceStatusOptions = Array.from(new Set(allCustomerPieces.map((p) => p.status).filter(Boolean)));
   const pieceTypeOptions = Array.from(new Set(allCustomerPieces.map((p) => p.pieceType).filter(Boolean)));
   const customerPieces = allCustomerPieces.filter((p) => {
-    if (fStatus && p.status !== fStatus) return false;
-    if (fType && p.pieceType !== fType) return false;
+    if (fStatus.length && !fStatus.includes(p.status)) return false;
+    if (fType.length && !fType.includes(p.pieceType)) return false;
     return true;
   });
   const joinDate = customerOrders.length > 0 ? customerOrders[0].dateReceived : "";
@@ -8097,15 +8060,11 @@ function CustomerProfilePage({ orders, name, pieces, onBack, onOpenOrder, onUpda
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), pieceStatusOptions.map((s) => h("option", { key: s, value: s }, s))
-        )
+        h(MultiSelectFilter, { options: pieceStatusOptions, selected: fStatus, onChange: setFStatus })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), pieceTypeOptions.map((t) => h("option", { key: t, value: t }, t))
-        )
+        h(MultiSelectFilter, { options: pieceTypeOptions, selected: fType, onChange: setFType })
       )
     ) : null,
     (() => {
@@ -9408,6 +9367,7 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
   const stages = stagesForPieceType(piece.pieceType);
   const setField = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), [key]: val } } });
   const setIndirect = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), indirect: { ...((costs[stage] && costs[stage].indirect) || { amount: "", currency: "" }), [key]: val } } } });
+  const setStageInvoice = (stage, file) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), invoiceFile: file } } });
   const setSimple = (field, key, val) => onUpdate({ [field]: { ...(piece[field] || { amount: "", currency: "" }), [key]: val } });
   const mainSupplier = stages.map((s) => costs[s] && costs[s].supplierName).find(Boolean) || piece.currentLocation || "\u2014";
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 10 } },
@@ -9456,7 +9416,8 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
             h("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644"),
             h("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647")
           )
-        ) : null
+        ) : null,
+        h(FileAttachField, { label: "\u0641\u0627\u062A\u0648\u0631\u0629 " + stage, file: (costs[stage] && costs[stage].invoiceFile) || null, onChange: (f) => setStageInvoice(stage, f), onRemove: () => setStageInvoice(stage, null), folder: "stage-invoices" })
       )),
       h("div", { style: { marginBottom: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.bg}` } },
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 4 } }, "\u{1F4BC} \u0645\u0635\u0627\u0631\u064A\u0641 \u0625\u062F\u0627\u0631\u064A\u0629"),
@@ -9477,8 +9438,8 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
 }
 function CustomerPricingSummaryPage({ orders, pieces, onUpdatePiece, hideHeader, exchangeRate, entityFilter, title, canEdit }) {
   const [query, setQuery] = useState("");
-  const [fCategory, setFCategory] = useState("");
-  const [fMonth, setFMonth] = useState("");
+  const [fCategory, setFCategory] = useState([]);
+  const [fMonth, setFMonth] = useState([]);
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const norm = (s) => (s || "").trim().replace(/\s+/g, " ");
   const SUPPLIER_BEFORE_STAGES = ["\u0646\u062C\u0627\u0631\u0629", "\u062A\u0646\u062C\u064A\u062F"];
@@ -9510,8 +9471,8 @@ function CustomerPricingSummaryPage({ orders, pieces, onUpdatePiece, hideHeader,
   });
   const filtered = rowsData.filter((r) => {
     if (query.trim() && !(r.order.clientName || "").includes(query.trim())) return false;
-    if (fCategory && r.order.category !== fCategory) return false;
-    if (fMonth && (!r.order.deliveryDate || r.order.deliveryDate.slice(5, 7) !== fMonth)) return false;
+    if (fCategory.length && !fCategory.includes(r.order.category)) return false;
+    if (fMonth.length && (!r.order.deliveryDate || !fMonth.includes(r.order.deliveryDate.slice(5, 7)))) return false;
     return true;
   });
   const orderRowCounts = {};
@@ -9558,12 +9519,8 @@ function CustomerPricingSummaryPage({ orders, pieces, onUpdatePiece, hideHeader,
     ),
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
-        h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0642\u0633\u0627\u0645"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
-      ),
-      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: fMonth, onChange: (e) => setFMonth(e.target.value) },
-        h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631"), ARABIC_MONTHS.map((m, i) => h("option", { key: m, value: String(i + 1).padStart(2, "0") }, m))
-      )
+      h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: categoryOptions, selected: fCategory, onChange: setFCategory, placeholder: "\u0643\u0644 \u0627\u0644\u0623\u0642\u0633\u0627\u0645" })),
+      h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: ARABIC_MONTHS.map((m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m })), selected: fMonth, onChange: setFMonth, placeholder: "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631" }))
     ),
     filtered.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0633\u0639\u064A\u0631-\u0627\u0644\u0639\u0645\u0644\u0627\u0621", [{ name: "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", rows: [cols].concat(filtered.map(rowFor)).concat([totalRow]) }]), onPdf: () => printAsPdf(title || "\u062A\u0633\u0639\u064A\u0631 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", cols, filtered.map(rowFor).concat([totalRow])) }) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0648\u0632\u0651\u0639\u0629" }) :
@@ -9676,8 +9633,8 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, on
   const [query, setQuery] = useState("");
   const [selectedName, setSelectedName] = useState(null);
   const [liveRate, setLiveRate] = useState(null);
-  const [fCategory, setFCategory] = useState("");
-  const [fMonth, setFMonth] = useState("");
+  const [fCategory, setFCategory] = useState([]);
+  const [fMonth, setFMonth] = useState([]);
   useEffect(() => {
     if (liveRate !== null) return;
     fetch("https://open.er-api.com/v6/latest/EGP").then((r) => r.json()).then((data) => {
@@ -9689,8 +9646,8 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, on
   const scopedPieces = scopeApplies ? (pieces || []).filter((p) => pieceMatchesSupplierScope(p, mySupplierScope)) : pieces;
   const categoryOptions = Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
   const filteredOrders = orders.filter((o) => {
-    if (fCategory && o.category !== fCategory) return false;
-    if (fMonth && (!o.deliveryDate || o.deliveryDate.slice(5, 7) !== fMonth)) return false;
+    if (fCategory.length && !fCategory.includes(o.category)) return false;
+    if (fMonth.length && (!o.deliveryDate || !fMonth.includes(o.deliveryDate.slice(5, 7)))) return false;
     return true;
   });
   const byName = {};
@@ -9775,12 +9732,8 @@ function PricingHubPage({ orders, pieces, onBack, onOpenOrder, onUpdatePiece, on
     view === "summary-dammam" ? h(CustomerPricingSummaryPage, { orders, pieces: scopedPieces, onUpdatePiece, hideHeader: true, exchangeRate: liveRate || 0, entityFilter: "\u0627\u0644\u062F\u0645\u0627\u0645", title: "\u{1F3ED} \u062A\u0633\u0639\u064A\u0631 \u0639\u0645\u0644\u0627\u0621 \u0627\u0644\u062F\u0645\u0627\u0645", canEdit: !canEditSub || canEditSub("summary-dammam") }) : h(React.Fragment, null,
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: fCategory, onChange: (e) => setFCategory(e.target.value) },
-        h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0623\u0642\u0633\u0627\u0645"), categoryOptions.map((c) => h("option", { key: c, value: c }, c))
-      ),
-      h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: fMonth, onChange: (e) => setFMonth(e.target.value) },
-        h("option", { value: "" }, "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631"), ARABIC_MONTHS.map((m, i) => h("option", { key: m, value: String(i + 1).padStart(2, "0") }, m))
-      )
+      h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: categoryOptions, selected: fCategory, onChange: setFCategory, placeholder: "\u0643\u0644 \u0627\u0644\u0623\u0642\u0633\u0627\u0645" })),
+      h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: ARABIC_MONTHS.map((m, i) => ({ value: String(i + 1).padStart(2, "0"), label: m })), selected: fMonth, onChange: setFMonth, placeholder: "\u0643\u0644 \u0627\u0644\u0634\u0647\u0648\u0631" }))
     ),
     names.length > 0 ? h(ExportButtons, {
       onExcel: () => {
@@ -9922,7 +9875,14 @@ function PayablesView({ orders, onUpdateOrder }) {
           h("div", { style: { display: "flex", gap: 8, marginTop: 8 } },
             !a.depositPaid ? h("button", { onClick: () => updateApproval(a.orderId, a.id, { depositPaid: true, depositDate: a.depositDate || todayStr() }), style: { flex: 1, fontSize: 11, padding: "6px 0", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, "\u062A\u0623\u0643\u064A\u062F \u062F\u0641\u0639 \u0627\u0644\u062F\u0641\u0639\u0629") : null,
             !a.balancePaid ? h("button", { onClick: () => updateApproval(a.orderId, a.id, { balancePaid: true, balancePaidDate: todayStr() }), style: { flex: 1, fontSize: 11, padding: "6px 0", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff", cursor: "pointer" } }, "\u062A\u0623\u0643\u064A\u062F \u062F\u0641\u0639 \u0627\u0644\u0628\u0627\u0642\u064A") : null
-          )
+          ),
+          h("div", { style: { marginTop: 8 } }, h(FileAttachField, {
+            label: "\u{1F9FE} \u0641\u0627\u062A\u0648\u0631\u0629 \u0647\u0630\u0647 \u0627\u0644\u0645\u0631\u062D\u0644\u0629",
+            file: a.invoiceFile,
+            onChange: (file) => updateApproval(a.orderId, a.id, { invoiceFile: file }),
+            onRemove: () => updateApproval(a.orderId, a.id, { invoiceFile: null }),
+            folder: "payables-invoices"
+          }))
         )),
         h("div", { style: { borderTop: `2px solid ${COLORS.gold}`, marginTop: 10, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700 } },
           h("span", null, "\u0625\u062C\u0645\u0627\u0644\u064A " + supplierName),
@@ -10139,7 +10099,7 @@ const LEDGER_TYPES = [
   { key: "expense", label: "\u0645\u0635\u0631\u0648\u0641\u0627\u062A \u0639\u0627\u0645\u0629" }
 ];
 function LedgerView({ orders, expenses }) {
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState([]);
   const [period, setPeriod] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -10167,13 +10127,13 @@ function LedgerView({ orders, expenses }) {
     });
   });
   (expenses || []).forEach((e) => entries.push({ date: e.date, type: "expense", label: (e.category || "\u0645\u0635\u0631\u0648\u0641") + (e.description ? " \u2014 " + e.description : ""), amount: Number(e.amount) || 0, direction: "out" }));
-  const filtered = entries.filter((e) => (typeFilter === "all" || e.type === typeFilter) && inRange(e.date)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const filtered = entries.filter((e) => (typeFilter.length === 0 || typeFilter.includes(e.type)) && inRange(e.date)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const exportRows = filtered.map((e) => [e.date || "\u2014", (LEDGER_TYPES.find((t) => t.key === e.type) || {}).label || e.type, e.label, e.direction === "in" ? "\u0642\u0628\u0636" : "\u0635\u0631\u0641", e.amount]);
   return h("div", null,
     h("div", { style: { display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" } },
       [{ key: "all", label: "\u0627\u0644\u0643\u0644" }, ...LEDGER_TYPES].map((t) => h("button", {
-        key: t.key, onClick: () => setTypeFilter(t.key),
-        style: { padding: "6px 10px", borderRadius: 999, border: `1px solid ${COLORS.border}`, background: typeFilter === t.key ? COLORS.ink : "#fff", color: typeFilter === t.key ? "#fff" : COLORS.ink, fontWeight: 700, fontSize: 11, cursor: "pointer" }
+        key: t.key, onClick: () => t.key === "all" ? setTypeFilter([]) : setTypeFilter((cur) => cur.includes(t.key) ? cur.filter((x) => x !== t.key) : [...cur, t.key]),
+        style: { padding: "6px 10px", borderRadius: 999, border: `1px solid ${COLORS.border}`, background: (t.key === "all" ? typeFilter.length === 0 : typeFilter.includes(t.key)) ? COLORS.ink : "#fff", color: (t.key === "all" ? typeFilter.length === 0 : typeFilter.includes(t.key)) ? "#fff" : COLORS.ink, fontWeight: 700, fontSize: 11, cursor: "pointer" }
       }, t.label))
     ),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" } },
@@ -10738,9 +10698,9 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
     return () => onSubNav.pop(handler);
   }, [selectedDistCustomer]);
   const [showDistFilters, setShowDistFilters] = useState(false);
-  const [distEntityFilter, setDistEntityFilter] = useState("");
+  const [distEntityFilter, setDistEntityFilter] = useState([]);
   const byCustomer = {};
-  pieces.filter((p) => !distEntityFilter || p.manufacturingEntity === distEntityFilter).forEach((p) => { const key = (p.customerName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"; (byCustomer[key] = byCustomer[key] || []).push(p); });
+  pieces.filter((p) => distEntityFilter.length === 0 || distEntityFilter.includes(p.manufacturingEntity)).forEach((p) => { const key = (p.customerName || "").trim() || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645"; (byCustomer[key] = byCustomer[key] || []).push(p); });
   const customerNames = Object.keys(byCustomer)
     .filter((n) => !recentQuery.trim() || n.includes(recentQuery.trim()))
     .sort((a, b) => {
@@ -10861,9 +10821,7 @@ function DistributionEntryPage({ pieces, productionSuppliers, upholsterySupplier
     ) : null,
     showDistFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16 } },
       h("label", { style: labelStyle }, "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639"),
-      h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: distEntityFilter, onChange: (e) => setDistEntityFilter(e.target.value) },
-        h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), ENTITIES.map((en) => h("option", { key: en, value: en }, en))
-      )
+      h(MultiSelectFilter, { options: ENTITIES, selected: distEntityFilter, onChange: setDistEntityFilter })
     ) : null,
     pieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u0645\u0648\u0632\u0639\u0629 \u0628\u0639\u062F" }) : null,
     h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, customerNames.map((name) =>
@@ -11323,10 +11281,10 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [fStatus, setFStatus] = useState("");
-  const [fType, setFType] = useState("");
-  const [fFabric, setFFabric] = useState("");
-  const [fSupplier, setFSupplier] = useState("");
+  const [fStatus, setFStatus] = useState([]);
+  const [fType, setFType] = useState([]);
+  const [fFabric, setFFabric] = useState([]);
+  const [fSupplier, setFSupplier] = useState([]);
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
@@ -11366,13 +11324,13 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
   const supplierOptions = Array.from(new Set(scoped.map((p) => p.supplierName).filter(Boolean)));
   const filtered = scoped.filter((p) => {
     if (query.trim() && !(p.customerName || "").includes(query.trim())) return false;
-    if (fStatus && p.status !== fStatus) return false;
-    if (fType && p.pieceType !== fType) return false;
-    if (fFabric) {
-      if (fFabric === "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642") { if (!isSofaType(p.pieceType) || p.fabricShippingStatus) return false; }
-      else if (p.fabricShippingStatus !== fFabric) return false;
+    if (fStatus.length && !fStatus.includes(p.status)) return false;
+    if (fType.length && !fType.includes(p.pieceType)) return false;
+    if (fFabric.length) {
+      const fabricMatches = (fFabric.includes("\u0644\u0627 \u064A\u0646\u0637\u0628\u0642") && (!isSofaType(p.pieceType) || !p.fabricShippingStatus)) || (p.fabricShippingStatus && fFabric.includes(p.fabricShippingStatus));
+      if (!fabricMatches) return false;
     }
-    if (fSupplier && p.supplierName !== fSupplier) return false;
+    if (fSupplier.length && !fSupplier.includes(p.supplierName)) return false;
     return true;
   });
   const title = scope.type === "all" ? "\u0643\u0644 \u0627\u0644\u0642\u0637\u0639" : scope.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E" : scope.type === "produced" ? "\u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" : scope.type === "inprogress" ? "\u0644\u0633\u0647 \u062C\u0627\u0631\u064A \u0625\u0646\u062A\u0627\u062C" : monthLabelAr(scope.key);
@@ -11406,27 +11364,19 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u062D\u0627\u0644\u0629"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), statusOptions.map((s) => h("option", { key: s, value: s }, s))
-        )
+        h(MultiSelectFilter, { options: statusOptions, selected: fStatus, onChange: setFStatus })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0635\u0646\u0641"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fType, onChange: (e) => setFType(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), typeOptions.map((t) => h("option", { key: t, value: t }, t))
-        )
+        h(MultiSelectFilter, { options: typeOptions, selected: fType, onChange: setFType })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fFabric, onChange: (e) => setFFabric(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), Array.from(new Set(pieces.map((p) => p.fabricShippingStatus).filter(Boolean))).map((s) => h("option", { key: s, value: s }, s)), h("option", { value: "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642" }, "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642")
-        )
+        h(MultiSelectFilter, { options: [...Array.from(new Set(pieces.map((p) => p.fabricShippingStatus).filter(Boolean))), "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642"], selected: fFabric, onChange: setFFabric })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0635\u0646\u0639"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fSupplier, onChange: (e) => setFSupplier(e.target.value) },
-          h("option", { value: "" }, "\u0627\u0644\u0643\u0644"), supplierOptions.map((sp) => h("option", { key: sp, value: sp }, sp))
-        )
+        h(MultiSelectFilter, { options: supplierOptions, selected: fSupplier, onChange: setFSupplier })
       )
     ) : null,
     (isAdminUser && siblingLocations && siblingLocations.length > 0 && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10 } },
@@ -11889,12 +11839,12 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState("customer");
   const [showFilters, setShowFilters] = useState(false);
-  const [fStatus, setFStatus] = useState("");
+  const [fStatus, setFStatus] = useState([]);
   const [fTypes, setFTypes] = useState([]);
-  const [fFabric, setFFabric] = useState("");
-  const [fEntity, setFEntity] = useState("");
-  const [fSupplier, setFSupplier] = useState("");
-  const [fDelivery, setFDelivery] = useState("");
+  const [fFabric, setFFabric] = useState([]);
+  const [fEntity, setFEntity] = useState([]);
+  const [fSupplier, setFSupplier] = useState([]);
+  const [fDelivery, setFDelivery] = useState([]);
   const [fDeliveryFrom, setFDeliveryFrom] = useState("");
   const [fDeliveryTo, setFDeliveryTo] = useState("");
   const [fStageFrom, setFStageFrom] = useState("");
@@ -11907,18 +11857,18 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
   const supplierOptions = Array.from(new Set(pieces.map((p) => p.supplierName).filter(Boolean)));
   const toggleType = (t) => setFTypes((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
   const filtered = searched.filter((p) => {
-    if (fStatus && stageStatusOf(p) !== fStatus) return false;
+    if (fStatus.length && !fStatus.includes(stageStatusOf(p))) return false;
     if (fTypes.length > 0 && !fTypes.includes(p.pieceType)) return false;
-    if (fFabric) {
-      if (fFabric === "\u0644\u0627 \u064A\u0646\u0637\u0628\u0642") { if (!isSofaType(p.pieceType) || p.fabricShippingStatus) return false; }
-      else if (p.fabricShippingStatus !== fFabric) return false;
+    if (fFabric.length) {
+      const fabricMatches = (fFabric.includes("\u0644\u0627 \u064A\u0646\u0637\u0628\u0642") && (!isSofaType(p.pieceType) || !p.fabricShippingStatus)) || (p.fabricShippingStatus && fFabric.includes(p.fabricShippingStatus));
+      if (!fabricMatches) return false;
     }
-    if (fEntity && p.manufacturingEntity !== fEntity) return false;
-    if (fSupplier && p.supplierName !== fSupplier) return false;
-    if (fDelivery) {
+    if (fEntity.length && !fEntity.includes(p.manufacturingEntity)) return false;
+    if (fSupplier.length && !fSupplier.includes(p.supplierName)) return false;
+    if (fDelivery.length) {
       const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
-      if (fDelivery === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" && !delivered) return false;
-      if (fDelivery === "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" && delivered) return false;
+      const deliveryMatches = (delivered && fDelivery.includes("\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")) || (!delivered && fDelivery.includes("\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"));
+      if (!deliveryMatches) return false;
     }
     if (fDeliveryFrom && (!p.customerDeliveryDate || p.customerDeliveryDate < fDeliveryFrom)) return false;
     if (fDeliveryTo && (!p.customerDeliveryDate || p.customerDeliveryDate > fDeliveryTo)) return false;
@@ -12008,15 +11958,11 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     showFilters ? h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 } },
       h("div", null,
         h("label", { style: labelStyle }, "الحالة"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fStatus, onChange: (e) => setFStatus(e.target.value) },
-          h("option", { value: "" }, "الكل"), statusOptions.map((s) => h("option", { key: s, value: s }, s))
-        )
+        h(MultiSelectFilter, { options: statusOptions, selected: fStatus, onChange: setFStatus })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "حالة التسليم"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fDelivery, onChange: (e) => setFDelivery(e.target.value) },
-          h("option", { value: "" }, "الكل"), h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"), h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
-        )
+        h(MultiSelectFilter, { options: [{ value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", label: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", label: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }], selected: fDelivery, onChange: setFDelivery })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (\u0645\u0646 - \u0625\u0644\u0649)"),
@@ -12035,21 +11981,15 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
       ),
       h("div", null,
         h("label", { style: labelStyle }, "حالة القماش"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fFabric, onChange: (e) => setFFabric(e.target.value) },
-          h("option", { value: "" }, "الكل"), Array.from(new Set(pieces.map((p) => p.fabricShippingStatus).filter(Boolean))).map((s) => h("option", { key: s, value: s }, s)), h("option", { value: "لا ينطبق" }, "لا ينطبق")
-        )
+        h(MultiSelectFilter, { options: [...Array.from(new Set(pieces.map((p) => p.fabricShippingStatus).filter(Boolean))), "لا ينطبق"], selected: fFabric, onChange: setFFabric })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "جهة التصنيع"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fEntity, onChange: (e) => setFEntity(e.target.value) },
-          h("option", { value: "" }, "الكل"), entityOptions.map((en) => h("option", { key: en, value: en }, en))
-        )
+        h(MultiSelectFilter, { options: entityOptions, selected: fEntity, onChange: setFEntity })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "المورد"),
-        h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: fSupplier, onChange: (e) => setFSupplier(e.target.value) },
-          h("option", { value: "" }, "الكل"), supplierOptions.map((sp) => h("option", { key: sp, value: sp }, sp))
-        )
+        h(MultiSelectFilter, { options: supplierOptions, selected: fSupplier, onChange: setFSupplier })
       ),
       h("div", null,
         h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0639\u0645\u0644 \u0639\u0646\u062F \u0627\u0644\u0645\u0648\u0631\u062F (\u0645\u0646 - \u0625\u0644\u0649)"),
