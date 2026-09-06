@@ -687,6 +687,9 @@ function escalationsColRef() {
 function dailyLogsColRef() {
   return workspaceDocRef().collection("dailyLogs");
 }
+function deliveryPlansColRef() {
+  return workspaceDocRef().collection("deliveryPlans");
+}
 async function migrateLegacyArraysToSubcollections(existingData) {
   const legacyOrders = Array.isArray(existingData.orders) ? existingData.orders : [];
   const legacyPieces = Array.isArray(existingData.productionPieces) ? existingData.productionPieces : [];
@@ -911,6 +914,7 @@ function App() {
   const [escalations, setEscalations] = useState([]);
   const [myDailyLogs, setMyDailyLogs] = useState([]);
   const [teamDailyLogs, setTeamDailyLogs] = useState([]);
+  const [deliveryPlans, setDeliveryPlans] = useState([]);
   const apptRemindedRef = useRef(null);
   const sessionLoggedRef = useRef(null);
   const codeHealAttemptedRef = useRef(/* @__PURE__ */ new Set());
@@ -1061,6 +1065,7 @@ function App() {
     let unsubEscalations = () => {};
     let unsubMyDailyLogs = () => {};
     let unsubTeamDailyLogs = () => {};
+    let unsubDeliveryPlans = () => {};
     let docLoaded = false, ordersLoaded = false, piecesLoaded = false;
     const checkAllLoaded = () => {
       if (docLoaded && ordersLoaded && piecesLoaded) {
@@ -1164,6 +1169,10 @@ function App() {
           (snap) => { setTeamDailyLogs(snap.docs.map((d) => d.data())); },
           (err) => { console.error("team daily logs listener failed", err); }
         );
+        unsubDeliveryPlans = deliveryPlansColRef().onSnapshot(
+          (snap) => { setDeliveryPlans(snap.docs.map((d) => d.data())); },
+          (err) => { console.error("delivery plans listener failed", err); }
+        );
         unsubNotif = notificationsColRef().where("toEmails", "array-contains", user.email).orderBy("createdAt", "desc").limit(60).onSnapshot(
           (snap) => {
             setNotifications(snap.docs.map((d) => d.data()));
@@ -1187,7 +1196,7 @@ function App() {
         setSyncError("\u062A\u0639\u0630\u0631 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.");
       }
     })();
-    return () => { unsubDoc(); unsubOrders(); unsubPieces(); unsubActivity(); unsubNotif(); unsubPreApproval(); unsubSessions(); unsubWarranty(); unsubDesignerReports(); unsubEngineeringReferences(); unsubTasks(); unsubTasksCreated(); unsubRatings(); unsubAppointments(); unsubEscalations(); unsubMyDailyLogs(); unsubTeamDailyLogs(); };
+    return () => { unsubDoc(); unsubOrders(); unsubPieces(); unsubActivity(); unsubNotif(); unsubPreApproval(); unsubSessions(); unsubWarranty(); unsubDesignerReports(); unsubEngineeringReferences(); unsubTasks(); unsubTasksCreated(); unsubRatings(); unsubAppointments(); unsubEscalations(); unsubMyDailyLogs(); unsubTeamDailyLogs(); unsubDeliveryPlans(); };
   }, [user, isAllowed]);
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -1797,6 +1806,9 @@ function App() {
     persistRecordWrite(warrantyColRef().doc(id).update(patch));
     if (w) logActivity("\u062A\u062D\u062F\u064A\u062B \u0628\u0644\u0627\u063A \u0636\u0645\u0627\u0646: " + (w.clientName || "") + (patch.status ? " (" + patch.status + ")" : ""));
   };
+  const saveDeliveryPlan = (planId, patch) => {
+    persistRecordWrite(deliveryPlansColRef().doc(planId).set({ ...patch, id: planId, updatedAt: (/* @__PURE__ */ new Date()).toISOString(), updatedBy: (user && user.email) || "" }, { merge: true }));
+  };
   const addDesignerReport = (r) => {
     const withOwner = { ...r, id: uid(), createdBy: (user && user.email) || "", createdAt: (/* @__PURE__ */ new Date()).toISOString() };
     persistRecordWrite(designerReportsColRef().doc(withOwner.id).set(withOwner));
@@ -1933,6 +1945,7 @@ function App() {
         homeDrilldown.type === "appointments" ? h(AppointmentsHubPage, { appointments, myEmail: user && user.email, isAdminUser: isOwner || hasRole("admin"), onAdd: addAppointment, onUpdate: updateAppointment, onDelete: deleteAppointment, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "assistant" ? h(AssistantPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, ratings, quickTasks, appointments, preApprovalRecords, emailToName, myEmail: user && user.email, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "customer-value" ? h(CustomerValuePage, { orders: activeOrders, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "delivery-plans" ? h(DeliveryPlansHubPage, { orders: activeOrders, deliveryPlans, onSavePlan: saveDeliveryPlan, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "demand-forecast" ? h(DemandForecastPage, { orders: activeOrders, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "custom-report" ? h(CustomReportPage, { orders: activeOrders, pieces: productionPieces, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "health-check" ? h(SystemHealthCheckPage, { orders, pieces: productionPieces, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); } }) :
@@ -2165,6 +2178,7 @@ function App() {
               drill("product-shipments", "product-shipments", null, null),
               drill("finishing", "finishing"),
               simple("today-queue"),
+              drill("delivery-plans", "delivery-plans"),
               simple("deliveries")
             ] },
             { title: "\u{1F465} \u0627\u0644\u0639\u0645\u0644\u0627\u0621", tiles: [
@@ -5061,7 +5075,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     const pad = (n) => String(n).padStart(2, "0");
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
   };
-  const cols = ["", "الكود", "تاريخ دخول القسم", "الحالة", "اسم العميل", "نوع الأوردر", "اسم المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم"];
+  const cols = ["", "الكود", "تاريخ دخول القسم", "الحالة", "اسم العميل", "نوع الأوردر", "اسم المهندس", "القسم", "التعديل المطلوب", "تاريخ التعديل والمراجعة", "مراجعة القسم", "تذكير"];
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fCategory, setFCategory] = useState([]);
@@ -5126,6 +5140,36 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
       h("option", { value: "تمت المراجعة" }, "تمت المراجعة")
     ));
   };
+  const engineerNameOf = (o) => o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy || "\u2014";
+  const pendingEditsForOrder = (o) => {
+    const allDepts = departmentsFor(o);
+    if (allDepts.length === 0) {
+      return o.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644" ? [{ dept: null, note: o.revisionNote || "", at: o.inRevisionAt }] : [];
+    }
+    return allDepts.filter((d) => deptStatusOf(o, d) === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644").map((d) => ({ dept: d, note: deptData(o, d).revisionNote || "", at: deptData(o, d).inRevisionAt }));
+  };
+  const buildReminderMessage = (o) => {
+    const edits = pendingEditsForOrder(o);
+    const orderLabel = (o.clientName || "\u2014") + (o.category ? " \u2014 " + o.category : "") + (o.orderCode ? " (" + o.orderCode + ")" : "");
+    const header = "\u0645\u0631\u062D\u0628\u064B\u0627 " + engineerNameOf(o) + " \u{1F44B}\n\u0628\u0631\u062C\u0627\u0621 \u0645\u0631\u0627\u062C\u0639\u0629 \u062D\u0627\u0644\u0629 \u0627\u0644\u0623\u0648\u0631\u062F\u0631: " + orderLabel;
+    if (edits.length === 0) return header;
+    if (edits.length === 1) {
+      const e = edits[0];
+      return header + "\n\n" + "\u062A\u0645 \u0637\u0644\u0628 \u062A\u0639\u062F\u064A\u0644" + (e.dept ? " \u0641\u064A \u0642\u0633\u0645 " + e.dept : "") + (e.note ? ": " + e.note : "") + "\n\u0648\u0642\u062A \u0627\u0644\u0637\u0644\u0628: " + fmtDateTime(e.at) + "\n\n\u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u0648\u0627\u0644\u0631\u062F\u060C \u0634\u0643\u0631\u064B\u0627 \u{1F339}";
+    }
+    const body = edits.map((e, i) => (i + 1) + ". " + (e.dept || "\u2014") + (e.note ? ": " + e.note : "") + "\n   \u0648\u0642\u062A \u0627\u0644\u0637\u0644\u0628: " + fmtDateTime(e.at)).join("\n");
+    return header + "\n\n\u062A\u0645 \u0637\u0644\u0628 \u0627\u0644\u062A\u0639\u062F\u064A\u0644\u0627\u062A \u0627\u0644\u062A\u0627\u0644\u064A\u0629:\n" + body + "\n\n\u064A\u0631\u062C\u0649 \u0645\u0631\u0627\u062C\u0639\u0629 \u0643\u0644 \u0628\u0646\u062F \u0648\u0627\u0644\u0631\u062F\u060C \u0634\u0643\u0631\u064B\u0627 \u{1F339}";
+  };
+  const sendReminderFor = (o) => {
+    window.open("https://wa.me/?text=" + encodeURIComponent(buildReminderMessage(o)), "_blank");
+  };
+  const reminderCell = (o, isFirst, rowSpan) => {
+    if (!isFirst) return null;
+    const hasPending = pendingEditsForOrder(o).length > 0;
+    return h("td", { rowSpan, style: { padding: "9px 10px", whiteSpace: "nowrap" } },
+      hasPending ? h("button", { onClick: () => sendReminderFor(o), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: "#25D366", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 12 }, "\u{1F4E4}"), "\u062A\u0630\u0643\u064A\u0631") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "\u2014")
+    );
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "🧾", title: "المراجعة" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
@@ -5149,7 +5193,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     ) : null,
     filtered.length === 0 ? h(EmptyHint, { text: "مفيش أوردرات مطابقة" }) :
     h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1200 } },
+      h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1320 } },
         h("thead", null, h("tr", null, cols.map((c, idx) => h("th", { key: idx, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
         h("tbody", null, filtered.flatMap((o) => {
           const deptRows = buildDeptRowsForOrder(o);
@@ -5167,7 +5211,8 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 600 } }, d === null ? "—" : d),
               editNoteCell(o, d),
               h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, dateStatusCell(o, d)),
-              statusCell(o, d)
+              statusCell(o, d),
+              reminderCell(o, isFirst, rowSpan)
             );
           });
         }))
@@ -8461,6 +8506,232 @@ function OrderTimelinePage({ order, pieces, onBack, orders }) {
     )
   );
 }
+function addMinutesToTime(hhmm, mins) {
+  if (!hhmm) return "";
+  const parts = hhmm.split(":");
+  const h1 = Number(parts[0]), m1 = Number(parts[1]);
+  if (isNaN(h1) || isNaN(m1)) return "";
+  const total = h1 * 60 + m1 + (Number(mins) || 0);
+  const normalized = ((total % 1440) + 1440) % 1440;
+  const nh = Math.floor(normalized / 60);
+  const nm = normalized % 60;
+  return String(nh).padStart(2, "0") + ":" + String(nm).padStart(2, "0");
+}
+function buildDeliveryPlanTimeline(plan) {
+  const segs = [];
+  let cursor = plan.startTime || "";
+  const push = (label, minutes, detail) => {
+    const mins = Number(minutes) || 0;
+    const start = cursor;
+    const end = cursor && mins ? addMinutesToTime(cursor, mins) : cursor;
+    segs.push({ label, start, end, minutes: mins, detail: detail || null });
+    if (cursor && mins) cursor = end;
+  };
+  push("\u{1F69A} \u0627\u0644\u0637\u0631\u064A\u0642 \u0645\u0646 \u0627\u0644\u0645\u0635\u0646\u0639 \u0644\u0645\u0646\u0632\u0644 \u0627\u0644\u0639\u0645\u064A\u0644", plan.travelMinutes, (plan.truckName || plan.driverName) ? ("\u0627\u0644\u0634\u0627\u062D\u0646\u0629: " + (plan.truckName || "\u2014") + (plan.driverName ? " \u00B7 \u0627\u0644\u0633\u0627\u0626\u0642: " + plan.driverName : "")) : null);
+  push("\u{1F4E6} \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0634\u063A\u0644", plan.loadingMinutes, plan.loadingLabor ? (plan.loadingLabor + " \u0639\u0627\u0645\u0644") : null);
+  (plan.rooms || []).forEach((r) => {
+    const roomName = r.name || "\u063A\u0631\u0641\u0629";
+    if (Number(r.moveMinutes) > 0) push("\u{1F6CB}\uFE0F \u0646\u0642\u0644 \u0627\u0644\u0623\u062B\u0627\u062B \u2014 " + roomName, r.moveMinutes, null);
+    if (Number(r.assemblyMinutes) > 0) push("\u{1F529} \u0641\u0643 \u0648\u062A\u0631\u0643\u064A\u0628 \u2014 " + roomName, r.assemblyMinutes, r.assemblyLabor ? (r.assemblyLabor + " \u0639\u0627\u0645\u0644") : null);
+  });
+  push("\u2705 \u0627\u0644\u0645\u0639\u0627\u064A\u0646\u0629 \u0648\u0627\u0644\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0646\u0647\u0627\u0626\u064A", plan.inspectionMinutes, plan.inspectorName ? ("\u0627\u0644\u0645\u0633\u0624\u0648\u0644: " + plan.inspectorName) : null);
+  push("\u{1F389} \u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u0646\u0632\u0644 \u0644\u0644\u0639\u0645\u064A\u0644 \u0641\u064A \u0623\u0641\u0636\u0644 \u062D\u0627\u0644", 0, null);
+  return segs;
+}
+function DeliveryPlanEditorPage({ plan, clientName, deliveryDate, onSave, onBack }) {
+  const [startTime, setStartTime] = useState(plan.startTime || "");
+  const [truckName, setTruckName] = useState(plan.truckName || "");
+  const [driverName, setDriverName] = useState(plan.driverName || "");
+  const [driverPhone, setDriverPhone] = useState(plan.driverPhone || "");
+  const [travelMinutes, setTravelMinutes] = useState(plan.travelMinutes || "");
+  const [loadingLabor, setLoadingLabor] = useState(plan.loadingLabor || "");
+  const [loadingMinutes, setLoadingMinutes] = useState(plan.loadingMinutes || "");
+  const [rooms, setRooms] = useState((plan.rooms && plan.rooms.length) ? plan.rooms : [{ name: "", moveMinutes: "", assemblyLabor: "", assemblyMinutes: "" }]);
+  const [inspectionMinutes, setInspectionMinutes] = useState(plan.inspectionMinutes || "");
+  const [inspectorName, setInspectorName] = useState(plan.inspectorName || "");
+  const [deliveryPhotos, setDeliveryPhotos] = useState(plan.deliveryPhotos || []);
+  const [notes, setNotes] = useState(plan.notes || "");
+  const [saved, setSaved] = useState(false);
+  const addRoom = () => setRooms((r) => [...r, { name: "", moveMinutes: "", assemblyLabor: "", assemblyMinutes: "" }]);
+  const removeRoom = (i) => setRooms((r) => r.filter((_, idx) => idx !== i));
+  const updateRoom = (i, key, val) => setRooms((r) => r.map((rm, idx) => idx === i ? { ...rm, [key]: val } : rm));
+  const currentPlan = { startTime, truckName, driverName, driverPhone, travelMinutes, loadingLabor, loadingMinutes, rooms, inspectionMinutes, inspectorName, deliveryPhotos, notes };
+  const timeline = buildDeliveryPlanTimeline(currentPlan);
+  const save = () => { onSave(currentPlan); setSaved(true); setTimeout(() => setSaved(false), 2500); };
+  const numInput = (value, onChange, placeholder) => h("input", { type: "number", min: 0, style: { ...fieldStyle, marginBottom: 0 }, value, placeholder: placeholder || "0", onChange: (e) => onChange(e.target.value) });
+  const sectionWrap = (emoji, title, children) => h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 14 } },
+    h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, emoji + " " + title),
+    ...children
+  );
+  const printPlan = () => {
+    const rows = timeline.map((s) => [s.label, (s.start && s.end) ? (s.start + (s.minutes ? " \u2192 " + s.end : "")) : (s.minutes ? s.minutes + " \u062F\u0642\u064A\u0642\u0629" : "\u2014"), s.detail || "\u2014"]);
+    printAsPdf("\u062E\u0637\u0629 \u062A\u0633\u0644\u064A\u0645 \u2014 " + clientName, ["\u0627\u0644\u0645\u0631\u062D\u0644\u0629", "\u0627\u0644\u0648\u0642\u062A", "\u062A\u0641\u0627\u0635\u064A\u0644"], rows);
+  };
+  return h("div", null,
+    h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("div", null,
+        h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, clientName),
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted } }, "\u062E\u0637\u0629 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" + (deliveryDate ? " \u00B7 " + deliveryDate : ""))
+      )
+    ),
+    sectionWrap("\u23F0", "\u0648\u0642\u062A \u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u062E\u0637\u0629", [
+      h("input", { key: "st", type: "time", style: { ...fieldStyle, marginBottom: 0 }, value: startTime, onChange: (e) => setStartTime(e.target.value) })
+    ]),
+    sectionWrap("\u{1F69A}", "\u0627\u0644\u0634\u0627\u062D\u0646\u0629 \u0648\u0627\u0644\u0633\u0627\u0626\u0642", [
+      h("input", { key: "tn", style: { ...fieldStyle }, placeholder: "\u0627\u0633\u0645/\u0631\u0642\u0645 \u0627\u0644\u0634\u0627\u062D\u0646\u0629", value: truckName, onChange: (e) => setTruckName(e.target.value) }),
+      h("input", { key: "dn", style: { ...fieldStyle }, placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0633\u0627\u0626\u0642", value: driverName, onChange: (e) => setDriverName(e.target.value) }),
+      h("input", { key: "dp", style: { ...fieldStyle, marginBottom: 0 }, placeholder: "\u0631\u0642\u0645 \u062C\u0648\u0627\u0644 \u0627\u0644\u0633\u0627\u0626\u0642 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", value: driverPhone, onChange: (e) => setDriverPhone(e.target.value) })
+    ]),
+    sectionWrap("\u23F1\uFE0F", "\u0627\u0644\u0648\u0642\u062A \u0645\u0646 \u0627\u0644\u062E\u0631\u0648\u062C \u0645\u0646 \u0627\u0644\u0645\u0635\u0646\u0639 \u0644\u0645\u0646\u0632\u0644 \u0627\u0644\u0639\u0645\u064A\u0644 (\u062F\u0642\u064A\u0642\u0629)", [
+      numInput(travelMinutes, setTravelMinutes, "\u0645\u062B\u0627\u0644\u064B 45")
+    ]),
+    sectionWrap("\u{1F4E6}", "\u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0634\u063A\u0644", [
+      h("div", { key: "row", style: { display: "flex", gap: 8 } },
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0639\u0645\u0627\u0644\u0629"), numInput(loadingLabor, setLoadingLabor)),
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0642\u062A (\u062F\u0642\u064A\u0642\u0629)"), numInput(loadingMinutes, setLoadingMinutes))
+      )
+    ]),
+    h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 14 } },
+      h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 10 } }, "\u{1F3E0} \u0646\u0642\u0644 \u0648\u062A\u0631\u0643\u064A\u0628 \u0627\u0644\u0623\u062B\u0627\u062B \u0644\u0643\u0644 \u063A\u0631\u0641\u0629"),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, rooms.map((r, i) => h("div", { key: i, style: { background: COLORS.bg, borderRadius: 10, padding: 10 } },
+        h("div", { style: { display: "flex", gap: 6, marginBottom: 6 } },
+          h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, placeholder: "\u0627\u0633\u0645 \u0627\u0644\u063A\u0631\u0641\u0629 (\u0645\u062B\u0627\u0644\u064B: \u063A\u0631\u0641\u0629 \u0627\u0644\u0646\u0648\u0645 \u0627\u0644\u0631\u0626\u064A\u0633\u064A\u0629)", value: r.name, onChange: (e) => updateRoom(i, "name", e.target.value) }),
+          rooms.length > 1 ? h("button", { onClick: () => removeRoom(i), style: { ...iconBtnStyle, flexShrink: 0 } }, h(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F")) : null
+        ),
+        h("div", { style: { display: "flex", gap: 6, marginBottom: 6 } },
+          h("div", { style: { flex: 1 } }, h("label", { style: { ...labelStyle, marginBottom: 3, fontSize: 11 } }, "\u0648\u0642\u062A \u0646\u0642\u0644 \u0627\u0644\u0623\u062B\u0627\u062B (\u062F\u0642\u064A\u0642\u0629)"), numInput(r.moveMinutes, (v) => updateRoom(i, "moveMinutes", v)))
+        ),
+        h("div", { style: { display: "flex", gap: 6 } },
+          h("div", { style: { flex: 1 } }, h("label", { style: { ...labelStyle, marginBottom: 3, fontSize: 11 } }, "\u0639\u062F\u062F \u0639\u0645\u0627\u0644\u0629 \u0627\u0644\u0641\u0643 \u0648\u0627\u0644\u062A\u0631\u0643\u064A\u0628"), numInput(r.assemblyLabor, (v) => updateRoom(i, "assemblyLabor", v))),
+          h("div", { style: { flex: 1 } }, h("label", { style: { ...labelStyle, marginBottom: 3, fontSize: 11 } }, "\u0648\u0642\u062A \u0627\u0644\u0641\u0643 \u0648\u0627\u0644\u062A\u0631\u0643\u064A\u0628 (\u062F\u0642\u064A\u0642\u0629)"), numInput(r.assemblyMinutes, (v) => updateRoom(i, "assemblyMinutes", v)))
+        )
+      ))),
+      h("button", { onClick: addRoom, style: { ...addLinkStyle, marginTop: 10 } }, "\u2795 \u0625\u0636\u0627\u0641\u0629 \u063A\u0631\u0641\u0629")
+    ),
+    sectionWrap("\u2705", "\u0627\u0644\u0645\u0639\u0627\u064A\u0646\u0629 \u0648\u0627\u0644\u062A\u0623\u0643\u064A\u062F \u0627\u0644\u0646\u0647\u0627\u0626\u064A", [
+      h("div", { key: "row", style: { display: "flex", gap: 8 } },
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0648\u0642\u062A (\u062F\u0642\u064A\u0642\u0629)"), numInput(inspectionMinutes, setInspectionMinutes)),
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0633\u0624\u0648\u0644 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, value: inspectorName, onChange: (e) => setInspectorName(e.target.value) }))
+      )
+    ]),
+    h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 14 } },
+      h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 4 } }, "\u{1F4F8} \u0635\u0648\u0631 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
+      h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginBottom: 10 } }, "\u0644\u062A\u0648\u062B\u064A\u0642 \u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0637\u0639 \u0648\u0627\u0644\u062A\u0631\u0643\u064A\u0628 \u0628\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645\u060C \u0648\u0636\u0645\u0627\u0646 \u0627\u0644\u0627\u0644\u062A\u0632\u0627\u0645 \u0628\u0627\u0644\u062C\u0648\u062F\u0629"),
+      h(MultiFileAttachField, { files: deliveryPhotos, onAdd: (f) => setDeliveryPhotos((cur) => [...cur, f]), onRemove: (idx) => setDeliveryPhotos((cur) => cur.filter((_, i) => i !== idx)), folder: "delivery-photos", accept: "image/*" })
+    ),
+    h("label", { style: labelStyle }, "\u{1F389} \u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }),
+    h("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
+      h("button", { style: { ...primaryBtn(false), flex: 1 }, onClick: save }, saved ? "\u2705 \u062A\u0645 \u0627\u0644\u062D\u0641\u0638" : "\u{1F4BE} \u062D\u0641\u0638 \u0627\u0644\u062E\u0637\u0629"),
+      h("button", { onClick: printPlan, style: { ...addLinkStyle, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "0 16px" } }, "\u{1F5A8}\uFE0F PDF")
+    ),
+    h("div", { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 12 } }, "\u{1F550} \u0627\u0644\u062E\u0637 \u0627\u0644\u0632\u0645\u0646\u064A \u0627\u0644\u0645\u062A\u0648\u0642\u0639"),
+    h("div", { style: { display: "flex", flexDirection: "column" } }, timeline.map((s, idx) => h("div", { key: idx, style: { display: "flex", gap: 12 } },
+      h("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", width: 34, flexShrink: 0 } },
+        h("div", { style: { width: 30, height: 30, borderRadius: "50%", background: COLORS.surface, border: `2px solid ${COLORS.gold}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 } }, idx + 1),
+        idx < timeline.length - 1 ? h("div", { style: { width: 2, flex: 1, minHeight: 28, background: COLORS.border, marginTop: 2 } }) : null
+      ),
+      h("div", { style: { flex: 1, paddingBottom: idx < timeline.length - 1 ? 22 : 0 } },
+        h("div", { style: { fontSize: 14, fontWeight: 700 } }, s.label),
+        h("div", { style: { fontSize: 12.5, color: COLORS.muted, marginTop: 2 } }, s.start ? (s.start + (s.minutes ? " \u2192 " + s.end : "")) : (s.minutes ? s.minutes + " \u062F\u0642\u064A\u0642\u0629" : "\u2014")),
+        s.detail ? h("div", { style: { fontSize: 12, color: COLORS.muted, marginTop: 2 } }, s.detail) : null
+      )
+    )))
+  );
+}
+function DeliveryPlansHubPage({ orders, deliveryPlans, onSavePlan, onBack }) {
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState({ type: "home" });
+  const unitKeyFor = (o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") + "||" + (o.deliveryDate || "");
+  const monthUnitKeys = {};
+  const noDateUnitKeys = new Set();
+  orders.forEach((o) => {
+    const key = unitKeyFor(o);
+    if (o.deliveryDate) {
+      const mKey = o.deliveryDate.slice(0, 7);
+      (monthUnitKeys[mKey] = monthUnitKeys[mKey] || new Set()).add(key);
+    } else {
+      noDateUnitKeys.add(key);
+    }
+  });
+  const monthCounts = {};
+  Object.keys(monthUnitKeys).forEach((k) => { monthCounts[k] = monthUnitKeys[k].size; });
+  const noDateCount = noDateUnitKeys.size;
+  const monthKeys = Object.keys(monthCounts).sort();
+  const rowBtn = (onClick, label, count) => h("div", {
+    onClick,
+    style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "13px 16px", cursor: "pointer", marginBottom: 10 }
+  },
+    h("span", { style: { fontWeight: 700, fontSize: 14.5 } }, label),
+    h("span", { style: { display: "flex", alignItems: "center", gap: 6, color: COLORS.muted, fontSize: 13 } }, count + " \u0639\u0645\u064A\u0644", h(Emoji, { size: 13 }, "\u2039"))
+  );
+  const findPlan = (name, date) => deliveryPlans.find((p) => p.customerKey === name + "||" + (date || ""));
+  const unitRow = (u, backView) => {
+    const p = findPlan(u.name, u.date);
+    const hasPlan = !!(p && (p.startTime || p.travelMinutes || (p.deliveryPhotos && p.deliveryPhotos.length) || (p.rooms || []).some((r) => r.name || r.moveMinutes || r.assemblyMinutes)));
+    return h("div", {
+      key: u.name + "||" + u.date,
+      onClick: () => setView({ type: "customer", name: u.name, date: u.date, back: backView }),
+      style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "13px 16px", cursor: "pointer", marginBottom: 10 }
+    },
+      h("div", null,
+        h("div", { style: { fontWeight: 700, fontSize: 14.5 } }, u.name),
+        h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, u.date || "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645")
+      ),
+      h("span", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: hasPlan ? COLORS.green : COLORS.muted, fontWeight: 700 } }, hasPlan ? "\u2705 \u0641\u064A\u0647\u0627 \u062E\u0637\u0629" : "\u0644\u0633\u0647 \u0645\u0646 \u063A\u064A\u0631 \u062E\u0637\u0629", h(Emoji, { size: 13 }, "\u2039"))
+    );
+  };
+  if (view.type === "customer") {
+    const key = view.name + "||" + (view.date || "");
+    const existing = findPlan(view.name, view.date) || { customerKey: key, clientName: view.name, deliveryDate: view.date || "" };
+    return h(DeliveryPlanEditorPage, {
+      plan: existing,
+      clientName: view.name,
+      deliveryDate: view.date,
+      onBack: () => setView(view.back || { type: "home" }),
+      onSave: (patch) => onSavePlan(existing.id || uid(), { ...patch, customerKey: key, clientName: view.name, deliveryDate: view.date || "" })
+    });
+  }
+  if (view.type === "month" || view.type === "none") {
+    const inScope = orders.filter((o) => view.type === "none" ? !o.deliveryDate : (o.deliveryDate && o.deliveryDate.slice(0, 7) === view.key));
+    const seen = new Set();
+    const units = [];
+    inScope.forEach((o) => {
+      const uk = unitKeyFor(o);
+      if (seen.has(uk)) return;
+      seen.add(uk);
+      units.push({ name: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", date: o.deliveryDate || "" });
+    });
+    const filteredUnits = units.filter((u) => !query.trim() || u.name.includes(query.trim())).sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+    return h("div", null,
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+        h("button", { onClick: () => setView({ type: "home" }), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+        h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, view.type === "none" ? "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645" : monthLabelAr(view.key))
+      ),
+      h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      filteredUnits.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621" }) :
+      h("div", { style: { marginTop: 8 } }, filteredUnits.map((u) => unitRow(u, view)))
+    );
+  }
+  return h("div", null,
+    h(SectionHeader, { emoji: "\u{1F4CD}", title: "\u062E\u0637\u0629 \u0627\u0644\u062A\u0633\u0644\u064A\u0645\u0627\u062A" }),
+    h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
+    query.trim() ? (() => {
+      const matchingOrders = orders.filter((o) => (o.clientName || "").includes(query.trim()));
+      const seen = new Set();
+      const units = [];
+      matchingOrders.forEach((o) => { const uk = unitKeyFor(o); if (seen.has(uk)) return; seen.add(uk); units.push({ name: o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645", date: o.deliveryDate || "" }); });
+      units.sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+      return units.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0639\u0645\u0644\u0627\u0621 \u0628\u0627\u0644\u0627\u0633\u0645 \u062F\u0647" }) :
+      h("div", { style: { marginTop: 8 } }, units.map((u) => unitRow(u, { type: "home" })));
+    })() :
+    h("div", { style: { marginTop: 8 } },
+      monthKeys.map((k) => rowBtn(() => setView({ type: "month", key: k }), monthLabelAr(k), monthCounts[k])),
+      noDateCount > 0 ? rowBtn(() => setView({ type: "none" }), "\u0628\u062F\u0648\u0646 \u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645", noDateCount) : null
+    )
+  );
+}
 function OrderPiecesStatusModal({ orderPieces, onClose }) {
   return h(Modal, { title: "\u062D\u0627\u0644\u0629 \u0642\u0637\u0639 \u0627\u0644\u0623\u0648\u0631\u062F\u0631", onClose },
     h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, orderPieces.map((p) => {
@@ -9492,6 +9763,8 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
   const setIndirect = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), indirect: { ...((costs[stage] && costs[stage].indirect) || { amount: "", currency: "" }), [key]: val } } } });
   const stageInvoiceFiles = (stage) => (costs[stage] && costs[stage].invoiceFiles) || ((costs[stage] && costs[stage].invoiceFile) ? [costs[stage].invoiceFile] : []);
   const setStageInvoiceFiles = (stage, files) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), invoiceFiles: files } } });
+  const fabricInvoiceFiles = () => (piece.fabricCost && piece.fabricCost.invoiceFiles) || ((piece.fabricCost && piece.fabricCost.invoiceFile) ? [piece.fabricCost.invoiceFile] : []);
+  const setFabricInvoiceFiles = (files) => onUpdate({ fabricCost: { ...(piece.fabricCost || { amount: "", currency: "" }), invoiceFiles: files } });
   const setSimple = (field, key, val) => onUpdate({ [field]: { ...(piece[field] || { amount: "", currency: "" }), [key]: val } });
   const mainSupplier = stages.map((s) => costs[s] && costs[s].supplierName).find(Boolean) || piece.currentLocation || "\u2014";
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 10 } },
@@ -9518,8 +9791,10 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
             h("option", { value: "" }, "\u0627\u062E\u062A\u0627\u0631\u064A"),
             h("option", { value: "\u0631\u064A\u0627\u0644" }, "\u0631\u064A\u0627\u0644"),
             h("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647")
-          )
-        )
+          ),
+          h("input", { style: { flex: 1, padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 12.5 }, value: (piece.fabricCost && piece.fabricCost.supplierName) || "", placeholder: "\u0627\u0633\u0645 \u0645\u0648\u0631\u062F \u0627\u0644\u0642\u0645\u0627\u0634", onChange: (e) => setSimple("fabricCost", "supplierName", e.target.value) })
+        ),
+        h(MultiFileAttachField, { label: "\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", files: fabricInvoiceFiles(), onAdd: (f) => setFabricInvoiceFiles([...fabricInvoiceFiles(), f]), onRemove: (idx) => setFabricInvoiceFiles(fabricInvoiceFiles().filter((_, i) => i !== idx)), folder: "stage-invoices" })
       ),
       stages.map((stage) => h("div", { key: stage, style: { marginBottom: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.bg}` } },
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 4 } }, stage),
@@ -10660,6 +10935,7 @@ const ALL_TABS = [
   { key: "appointments", label: "مواعيد الزيارة", emoji: "\u{1F5D3}\uFE0F" },
   { key: "assistant", label: "مساعد ذكي", emoji: "\u{1F916}" },
   { key: "customer-value", label: "قيمة العملاء", emoji: "\u{1F48E}" },
+  { key: "delivery-plans", label: "خطة التسليمات", emoji: "\u{1F4CD}" },
   { key: "demand-forecast", label: "توقع الطلب", emoji: "\u{1F52E}" },
   { key: "custom-report", label: "تقارير إضافية", emoji: "\u{1F5C3}\uFE0F" },
   { key: "universal-search", label: "البحث الشامل", emoji: "\u{1F50E}" },
