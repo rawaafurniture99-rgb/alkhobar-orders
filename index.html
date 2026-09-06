@@ -3136,6 +3136,48 @@ function FileAttachField({ label, file, onChange, onRemove, folder, accept }) {
   };
   return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: 12 } }, label && /* @__PURE__ */ React.createElement("label", { style: labelStyle }, label), warning && /* @__PURE__ */ React.createElement("p", { style: { color: COLORS.danger, fontSize: 12.5, margin: "0 0 6px" } }, warning), file ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } }, file.kind === "image" ? /* @__PURE__ */ React.createElement("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : /* @__PURE__ */ React.createElement("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 20 }, "\u{1F4C4}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name), /* @__PURE__ */ React.createElement("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")), /* @__PURE__ */ React.createElement("button", { onClick: onRemove, style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))) : /* @__PURE__ */ React.createElement("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641", /* @__PURE__ */ React.createElement("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" } })));
 }
+function MultiFileAttachField({ label, files, onAdd, onRemove, folder, accept }) {
+  const [busy, setBusy] = useState(false);
+  const [warning, setWarning] = useState("");
+  const MAX_BYTES = 200 * 1024 * 1024;
+  const list = files || [];
+  const handleFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    setWarning("");
+    if (f.size > MAX_BYTES) {
+      setWarning("\u0627\u0644\u0645\u0644\u0641 \u062F\u0647 \u0623\u0643\u0628\u0631 \u0645\u0646 200 \u0645\u064A\u062C\u0627\u0628\u0627\u064A\u062A \u0648\u0645\u0634 \u0645\u0633\u0645\u0648\u062D \u0628\u0631\u0641\u0639\u0647. \u0627\u062E\u062A\u0627\u0631\u064A \u0645\u0644\u0641 \u0623\u0635\u063A\u0631.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const attachment = await withTimeout(fileToAttachment(f, folder || "files"), 3e4);
+      onAdd(attachment);
+    } catch (err) {
+      console.error(err);
+      setWarning(err && err.message === "timeout" ? "\u0627\u0644\u0631\u0641\u0639 \u0623\u062E\u0630 \u0648\u0642\u062A\u064B\u0627 \u0637\u0648\u064A\u0644\u0627\u064B \u062C\u062F\u064B\u0627 \u0648\u0644\u0645 \u064A\u0643\u062A\u0645\u0644 \u2014 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0623\u0648 \u0623\u0646 \u062E\u062F\u0645\u0629 \u0627\u0644\u062A\u062E\u0632\u064A\u0646 \u0645\u0641\u0639\u0651\u0644\u0629\u060C \u0648\u062D\u0627\u0648\u0644\u064A \u062A\u0627\u0646\u064A." : "\u062A\u0639\u0630\u0631 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641: " + (err && err.message ? err.message : "\u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641. \u062C\u0631\u0651\u0628\u064A \u062A\u0627\u0646\u064A \u0623\u0648 \u062A\u0623\u0643\u062F\u064A \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return h("div", { style: { marginBottom: 12 } },
+    label ? h("label", { style: labelStyle }, label) : null,
+    warning ? h("p", { style: { color: COLORS.danger, fontSize: 12.5, margin: "0 0 6px" } }, warning) : null,
+    list.length > 0 ? h("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 } }, list.map((file, i) => h("div", { key: i, style: { display: "flex", alignItems: "center", gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, background: "#fff" } },
+      file.kind === "image" ? h("img", { src: file.dataUrl, alt: file.name, style: { width: 44, height: 44, borderRadius: 8, objectFit: "cover" } }) : h("div", { style: { width: 44, height: 44, borderRadius: 8, background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } }, h(Emoji, { size: 20 }, "\u{1F4C4}")),
+      h("div", { style: { flex: 1, minWidth: 0 } },
+        h("div", { style: { fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, file.name),
+        h("a", { href: file.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 12.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u2197\uFE0F"), " \u0641\u062A\u062D \u0627\u0644\u0645\u0644\u0641")
+      ),
+      h("button", { onClick: () => onRemove(i), style: iconBtnStyle }, h(Emoji, { size: 16, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
+    ))) : null,
+    h("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "14px", cursor: busy ? "default" : "pointer", color: COLORS.muted, background: "#fff", fontSize: 13.5 } },
+      h(Emoji, { size: 16 }, "\u{1F4CE}"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : (list.length > 0 ? "\u2795 \u0625\u0636\u0627\u0641\u0629 \u0645\u0644\u0641 \u062A\u0627\u0646\u064A" : "\u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641"),
+      h("input", { type: "file", accept: accept || "image/*,application/pdf", onChange: handleFile, style: { display: "none" }, disabled: busy })
+    )
+  );
+}
 function CustomersList({ orders, onOpen, emailToName, pieces }) {
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -4349,6 +4391,9 @@ function CustomReportPage({ orders, pieces, onBack }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [generated, setGenerated] = useState(false);
+  const [mode, setMode] = useState("source");
+  const [gridHeaders, setGridHeaders] = useState(null);
+  const [gridRows, setGridRows] = useState([]);
   const changeSource = (key) => {
     setSourceKey(key);
     setSelectedFields(REPORT_SOURCES[key].fields.map((f) => f.key));
@@ -4377,12 +4422,41 @@ function CustomReportPage({ orders, pieces, onBack }) {
     const v = f.fmt ? f.fmt(r[f.key], r, pieces, orders) : r[f.key];
     return v === undefined || v === null ? "" : String(v);
   }));
+  const loadIntoGrid = () => {
+    setGridHeaders([...headers]);
+    setGridRows(dataRows.map((r) => [...r]));
+    setMode("grid");
+  };
+  const startBlankGrid = () => {
+    setGridHeaders(["\u0639\u0645\u0648\u062F 1", "\u0639\u0645\u0648\u062F 2", "\u0639\u0645\u0648\u062F 3"]);
+    setGridRows([["", "", ""], ["", "", ""], ["", "", ""]]);
+    setMode("grid");
+  };
+  const updateHeaderCell = (ci, value) => setGridHeaders((h2) => h2.map((c, i) => i === ci ? value : c));
+  const updateCell = (ri, ci, value) => setGridRows((rs) => rs.map((r, i) => i === ri ? r.map((c, j) => j === ci ? value : c) : r));
+  const addColumn = () => { setGridHeaders((h2) => [...h2, "\u0639\u0645\u0648\u062F \u062C\u062F\u064A\u062F"]); setGridRows((rs) => rs.map((r) => [...r, ""])); };
+  const removeColumn = (ci) => { setGridHeaders((h2) => h2.filter((_, i) => i !== ci)); setGridRows((rs) => rs.map((r) => r.filter((_, i) => i !== ci))); };
+  const addRow = () => setGridRows((rs) => [...rs, (gridHeaders || []).map(() => "")]);
+  const removeRow = (ri) => setGridRows((rs) => rs.filter((_, i) => i !== ri));
+  const addTotalsRow = () => {
+    const totals = (gridHeaders || []).map((_, ci) => {
+      const sum = gridRows.reduce((s, r) => {
+        const n = parseFloat(String(r[ci] || "").replace(/,/g, ""));
+        return s + (isNaN(n) ? 0 : n);
+      }, 0);
+      return sum ? String(sum) : "";
+    });
+    totals[0] = "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A";
+    setGridRows((rs) => [...rs, totals]);
+  };
+  const smallInputStyle = { width: "100%", fontSize: 12, border: `1px solid ${COLORS.border}`, borderRadius: 6, padding: "6px 7px", background: "#fff", boxSizing: "border-box" };
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
-      h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+      h("button", { onClick: mode === "grid" ? () => setMode("source") : onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
       h("div", { style: { ...display, fontSize: 20, fontWeight: 700 } }, "\u{1F5C3}\uFE0F \u062A\u0642\u0627\u0631\u064A\u0631 \u0625\u0636\u0627\u0641\u064A\u0629")
     ),
-    h("div", { style: { padding: 16 } },
+    mode === "source" ? h("div", { style: { padding: 16 } },
+      h("button", { onClick: startBlankGrid, style: { ...addLinkStyle, marginBottom: 16, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", display: "block", width: "100%", textAlign: "center", fontWeight: 700 } }, "\u{1F9EE} \u062C\u062F\u0648\u0644 \u0641\u0627\u0636\u064A \u0645\u0646 \u0627\u0644\u0635\u0641\u0631 \u2014 \u062D\u0631\u064A\u0629 \u0627\u0644\u062A\u0635\u0631\u0641 \u0632\u064A \u0627\u0643\u0633\u064A\u0644"),
       h("label", { style: labelStyle }, "\u0645\u0635\u062F\u0631 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A"),
       h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 } }, Object.keys(REPORT_SOURCES).map((k) => h("button", {
         key: k,
@@ -4400,9 +4474,12 @@ function CustomReportPage({ orders, pieces, onBack }) {
       ) : null,
       h("button", { style: { ...primaryBtn(selectedFields.length === 0), marginBottom: 16 }, disabled: selectedFields.length === 0, onClick: () => setGenerated(true) }, "\u{1F4CA} \u062A\u0648\u0644\u064A\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631"),
       generated ? h(React.Fragment, null,
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 } },
           h("span", { style: { fontSize: 12.5, color: COLORS.muted } }, rows.length + " \u0646\u062A\u064A\u062C\u0629"),
-          rows.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0642\u0631\u064A\u0631-" + source.label, [{ name: source.label, rows: [headers].concat(dataRows) }]), onPdf: () => printAsPdf("\u062A\u0642\u0631\u064A\u0631 " + source.label, headers, dataRows) }) : null
+          h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+            rows.length > 0 ? h("button", { onClick: loadIntoGrid, style: { ...addLinkStyle, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 8, padding: "6px 10px", fontSize: 12 } }, "\u{1F9EE} \u062D\u0648\u0651\u0644\u064A\u0647 \u0644\u062C\u062F\u0648\u0644 \u0642\u0627\u0628\u0644 \u0644\u0644\u062A\u0639\u062F\u064A\u0644") : null,
+            rows.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0642\u0631\u064A\u0631-" + source.label, [{ name: source.label, rows: [headers].concat(dataRows) }]), onPdf: () => printAsPdf("\u062A\u0642\u0631\u064A\u0631 " + source.label, headers, dataRows) }) : null
+          )
         ),
         rows.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0646\u062A\u0627\u0626\u062C \u0628\u0627\u0644\u0634\u0631\u0648\u0637 \u062F\u064A" }) :
         h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
@@ -4412,6 +4489,34 @@ function CustomReportPage({ orders, pieces, onBack }) {
           )
         )
       ) : null
+    ) : h("div", { style: { padding: 16 } },
+      h("div", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 12 } }, "\u062F\u0648\u0633\u064A \u0623\u064A \u062E\u0644\u064A\u0629 \u0639\u0634\u0627\u0646 \u062A\u0639\u062F\u0644\u064A \u0642\u064A\u0645\u062A\u0647\u0627\u060C \u0648\u0627\u0633\u062A\u062E\u062F\u0645\u064A \u0627\u0644\u0623\u0632\u0631\u0627\u0631 \u062A\u062D\u062A \u0639\u0634\u0627\u0646 \u062A\u0636\u064A\u0641\u064A/\u062A\u0634\u064A\u0644\u064A \u0635\u0641\u0648\u0641 \u0648\u0623\u0639\u0645\u062F\u0629."),
+      h("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 } },
+        h("button", { onClick: addColumn, style: { ...addLinkStyle, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 12.5 } }, "\u2795 \u0639\u0645\u0648\u062F"),
+        h("button", { onClick: addRow, style: { ...addLinkStyle, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 12.5 } }, "\u2795 \u0635\u0641"),
+        h("button", { onClick: addTotalsRow, style: { ...addLinkStyle, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "7px 12px", fontSize: 12.5 } }, "\u03A3 \u0635\u0641 \u0625\u062C\u0645\u0627\u0644\u064A"),
+        h("button", { onClick: startBlankGrid, style: { ...addLinkStyle, border: `1px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 8, padding: "7px 12px", fontSize: 12.5 } }, "\u{1F5D1}\uFE0F \u0645\u0633\u062D \u0648\u0627\u0644\u0628\u062F\u0621 \u0645\u0646 \u062C\u062F\u064A\u062F"),
+        h(ExportButtons, { onExcel: () => exportToExcel("\u062A\u0642\u0631\u064A\u0631-\u062D\u0631", [{ name: "\u0627\u0644\u062C\u062F\u0648\u0644", rows: [gridHeaders].concat(gridRows) }]), onPdf: () => printAsPdf("\u062A\u0642\u0631\u064A\u0631 \u062D\u0631", gridHeaders, gridRows) })
+      ),
+      h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 8 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: (gridHeaders || []).length * 150 } },
+          h("thead", null, h("tr", null,
+            (gridHeaders || []).map((hd, ci) => h("th", { key: ci, style: { padding: 5, minWidth: 140 } },
+              h("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                h("input", { value: hd, onChange: (e) => updateHeaderCell(ci, e.target.value), style: { ...smallInputStyle, fontWeight: 700 } }),
+                h("button", { onClick: () => removeColumn(ci), style: { background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 14, flexShrink: 0 } }, "\u2715")
+              )
+            )),
+            h("th", { style: { width: 30 } })
+          )),
+          h("tbody", null, gridRows.map((row, ri) => h("tr", { key: ri },
+            row.map((cell, ci) => h("td", { key: ci, style: { padding: 3 } },
+              h("input", { value: cell, onChange: (e) => updateCell(ri, ci, e.target.value), style: smallInputStyle })
+            )),
+            h("td", { style: { padding: 3, textAlign: "center" } }, h("button", { onClick: () => removeRow(ri), style: { background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 14 } }, "\u{1F5D1}\uFE0F"))
+          )))
+        )
+      )
     )
   );
 }
@@ -9385,7 +9490,8 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
   const stages = stagesForPieceType(piece.pieceType);
   const setField = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), [key]: val } } });
   const setIndirect = (stage, key, val) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), indirect: { ...((costs[stage] && costs[stage].indirect) || { amount: "", currency: "" }), [key]: val } } } });
-  const setStageInvoice = (stage, file) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), invoiceFile: file } } });
+  const stageInvoiceFiles = (stage) => (costs[stage] && costs[stage].invoiceFiles) || ((costs[stage] && costs[stage].invoiceFile) ? [costs[stage].invoiceFile] : []);
+  const setStageInvoiceFiles = (stage, files) => onUpdate({ costs: { ...costs, [stage]: { ...(costs[stage] || { amount: "", currency: "", supplierName: "" }), invoiceFiles: files } } });
   const setSimple = (field, key, val) => onUpdate({ [field]: { ...(piece[field] || { amount: "", currency: "" }), [key]: val } });
   const mainSupplier = stages.map((s) => costs[s] && costs[s].supplierName).find(Boolean) || piece.currentLocation || "\u2014";
   return h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 10 } },
@@ -9435,7 +9541,7 @@ function PieceCostCard({ piece, onUpdate, exchangeRate }) {
             h("option", { value: "\u062C\u0646\u064A\u0647" }, "\u062C\u0646\u064A\u0647")
           )
         ) : null,
-        h(FileAttachField, { label: "\u0641\u0627\u062A\u0648\u0631\u0629 " + stage, file: (costs[stage] && costs[stage].invoiceFile) || null, onChange: (f) => setStageInvoice(stage, f), onRemove: () => setStageInvoice(stage, null), folder: "stage-invoices" })
+        h(MultiFileAttachField, { label: "\u0641\u0627\u062A\u0648\u0631\u0629 " + stage, files: stageInvoiceFiles(stage), onAdd: (f) => setStageInvoiceFiles(stage, [...stageInvoiceFiles(stage), f]), onRemove: (idx) => setStageInvoiceFiles(stage, stageInvoiceFiles(stage).filter((_, i) => i !== idx)), folder: "stage-invoices" })
       )),
       h("div", { style: { marginBottom: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.bg}` } },
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 4 } }, "\u{1F4BC} \u0645\u0635\u0627\u0631\u064A\u0641 \u0625\u062F\u0627\u0631\u064A\u0629"),
