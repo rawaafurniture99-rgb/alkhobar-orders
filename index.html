@@ -7743,20 +7743,22 @@ function ProductionDelaysPage({ pieces, onBack }) {
     const d = pieceDeadlineDiff(p);
     return d !== null && d < 0;
   }).filter((p) => (!query.trim() || (p.customerName || "").includes(query.trim())) && (fLocation.length === 0 || fLocation.includes(p.currentLocation)));
-  const groupKey = (p) => p.splitGroupId || p.id;
+  const groupKey = (p) => normCustomerName(p.customerName) + "|" + (p.currentLocation || "");
   const groupsMap = {};
   delayedRaw.forEach((p) => { (groupsMap[groupKey(p)] = groupsMap[groupKey(p)] || []).push(p); });
   const delayed = Object.values(groupsMap).map((group) => {
     const rep = group.reduce((worst, p) => (pieceDeadlineDiff(p) < pieceDeadlineDiff(worst) ? p : worst), group[0]);
-    const locations = Array.from(new Set(group.map((p) => p.currentLocation).filter(Boolean)));
-    return { ...rep, currentLocation: locations.length > 1 ? locations.join(" / ") : rep.currentLocation, _groupSize: group.length };
+    const types = Array.from(new Set(group.map((p) => p.pieceType).filter(Boolean)));
+    const entities = Array.from(new Set(group.map((p) => p.manufacturingEntity).filter(Boolean)));
+    return { ...rep, pieceType: types.join("\u060C "), manufacturingEntity: entities.length > 1 ? entities.join(" / ") : rep.manufacturingEntity, _groupPieces: group, _groupSize: group.length };
   }).sort((a, b) => (a.agreedDeadline || "").localeCompare(b.agreedDeadline || ""));
   const locationOptions = Array.from(new Set(pieces.map((p) => p.currentLocation).filter(Boolean)));
   const cols = ["\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0645\u0631\u062D\u0644\u0629/\u0627\u0644\u0645\u0643\u0627\u0646", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647", "\u0645\u062F\u0629 \u0627\u0644\u062A\u0623\u062E\u064A\u0631", "\u062A\u0630\u0643\u064A\u0631"];
   const exportRows = () => delayed.map((p) => [p.customerName || "\u2014", p.pieceType || "\u2014", p.currentLocation || "\u2014", p.manufacturingEntity || "\u2014", p.agreedDeadline || "\u2014", Math.abs(pieceDeadlineDiff(p)) + " \u064A\u0648\u0645"]);
   const sendReminder = (p) => {
     const daysLate = Math.abs(pieceDeadlineDiff(p));
-    const msg = "\u062A\u0630\u0643\u064A\u0631 \u0628\u062E\u0635\u0648\u0635 \u0642\u0637\u0639\u0629 \u0645\u062A\u0623\u062E\u0631\u0629:\n\u0627\u0644\u0639\u0645\u064A\u0644: " + (p.customerName || "\u2014") + "\n\u0627\u0644\u0635\u0646\u0641: " + (p.pieceType || "\u2014") + "\n\u0643\u0627\u0646 \u0645\u062A\u0641\u0642 \u0639\u0644\u0649 \u062A\u0633\u0644\u064A\u0645\u0647\u0627 \u064A\u0648\u0645: " + (p.agreedDeadline || "\u2014") + "\n\u0645\u062A\u0623\u062E\u0631\u0629 \u062D\u0627\u0644\u064A\u064B\u0627 " + daysLate + " \u064A\u0648\u0645\n\u0628\u0631\u062C\u0627\u0621 \u0627\u0644\u0645\u062A\u0627\u0628\u0639\u0629\u060C \u0634\u0643\u0631\u064B\u0627";
+    const countLine = p._groupSize > 1 ? "\n\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639: " + p._groupSize : "";
+    const msg = "\u062A\u0630\u0643\u064A\u0631 \u0628\u062E\u0635\u0648\u0635 \u0642\u0637\u0639\u0629 \u0645\u062A\u0623\u062E\u0631\u0629:\n\u0627\u0644\u0639\u0645\u064A\u0644: " + (p.customerName || "\u2014") + "\n\u0627\u0644\u0635\u0646\u0641: " + (p.pieceType || "\u2014") + countLine + "\n\u0643\u0627\u0646 \u0645\u062A\u0641\u0642 \u0639\u0644\u0649 \u062A\u0633\u0644\u064A\u0645\u0647\u0627 \u064A\u0648\u0645: " + (p.agreedDeadline || "\u2014") + "\n\u0645\u062A\u0623\u062E\u0631\u0629 \u062D\u0627\u0644\u064A\u064B\u0627 " + daysLate + " \u064A\u0648\u0645\n\u0628\u0631\u062C\u0627\u0621 \u0627\u0644\u0645\u062A\u0627\u0628\u0639\u0629\u060C \u0634\u0643\u0631\u064B\u0627";
     window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
   };
   return h("div", null,
@@ -7773,9 +7775,9 @@ function ProductionDelaysPage({ pieces, onBack }) {
         h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
         h("tbody", null, delayed.map((p) => {
           const d = pieceDeadlineDiff(p);
-          return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+          return h("tr", { key: p.customerName + "|" + p.currentLocation, style: { borderBottom: `1px solid ${COLORS.border}` } },
             h("td", { style: { padding: "9px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "\u2014"),
-            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
+            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (p.pieceType || "\u2014") + (p._groupSize > 1 ? " (\u00D7" + p._groupSize + ")" : "")),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, p.currentLocation || "\u2014"),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
