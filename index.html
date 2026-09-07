@@ -4949,11 +4949,11 @@ function RevisionNoteModal({ order, onClose, onSave }) {
   const [note, setNote] = useState(order.revisionNote || "");
   const [file, setFile] = useState(order.revisionFile || null);
   return h(Modal, { title: "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", onClose },
-    h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644\u0647\u060C \u0648\u0645\u0645\u0643\u0646 \u062A\u0631\u0641\u0642\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u064A\u0648\u0636\u062D. \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0643\u0628\u064A\u0631\u0629 \u0642\u062F \u062A\u0641\u0634\u0644 \u0641\u064A \u0627\u0644\u062D\u0641\u0638 \u2014 \u0641\u0636\u0651\u0644\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u062C\u062F\u0627\u064B \u0623\u0648 \u0631\u0627\u0628\u0637 \u062E\u0627\u0631\u062C\u064A."),
-    h("label", { style: labelStyle }, "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628"),
-    h("textarea", { style: { ...fieldStyle, minHeight: 90, resize: "vertical" }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644..." }),
+    h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644\u0647 \u0628\u0627\u0644\u062A\u0641\u0635\u064A\u0644 \u2014 \u0627\u0644\u0646\u0635 \u062F\u0647 \u0647\u0648 \u0627\u0644\u0644\u064A \u0647\u064A\u0648\u0635\u0644 \u0644\u0644\u0645\u0647\u0646\u062F\u0633 \u0641\u064A \u0627\u0644\u0625\u0634\u0639\u0627\u0631 \u0648\u0647\u064A\u0634\u0648\u0641\u0647 \u0641\u064A \u0637\u0644\u0628\u0627\u062A\u0647\u060C \u0641\u0645\u0645\u0643\u0646 \u062A\u0631\u0641\u0642\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u064A\u0648\u0636\u062D \u0645\u0639\u0627\u0647. \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0643\u0628\u064A\u0631\u0629 \u0642\u062F \u062A\u0641\u0634\u0644 \u0641\u064A \u0627\u0644\u062D\u0641\u0638 \u2014 \u0641\u0636\u0651\u0644\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u062C\u062F\u0627\u064B \u0623\u0648 \u0631\u0627\u0628\u0637 \u062E\u0627\u0631\u062C\u064A."),
+    h("label", { style: labelStyle }, "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 *"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 90, resize: "vertical" }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644... (\u0645\u0637\u0644\u0648\u0628 \u0644\u0644\u062D\u0641\u0638)" }),
     h(FileAttachField, { label: "\u0641\u064A\u062F\u064A\u0648 \u0623\u0648 \u0645\u0644\u0641 \u062A\u0648\u0636\u064A\u062D\u064A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file, onChange: setFile, onRemove: () => setFile(null), folder: "revision-notes", accept: "video/*,image/*" }),
-    h("button", { style: primaryBtn(false), onClick: () => onSave({ revisionNote: note.trim(), revisionFile: file }) }, "\u062D\u0641\u0638")
+    h("button", { style: primaryBtn(!note.trim()), disabled: !note.trim(), onClick: () => onSave({ revisionNote: note.trim(), revisionFile: file }) }, "\u062D\u0641\u0638 \u0648\u0625\u0634\u0639\u0627\u0631 \u0627\u0644\u0645\u0647\u0646\u062F\u0633")
   );
 }
 function SalesApprovalPage({ orders, onOpen, onUpdateOrder, emailToName, onNotify, reviewTeamEmails, myEmail }) {
@@ -5021,23 +5021,18 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const deptStatusOf = (o, d) => deptData(o, d).reviewStatus || "";
   const setReview = (o, val) => {
     const patch = { reviewStatus: val };
-    if (val === "يوجد تعديل") {
-      patch.inRevisionAt = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = false;
-      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل", orderId: o.id, kind: "revision" });
-    } else if (val === "تمت المراجعة") {
+    if (val === "تمت المراجعة") {
       patch.reviewDate = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = true;
       if (!o.distributionHandled) patch.distributionHandled = false;
       if (!o.materialsHandled) patch.materialsHandled = false;
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
     } else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
-    if (val === "يوجد تعديل") setRevisingOrder({ order: o, dept: null });
   };
   const setDeptReview = (o, d, val) => {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const existing = deptData(o, d);
     const deptPatch = { reviewStatus: val };
-    if (val === "يوجد تعديل") deptPatch.inRevisionAt = now;
     if (val === "تمت المراجعة") deptPatch.reviewDate = now;
     const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...existing, ...deptPatch } };
     const allDepts = departmentsFor(o);
@@ -5053,11 +5048,10 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
     } else if (overall === "يوجد تعديل") {
       patch.inRevisionAt = now; patch.approved = false;
-      const flaggedNames = allDepts.filter((dep) => (newDepartmentReviews[dep] || {}).reviewStatus === "يوجد تعديل").join("، ");
-      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل — " + flaggedNames, orderId: o.id, kind: "revision" });
+      const flaggedWithNotes = allDepts.filter((dep) => (newDepartmentReviews[dep] || {}).reviewStatus === "يوجد تعديل").map((dep) => dep + ((newDepartmentReviews[dep] || {}).revisionNote ? (": " + newDepartmentReviews[dep].revisionNote) : "")).join("\n");
+      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل:\n" + flaggedWithNotes, orderId: o.id, kind: "revision" });
     } else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
-    if (val === "يوجد تعديل") setRevisingOrder({ order: o, dept: d });
   };
   const setReviewDateManually = (o, localDateTime) => {
     if (!localDateTime) return;
@@ -5124,17 +5118,24 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     const data = d === null ? o : deptData(o, d);
     const hasContent = data.revisionNote || data.revisionFile;
     const canAdd = subTab !== "revisions" && isAdminUser;
-    return h("td", { style: { padding: "9px 10px", maxWidth: 220, minWidth: 150, whiteSpace: "normal", cursor: (hasContent || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (hasContent || isAdminUser) setRevisingOrder({ order: o, dept: d }); } },
+    return h("td", { style: { padding: "9px 10px", maxWidth: 220, minWidth: 150, whiteSpace: "normal", cursor: (hasContent || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (hasContent || isAdminUser) startRevision(o, d); } },
       hasContent ? h("div", null,
         data.revisionNote ? h("div", { style: { fontSize: 12, color: COLORS.ink, lineHeight: 1.5 } }, data.revisionNote) : null,
         data.revisionFile ? h("a", { href: data.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: data.revisionNote ? 4 : 0, textDecoration: "none" } }, h(Emoji, { size: 11 }, "📎"), data.revisionFile.name || "مرفق") : null
       ) : (canAdd ? h("span", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700 } }, "+ إضافة") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "—"))
     );
   };
+  const startRevision = (o, d) => {
+    const existing = d ? deptData(o, d) : o;
+    setRevisingOrder({ order: o, dept: d, existingNote: existing.revisionNote || "", existingFile: existing.revisionFile || null, wasAlreadyFlagged: (d ? deptStatusOf(o, d) : (o.reviewStatus || "")) === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", existingInRevisionAt: existing.inRevisionAt || null });
+  };
   const statusCell = (o, d) => {
     const status = d === null ? (o.reviewStatus || "") : deptStatusOf(o, d);
-    if (subTab === "revisions") return h("td", { style: { padding: "9px 10px" } }, h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, status || "—"));
-    return h("td", { style: { padding: "9px 10px" } }, h("select", { value: status, disabled: !isAdminUser, onChange: (e) => d === null ? setReview(o, e.target.value) : setDeptReview(o, d, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+    if (subTab === "revisions") return h("td", { style: { padding: "9px 10px" } },
+      h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, status || "\u2014"),
+      (isAdminUser && status === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") ? h("button", { onClick: () => startRevision(o, d), style: { marginInlineStart: 6, background: "transparent", border: "none", color: COLORS.teal, cursor: "pointer", fontSize: 12 } }, "\u270F\uFE0F") : null
+    );
+    return h("td", { style: { padding: "9px 10px" } }, h("select", { value: status, disabled: !isAdminUser, onChange: (e) => { const v = e.target.value; if (v === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") { startRevision(o, d); } else { d === null ? setReview(o, v) : setDeptReview(o, d, v); } }, style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
       h("option", { value: "" }, "لم يراجع"),
       h("option", { value: "يوجد تعديل" }, "يوجد تعديل"),
       h("option", { value: "تمت المراجعة" }, "تمت المراجعة")
@@ -5219,15 +5220,27 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
       )
     ),
     revisingOrder ? h(RevisionNoteModal, {
-      order: revisingOrder.dept ? { revisionNote: deptData(revisingOrder.order, revisingOrder.dept).revisionNote, revisionFile: deptData(revisingOrder.order, revisingOrder.dept).revisionFile } : revisingOrder.order,
+      order: { revisionNote: revisingOrder.existingNote, revisionFile: revisingOrder.existingFile },
       onClose: () => setRevisingOrder(null),
       onSave: (patch) => {
-        if (revisingOrder.dept) {
-          const o = revisingOrder.order, d = revisingOrder.dept;
-          const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), ...patch } };
-          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews });
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const o = revisingOrder.order, d = revisingOrder.dept;
+        const isNewFlag = !revisingOrder.wasAlreadyFlagged;
+        const inRevisionAt = isNewFlag ? now : (revisingOrder.existingInRevisionAt || now);
+        const noteText = (patch.revisionNote || "").trim();
+        if (d) {
+          const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt } };
+          const allDepts = departmentsFor(o);
+          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false });
+          if (isNewFlag && onNotify) {
+            const flaggedWithNotes = allDepts.filter((dep) => dep === d || deptStatusOf(o, dep) === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644").map((dep) => { const n = dep === d ? noteText : (deptData(o, dep).revisionNote || ""); return dep + (n ? (": " + n) : ""); }).join("\n");
+            onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644:\n" + flaggedWithNotes, orderId: o.id, kind: "revision" });
+          }
         } else {
-          onUpdateOrder(revisingOrder.order.id, patch);
+          onUpdateOrder(o.id, { ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false });
+          if (isNewFlag && onNotify) {
+            onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644" + (noteText ? ":\n" + noteText : ""), orderId: o.id, kind: "revision" });
+          }
         }
         setRevisingOrder(null);
       }
@@ -11616,7 +11629,13 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
         h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, marginBottom: 8 } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
         names.map((name) => h("div", { key: name, style: { marginBottom: 12 } },
           h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
-            h("div", { style: { fontWeight: 700, fontSize: 14 } }, name),
+            h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+              selection && selection.onToggleGroup ? h("label", { style: { display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: COLORS.teal, cursor: "pointer" } },
+                h("input", { type: "checkbox", checked: customerGroups[name].every((p) => selection.selected.includes(p.id)), onChange: (e) => selection.onToggleGroup(customerGroups[name].map((p) => p.id), e.target.checked) }),
+                "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0643\u0644"
+              ) : null,
+              h("div", { style: { fontWeight: 700, fontSize: 14 } }, name)
+            ),
             orderFileFor(customerGroups[name][0]) ? h("a", { href: orderFileFor(customerGroups[name][0]).dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
           ),
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10 } },
@@ -11689,6 +11708,7 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const selectGroup = (ids, shouldSelect) => setBulkSelected((cur) => shouldSelect ? Array.from(new Set([...cur, ...ids])) : cur.filter((id) => !ids.includes(id)));
   const canBulkEdit = isAdminUser || !statusOnly;
   const bulkMove = () => {
     if (!bulkTarget || bulkSelected.length === 0) return;
@@ -11789,7 +11809,7 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
@@ -11809,6 +11829,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const selectGroup = (ids, shouldSelect) => setBulkSelected((cur) => shouldSelect ? Array.from(new Set([...cur, ...ids])) : cur.filter((id) => !ids.includes(id)));
   const canBulkEdit = isAdminUser || !statusOnly;
   const bulkApplyStatus = () => {
     if (bulkSelected.length === 0) return;
@@ -11875,7 +11896,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
