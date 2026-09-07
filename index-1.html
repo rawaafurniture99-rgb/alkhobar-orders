@@ -1971,8 +1971,8 @@ function App() {
         tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder, onSubNav: subNavApi }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, orders: activeOrders, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
-        tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production"), orders: activeOrders }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, orders: activeOrders, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, isOwner, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
+        tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production"), orders: activeOrders, isOwner }),
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
@@ -2178,6 +2178,7 @@ function App() {
               drill("product-shipments", "product-shipments", null, null),
               drill("finishing", "finishing"),
               simple("today-queue"),
+              drill("delivery-plans", "delivery-plans"),
               simple("deliveries")
             ] },
             { title: "\u{1F465} \u0627\u0644\u0639\u0645\u0644\u0627\u0621", tiles: [
@@ -2185,7 +2186,6 @@ function App() {
               drill("gallery", "gallery"),
               drill("ratings", "ratings"),
               drill("customer-value", "customer-value"),
-              drill("delivery-plans", "delivery-plans"),
               drill("appointments", "appointments")
             ] },
             { title: "\u{1F4B0} \u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631", tiles: [
@@ -4787,8 +4787,9 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
   const [mainView, setMainView] = useState("before");
   const [drawingsFor, setDrawingsFor] = useState(null);
   const orderHasTechnicalPiece = (o) => pieces.some((p) => pieceMatchesOrder(p, o, orders) && isTechnicalOfficePieceType(p.pieceType));
-  const preScoped = orders.filter((o) => o.approved && !o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
-  const scoped = orders.filter((o) => o.approved && o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
+  const hasEnteredReview = (o) => !!o.createdBy && o.salesManagerApproval !== "rejected" && (!o.requiresSalesManagerApproval || o.salesManagerApproval === "approved");
+  const preScoped = orders.filter((o) => hasEnteredReview(o) && !o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
+  const scoped = orders.filter((o) => hasEnteredReview(o) && o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
   const isDone = (o) => o.technicalOfficeStatus === "\u062A\u0645";
   const isNotNeeded = (o) => o.technicalOfficeStatus === "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C";
   const byStatusTab = (list, t) => list.filter((o) => t === "active" ? (!isDone(o) && !isNotNeeded(o)) : t === "finished" ? isDone(o) : isNotNeeded(o));
@@ -4881,8 +4882,14 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
                 h("option", { value: "" }, "\u0644\u0645 \u064A\u0628\u062F\u0623"),
                 ["\u062C\u0627\u0631\u064A", "\u062A\u0645", "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C"].map((s) => h("option", { key: s, value: s }, s))
               )),
-              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", { type: "date", value: o.technicalOfficeStartDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeStartDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
-              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", { type: "date", value: o.technicalOfficeEndDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeEndDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }))
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("div", { style: { display: "flex", alignItems: "center", gap: 3 } },
+                h("input", { type: "date", value: o.technicalOfficeStartDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeStartDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }),
+                o.technicalOfficeStartDate ? h("button", { onClick: () => onUpdate(o.id, { technicalOfficeStartDate: "" }), style: { background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 13, padding: 0 } }, "\u2715") : null
+              )),
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("div", { style: { display: "flex", alignItems: "center", gap: 3 } },
+                h("input", { type: "date", value: o.technicalOfficeEndDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeEndDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }),
+                o.technicalOfficeEndDate ? h("button", { onClick: () => onUpdate(o.id, { technicalOfficeEndDate: "" }), style: { background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 13, padding: 0 } }, "\u2715") : null
+              ))
             )))
           )
         )
@@ -4949,11 +4956,11 @@ function RevisionNoteModal({ order, onClose, onSave }) {
   const [note, setNote] = useState(order.revisionNote || "");
   const [file, setFile] = useState(order.revisionFile || null);
   return h(Modal, { title: "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628", onClose },
-    h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644\u0647\u060C \u0648\u0645\u0645\u0643\u0646 \u062A\u0631\u0641\u0642\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u064A\u0648\u0636\u062D. \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0643\u0628\u064A\u0631\u0629 \u0642\u062F \u062A\u0641\u0634\u0644 \u0641\u064A \u0627\u0644\u062D\u0641\u0638 \u2014 \u0641\u0636\u0651\u0644\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u062C\u062F\u0627\u064B \u0623\u0648 \u0631\u0627\u0628\u0637 \u062E\u0627\u0631\u062C\u064A."),
-    h("label", { style: labelStyle }, "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628"),
-    h("textarea", { style: { ...fieldStyle, minHeight: 90, resize: "vertical" }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644..." }),
+    h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 10 } }, "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644\u0647 \u0628\u0627\u0644\u062A\u0641\u0635\u064A\u0644 \u2014 \u0627\u0644\u0646\u0635 \u062F\u0647 \u0647\u0648 \u0627\u0644\u0644\u064A \u0647\u064A\u0648\u0635\u0644 \u0644\u0644\u0645\u0647\u0646\u062F\u0633 \u0641\u064A \u0627\u0644\u0625\u0634\u0639\u0627\u0631 \u0648\u0647\u064A\u0634\u0648\u0641\u0647 \u0641\u064A \u0637\u0644\u0628\u0627\u062A\u0647\u060C \u0641\u0645\u0645\u0643\u0646 \u062A\u0631\u0641\u0642\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u064A\u0648\u0636\u062D \u0645\u0639\u0627\u0647. \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0643\u0628\u064A\u0631\u0629 \u0642\u062F \u062A\u0641\u0634\u0644 \u0641\u064A \u0627\u0644\u062D\u0641\u0638 \u2014 \u0641\u0636\u0651\u0644\u064A \u0641\u064A\u062F\u064A\u0648 \u0642\u0635\u064A\u0631 \u062C\u062F\u0627\u064B \u0623\u0648 \u0631\u0627\u0628\u0637 \u062E\u0627\u0631\u062C\u064A."),
+    h("label", { style: labelStyle }, "\u0627\u0644\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 *"),
+    h("textarea", { style: { ...fieldStyle, minHeight: 90, resize: "vertical" }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u062A\u0641\u0627\u0635\u064A\u0644... (\u0645\u0637\u0644\u0648\u0628 \u0644\u0644\u062D\u0641\u0638)" }),
     h(FileAttachField, { label: "\u0641\u064A\u062F\u064A\u0648 \u0623\u0648 \u0645\u0644\u0641 \u062A\u0648\u0636\u064A\u062D\u064A (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)", file, onChange: setFile, onRemove: () => setFile(null), folder: "revision-notes", accept: "video/*,image/*" }),
-    h("button", { style: primaryBtn(false), onClick: () => onSave({ revisionNote: note.trim(), revisionFile: file }) }, "\u062D\u0641\u0638")
+    h("button", { style: primaryBtn(!note.trim()), disabled: !note.trim(), onClick: () => onSave({ revisionNote: note.trim(), revisionFile: file }) }, "\u062D\u0641\u0638 \u0648\u0625\u0634\u0639\u0627\u0631 \u0627\u0644\u0645\u0647\u0646\u062F\u0633")
   );
 }
 function SalesApprovalPage({ orders, onOpen, onUpdateOrder, emailToName, onNotify, reviewTeamEmails, myEmail }) {
@@ -5021,23 +5028,18 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const deptStatusOf = (o, d) => deptData(o, d).reviewStatus || "";
   const setReview = (o, val) => {
     const patch = { reviewStatus: val };
-    if (val === "يوجد تعديل") {
-      patch.inRevisionAt = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = false;
-      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل", orderId: o.id, kind: "revision" });
-    } else if (val === "تمت المراجعة") {
+    if (val === "تمت المراجعة") {
       patch.reviewDate = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = true;
       if (!o.distributionHandled) patch.distributionHandled = false;
       if (!o.materialsHandled) patch.materialsHandled = false;
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
     } else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
-    if (val === "يوجد تعديل") setRevisingOrder({ order: o, dept: null });
   };
   const setDeptReview = (o, d, val) => {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const existing = deptData(o, d);
     const deptPatch = { reviewStatus: val };
-    if (val === "يوجد تعديل") deptPatch.inRevisionAt = now;
     if (val === "تمت المراجعة") deptPatch.reviewDate = now;
     const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...existing, ...deptPatch } };
     const allDepts = departmentsFor(o);
@@ -5053,11 +5055,10 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
     } else if (overall === "يوجد تعديل") {
       patch.inRevisionAt = now; patch.approved = false;
-      const flaggedNames = allDepts.filter((dep) => (newDepartmentReviews[dep] || {}).reviewStatus === "يوجد تعديل").join("، ");
-      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل — " + flaggedNames, orderId: o.id, kind: "revision" });
+      const flaggedWithNotes = allDepts.filter((dep) => (newDepartmentReviews[dep] || {}).reviewStatus === "يوجد تعديل").map((dep) => dep + ((newDepartmentReviews[dep] || {}).revisionNote ? (": " + newDepartmentReviews[dep].revisionNote) : "")).join("\n");
+      if (onNotify) onNotify({ toEmails: [o.createdBy], title: "مطلوب تعديل على أوردر", body: "أوردر " + (o.clientName || "") + " محتاج تعديل:\n" + flaggedWithNotes, orderId: o.id, kind: "revision" });
     } else { patch.approved = false; }
     onUpdateOrder(o.id, patch);
-    if (val === "يوجد تعديل") setRevisingOrder({ order: o, dept: d });
   };
   const setReviewDateManually = (o, localDateTime) => {
     if (!localDateTime) return;
@@ -5124,17 +5125,24 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     const data = d === null ? o : deptData(o, d);
     const hasContent = data.revisionNote || data.revisionFile;
     const canAdd = subTab !== "revisions" && isAdminUser;
-    return h("td", { style: { padding: "9px 10px", maxWidth: 220, minWidth: 150, whiteSpace: "normal", cursor: (hasContent || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (hasContent || isAdminUser) setRevisingOrder({ order: o, dept: d }); } },
+    return h("td", { style: { padding: "9px 10px", maxWidth: 220, minWidth: 150, whiteSpace: "normal", cursor: (hasContent || isAdminUser) ? "pointer" : "default" }, onClick: () => { if (hasContent || isAdminUser) startRevision(o, d); } },
       hasContent ? h("div", null,
         data.revisionNote ? h("div", { style: { fontSize: 12, color: COLORS.ink, lineHeight: 1.5 } }, data.revisionNote) : null,
         data.revisionFile ? h("a", { href: data.revisionFile.dataUrl, target: "_blank", rel: "noreferrer", onClick: (e) => e.stopPropagation(), style: { fontSize: 11, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 4, marginTop: data.revisionNote ? 4 : 0, textDecoration: "none" } }, h(Emoji, { size: 11 }, "📎"), data.revisionFile.name || "مرفق") : null
       ) : (canAdd ? h("span", { style: { fontSize: 11, color: COLORS.teal, fontWeight: 700 } }, "+ إضافة") : h("span", { style: { fontSize: 12, color: COLORS.muted } }, "—"))
     );
   };
+  const startRevision = (o, d) => {
+    const existing = d ? deptData(o, d) : o;
+    setRevisingOrder({ order: o, dept: d, existingNote: existing.revisionNote || "", existingFile: existing.revisionFile || null, wasAlreadyFlagged: (d ? deptStatusOf(o, d) : (o.reviewStatus || "")) === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", existingInRevisionAt: existing.inRevisionAt || null });
+  };
   const statusCell = (o, d) => {
     const status = d === null ? (o.reviewStatus || "") : deptStatusOf(o, d);
-    if (subTab === "revisions") return h("td", { style: { padding: "9px 10px" } }, h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, status || "—"));
-    return h("td", { style: { padding: "9px 10px" } }, h("select", { value: status, disabled: !isAdminUser, onChange: (e) => d === null ? setReview(o, e.target.value) : setDeptReview(o, d, e.target.value), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
+    if (subTab === "revisions") return h("td", { style: { padding: "9px 10px" } },
+      h("span", { style: { fontSize: 12, fontWeight: 700, color: COLORS.gold } }, status || "\u2014"),
+      (isAdminUser && status === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") ? h("button", { onClick: () => startRevision(o, d), style: { marginInlineStart: 6, background: "transparent", border: "none", color: COLORS.teal, cursor: "pointer", fontSize: 12 } }, "\u270F\uFE0F") : null
+    );
+    return h("td", { style: { padding: "9px 10px" } }, h("select", { value: status, disabled: !isAdminUser, onChange: (e) => { const v = e.target.value; if (v === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") { startRevision(o, d); } else { d === null ? setReview(o, v) : setDeptReview(o, d, v); } }, style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } },
       h("option", { value: "" }, "لم يراجع"),
       h("option", { value: "يوجد تعديل" }, "يوجد تعديل"),
       h("option", { value: "تمت المراجعة" }, "تمت المراجعة")
@@ -5219,15 +5227,27 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
       )
     ),
     revisingOrder ? h(RevisionNoteModal, {
-      order: revisingOrder.dept ? { revisionNote: deptData(revisingOrder.order, revisingOrder.dept).revisionNote, revisionFile: deptData(revisingOrder.order, revisingOrder.dept).revisionFile } : revisingOrder.order,
+      order: { revisionNote: revisingOrder.existingNote, revisionFile: revisingOrder.existingFile },
       onClose: () => setRevisingOrder(null),
       onSave: (patch) => {
-        if (revisingOrder.dept) {
-          const o = revisingOrder.order, d = revisingOrder.dept;
-          const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), ...patch } };
-          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews });
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const o = revisingOrder.order, d = revisingOrder.dept;
+        const isNewFlag = !revisingOrder.wasAlreadyFlagged;
+        const inRevisionAt = isNewFlag ? now : (revisingOrder.existingInRevisionAt || now);
+        const noteText = (patch.revisionNote || "").trim();
+        if (d) {
+          const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt } };
+          const allDepts = departmentsFor(o);
+          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false });
+          if (isNewFlag && onNotify) {
+            const flaggedWithNotes = allDepts.filter((dep) => dep === d || deptStatusOf(o, dep) === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644").map((dep) => { const n = dep === d ? noteText : (deptData(o, dep).revisionNote || ""); return dep + (n ? (": " + n) : ""); }).join("\n");
+            onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644:\n" + flaggedWithNotes, orderId: o.id, kind: "revision" });
+          }
         } else {
-          onUpdateOrder(revisingOrder.order.id, patch);
+          onUpdateOrder(o.id, { ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false });
+          if (isNewFlag && onNotify) {
+            onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644" + (noteText ? ":\n" + noteText : ""), orderId: o.id, kind: "revision" });
+          }
         }
         setRevisingOrder(null);
       }
@@ -8549,12 +8569,13 @@ function DeliveryPlanEditorPage({ plan, clientName, deliveryDate, onSave, onBack
   const [rooms, setRooms] = useState((plan.rooms && plan.rooms.length) ? plan.rooms : [{ name: "", moveMinutes: "", assemblyLabor: "", assemblyMinutes: "" }]);
   const [inspectionMinutes, setInspectionMinutes] = useState(plan.inspectionMinutes || "");
   const [inspectorName, setInspectorName] = useState(plan.inspectorName || "");
+  const [deliveryPhotos, setDeliveryPhotos] = useState(plan.deliveryPhotos || []);
   const [notes, setNotes] = useState(plan.notes || "");
   const [saved, setSaved] = useState(false);
   const addRoom = () => setRooms((r) => [...r, { name: "", moveMinutes: "", assemblyLabor: "", assemblyMinutes: "" }]);
   const removeRoom = (i) => setRooms((r) => r.filter((_, idx) => idx !== i));
   const updateRoom = (i, key, val) => setRooms((r) => r.map((rm, idx) => idx === i ? { ...rm, [key]: val } : rm));
-  const currentPlan = { startTime, truckName, driverName, driverPhone, travelMinutes, loadingLabor, loadingMinutes, rooms, inspectionMinutes, inspectorName, notes };
+  const currentPlan = { startTime, truckName, driverName, driverPhone, travelMinutes, loadingLabor, loadingMinutes, rooms, inspectionMinutes, inspectorName, deliveryPhotos, notes };
   const timeline = buildDeliveryPlanTimeline(currentPlan);
   const save = () => { onSave(currentPlan); setSaved(true); setTimeout(() => setSaved(false), 2500); };
   const numInput = (value, onChange, placeholder) => h("input", { type: "number", min: 0, style: { ...fieldStyle, marginBottom: 0 }, value, placeholder: placeholder || "0", onChange: (e) => onChange(e.target.value) });
@@ -8614,6 +8635,11 @@ function DeliveryPlanEditorPage({ plan, clientName, deliveryDate, onSave, onBack
         h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0633\u0624\u0648\u0644 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, value: inspectorName, onChange: (e) => setInspectorName(e.target.value) }))
       )
     ]),
+    h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 14 } },
+      h("div", { style: { fontSize: 13.5, fontWeight: 700, marginBottom: 4 } }, "\u{1F4F8} \u0635\u0648\u0631 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
+      h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginBottom: 10 } }, "\u0644\u062A\u0648\u062B\u064A\u0642 \u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0637\u0639 \u0648\u0627\u0644\u062A\u0631\u0643\u064A\u0628 \u0628\u0639\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645\u060C \u0648\u0636\u0645\u0627\u0646 \u0627\u0644\u0627\u0644\u062A\u0632\u0627\u0645 \u0628\u0627\u0644\u062C\u0648\u062F\u0629"),
+      h(MultiFileAttachField, { files: deliveryPhotos, onAdd: (f) => setDeliveryPhotos((cur) => [...cur, f]), onRemove: (idx) => setDeliveryPhotos((cur) => cur.filter((_, i) => i !== idx)), folder: "delivery-photos", accept: "image/*" })
+    ),
     h("label", { style: labelStyle }, "\u{1F389} \u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u062A\u0633\u0644\u064A\u0645 (\u0627\u062E\u062A\u064A\u0627\u0631\u064A)"),
     h("textarea", { style: { ...fieldStyle, minHeight: 60 }, value: notes, onChange: (e) => setNotes(e.target.value) }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 20 } },
@@ -8663,7 +8689,7 @@ function DeliveryPlansHubPage({ orders, deliveryPlans, onSavePlan, onBack }) {
   const findPlan = (name, date) => deliveryPlans.find((p) => p.customerKey === name + "||" + (date || ""));
   const unitRow = (u, backView) => {
     const p = findPlan(u.name, u.date);
-    const hasPlan = !!(p && (p.startTime || p.travelMinutes || (p.rooms || []).some((r) => r.name || r.moveMinutes || r.assemblyMinutes)));
+    const hasPlan = !!(p && (p.startTime || p.travelMinutes || (p.deliveryPhotos && p.deliveryPhotos.length) || (p.rooms || []).some((r) => r.name || r.moveMinutes || r.assemblyMinutes)));
     return h("div", {
       key: u.name + "||" + u.date,
       onClick: () => setView({ type: "customer", name: u.name, date: u.date, back: backView }),
@@ -11503,7 +11529,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
+function ProductionBoardPage({ pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, isOwner, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
   const supplierOnlyLoc = (!myRoles.includes("admin") && myRoles.length === 1 && myRoles.includes("supplier") && mySupplierScope && mySupplierScope.length === 1) ? mySupplierScope[0] : null;
   const effectiveDeepLink = deepLink || (supplierOnlyLoc ? { entity: findEntityForLocation(supplierOnlyLoc, productionSuppliers, upholsterySuppliers), location: supplierOnlyLoc } : null);
   const [entity, setEntity] = useState((effectiveDeepLink && effectiveDeepLink.entity) || null);
@@ -11581,7 +11607,7 @@ function applyPieceStatusChange(piece, newStatus, specificTarget) {
   }
   return p;
 }
-function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn, orders) {
+function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn, orders, isOwner) {
   const orderFileFor = (p) => {
     if (!orders) return null;
     const o = orders.find((x) => pieceMatchesOrder(p, x, orders));
@@ -11610,7 +11636,13 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
         h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, marginBottom: 8 } }, h(Emoji, { size: 12 }, "\u{1F6A9}"), dateKey),
         names.map((name) => h("div", { key: name, style: { marginBottom: 12 } },
           h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
-            h("div", { style: { fontWeight: 700, fontSize: 14 } }, name),
+            h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+              selection && selection.onToggleGroup ? h("label", { style: { display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: COLORS.teal, cursor: "pointer" } },
+                h("input", { type: "checkbox", checked: customerGroups[name].every((p) => selection.selected.includes(p.id)), onChange: (e) => selection.onToggleGroup(customerGroups[name].map((p) => p.id), e.target.checked) }),
+                "\u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0643\u0644"
+              ) : null,
+              h("div", { style: { fontWeight: 700, fontSize: 14 } }, name)
+            ),
             orderFileFor(customerGroups[name][0]) ? h("a", { href: orderFileFor(customerGroups[name][0]).dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.teal, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none" } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
           ),
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10 } },
@@ -11635,9 +11667,9 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
                 h("td", { style: { padding: "8px 10px", maxWidth: 180, whiteSpace: "normal" } }, p.description || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stageInfo.start || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stageInfo.end || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(stageInfo.start || "", (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, start: v } } })) : (stageInfo.start || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(stageInfo.end || "", (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, end: v } } })) : (stageInfo.end || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(p.agreedDeadline || "", (v) => onUpdate({ ...p, agreedDeadline: v })) : (p.agreedDeadline || "\u2014")),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
                 h("td", { style: { padding: "8px 10px", minWidth: 160 }, onClick: (e) => e.stopPropagation() }, (canEditFn ? canEditFn(p) : true) ? h("textarea", {
                   defaultValue: p.notes || "",
@@ -11671,7 +11703,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
     })
   );
 }
-function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
+function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, isOwner, statusOnly, siblingLocations, myRoles }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -11683,6 +11715,7 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const selectGroup = (ids, shouldSelect) => setBulkSelected((cur) => shouldSelect ? Array.from(new Set([...cur, ...ids])) : cur.filter((id) => !ids.includes(id)));
   const canBulkEdit = isAdminUser || !statusOnly;
   const bulkMove = () => {
     if (!bulkTarget || bulkSelected.length === 0) return;
@@ -11783,13 +11816,13 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles, onSubNav }) {
+function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, isOwner, statusOnly, siblingLocations, myRoles, onSubNav }) {
   const [scope, setScope] = useState(null);
   useEffect(() => {
     if (!onSubNav || !scope) return;
@@ -11803,6 +11836,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  const selectGroup = (ids, shouldSelect) => setBulkSelected((cur) => shouldSelect ? Array.from(new Set([...cur, ...ids])) : cur.filter((id) => !ids.includes(id)));
   const canBulkEdit = isAdminUser || !statusOnly;
   const bulkApplyStatus = () => {
     if (bulkSelected.length === 0) return;
@@ -11869,7 +11903,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect } : null, onUpdate, canEditFn, orders),
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -11877,7 +11911,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
+    return h(DatePiecesTablePage, { pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, isOwner, statusOnly, siblingLocations, myRoles });
   }
 
   return h("div", null,
@@ -11991,9 +12025,9 @@ function EntityProductionPage({ entity, pieces, orders, productionSuppliers, uph
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
-    myRoles, onBack: () => setStageKey(null), deepLink, hideArchive, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
+    myRoles, isOwner, onBack: () => setStageKey(null), deepLink, hideArchive, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
 }
-function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
+function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, isOwner, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
   const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
@@ -12078,7 +12112,7 @@ function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onD
     ),
     (hideArchive ? "current" : viewMode) === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-        h(LocationPiecesTable, { pieces: locPieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
+        h(LocationPiecesTable, { pieces: locPieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), isOwner, statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
     ) : (
       archiveEntries.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0624\u0631\u0634\u0641\u0629 \u0644ـ" + activeLoc + " \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
         h(LocationArchiveTable, { entries: archiveEntries, activeLoc })
@@ -12163,7 +12197,24 @@ function LocationArchiveTable({ entries, activeLoc }) {
 }
 
 
-function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders) {
+function editableDateWithClear(val, onChange) {
+  return h("div", { style: { display: "flex", alignItems: "center", gap: 3 } },
+    h("input", { type: "date", value: val, onChange: (e) => onChange(e.target.value), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 110 } }),
+    val ? h("button", { onClick: () => onChange(""), title: "\u0645\u0633\u062D \u0627\u0644\u062A\u0627\u0631\u064A\u062E", style: { background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0 } }, "\u2715") : null
+  );
+}
+function fieldDateCell(p, field, onUpdate, isOwner, visible) {
+  if (visible === false) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, "\u2014");
+  const val = p[field] || "";
+  if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
+  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, editableDateWithClear(val, (v) => onUpdate({ ...p, [field]: v })));
+}
+function stgCell(p, stageKey, which, onUpdate, isOwner) {
+  const val = (p.stages && p.stages[stageKey] && p.stages[stageKey][which]) || "";
+  if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
+  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, editableDateWithClear(val, (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [stageKey]: { ...(p.stages && p.stages[stageKey]), [which]: v } } })));
+}
+function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders, isOwner) {
   const normName = normCustomerName;
   const fabricStatusCache = {};
   const computeFabricStatus = (customerName) => {
@@ -12198,26 +12249,26 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isNonFabricPieceType(p.pieceType) ? "\u2014" : (computeFabricStatus(p.customerName) || "\u2014")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "\u2014") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "\u2014") : "\u2014"),
+          fieldDateCell(p, "fabricShippingDate", onUpdate, isOwner, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631"),
+          fieldDateCell(p, "fabricArrivalDate", onUpdate, isOwner, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
           h("td", { style: { padding: "8px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, isSofaType(p.pieceType) ? (p.peopleCount || "\u2014") : "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, isWoodType(p.pieceType) ? (p.metersCount || "\u2014") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
+          fieldDateCell(p, "customerDeliveryDate", onUpdate, isOwner),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.supplierName || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u0646\u062C\u0627\u0631\u0629", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u0646\u062C\u0627\u0631\u0629", "end")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "end")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "end")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.actualDeliveryDate || "\u2014"),
+          stgCell(p, "\u0646\u062C\u0627\u0631\u0629", "start", onUpdate, isOwner),
+          stgCell(p, "\u0646\u062C\u0627\u0631\u0629", "end", onUpdate, isOwner),
+          stgCell(p, "\u062F\u0647\u0627\u0646", "start", onUpdate, isOwner),
+          stgCell(p, "\u062F\u0647\u0627\u0646", "end", onUpdate, isOwner),
+          stgCell(p, "\u062A\u0646\u062C\u064A\u062F", "start", onUpdate, isOwner),
+          stgCell(p, "\u062A\u0646\u062C\u064A\u062F", "end", onUpdate, isOwner),
+          fieldDateCell(p, "shippingDate", onUpdate, isOwner),
+          fieldDateCell(p, "arrivalDate", onUpdate, isOwner),
+          fieldDateCell(p, "actualDeliveryDate", onUpdate, isOwner),
           h("td", { style: { padding: "8px 10px", minWidth: 160 } }, canEdit && onUpdate ? h("textarea", {
             defaultValue: p.notes || "",
             placeholder: "\u0645\u0644\u0627\u062D\u0638\u0629...",
@@ -12229,7 +12280,7 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
     )
   );
 }
-function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
+function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState("customer");
   const [showFilters, setShowFilters] = useState(false);
@@ -12298,7 +12349,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
         ),
         h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")
       ),
-      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders))
+      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders, isOwner))
     );
     });
   } else {
@@ -12308,7 +12359,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     body = dates.map((date) => h("div", { key: date, style: { marginBottom: 14 } },
       h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, margin: "0 0 6px" } }, h(Emoji, { size: 12 }, "🚩"), date),
       h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", padding: 10 } },
-        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit, orders)
+        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit, orders, isOwner)
       )
     ));
   }
