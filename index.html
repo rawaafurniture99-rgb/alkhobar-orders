@@ -63,9 +63,6 @@ try {
     console.warn("Auth persistence setting failed:", e.code);
   });
   db = firebase.firestore();
-  db.enablePersistence({ synchronizeTabs: true }).catch((e) => {
-    console.warn("Offline persistence not enabled:", e.code);
-  });
   firebaseReady = true;
 } catch (e) {
   console.error("Firebase init failed", e);
@@ -1922,7 +1919,7 @@ function App() {
       h("div", { style: { padding: 16 } },
         homeDrilldown.type === "near-delivery" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: myScopedProductionPieces, emailToName, title: "\u0642\u0631\u064A\u0628\u0629 \u0645\u0646 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u23F3", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
         homeDrilldown.type === "ready" ? h(CustomerNameListPage, { names: homeDrilldown.names, orders: activeOrders, pieces: productionPieces, emailToName, title: "\u062C\u0627\u0647\u0632\u0629 \u0644\u0644\u062A\u0633\u0644\u064A\u0645", emoji: "\u{1F69A}", onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id); }, onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production") }) :
-        homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: myScopedProductionPieces, onBack: () => setHomeDrilldown(null) }) :
+        homeDrilldown.type === "production-delay" ? h(ProductionDelaysPage, { pieces: myScopedProductionPieces, onUpdate: updateProductionPiece, isOwner, onBack: () => setHomeDrilldown(null) }) :
         homeDrilldown.type === "delivery-delay" ? h(DeliveryDelaysPage, { pieces: productionPieces, onBack: () => setHomeDrilldown(null), onUpdate: updateProductionPiece, canEdit: hasRole("admin") || hasRole("production"), isAdminUser: hasRole("admin") }) :
         homeDrilldown.type === "pricing" ? h(PricingHubPage, { orders: activeOrders, pieces: productionPieces, onUpdatePiece: updateProductionPiece, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), onOpenOrder: (id) => { openOrder(id, "quote"); }, canSeeSub: (k) => canSeeSubTab("pricing", k), canEditSub: (k) => canEditSubTab("pricing", k), myRoles, mySupplierScope }) :
         homeDrilldown.type === "accounting" ? h(AccountingHubPage, { orders: activeOrders, pieces: productionPieces, expenses: generalExpenses, onAddExpense: addExpense, onUpdateExpense: updateExpense, onDeleteExpense: deleteExpense, onUpdateOrder: updateOrder, onBack: () => setHomeDrilldown(null), canSeeSub: (k) => canSeeSubTab("accounting", k), canEditSub: (k) => canEditSubTab("accounting", k) }) :
@@ -4882,8 +4879,14 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
                 h("option", { value: "" }, "\u0644\u0645 \u064A\u0628\u062F\u0623"),
                 ["\u062C\u0627\u0631\u064A", "\u062A\u0645", "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C"].map((s) => h("option", { key: s, value: s }, s))
               )),
-              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", { type: "date", value: o.technicalOfficeStartDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeStartDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
-              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", { type: "date", value: o.technicalOfficeEndDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeEndDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }))
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("div", { style: { display: "flex", flexDirection: "column", gap: 2 } },
+                h("input", { type: "date", value: o.technicalOfficeStartDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeStartDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }),
+                o.technicalOfficeStartDate ? h("button", { onClick: () => onUpdate(o.id, { technicalOfficeStartDate: "" }), style: { display: "flex", alignItems: "center", gap: 3, background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 10.5, fontWeight: 700, padding: "2px 0" } }, h(Emoji, { size: 11 }, "\u{1F5D1}\uFE0F"), "\u0645\u062D\u0648 \u0627\u0644\u062A\u0627\u0631\u064A\u062E") : null
+              )),
+              h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("div", { style: { display: "flex", flexDirection: "column", gap: 2 } },
+                h("input", { type: "date", value: o.technicalOfficeEndDate || "", onChange: (e) => onUpdate(o.id, { technicalOfficeEndDate: e.target.value }), style: { fontSize: 11.5, padding: "5px 7px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }),
+                o.technicalOfficeEndDate ? h("button", { onClick: () => onUpdate(o.id, { technicalOfficeEndDate: "" }), style: { display: "flex", alignItems: "center", gap: 3, background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 10.5, fontWeight: 700, padding: "2px 0" } }, h(Emoji, { size: 11 }, "\u{1F5D1}\uFE0F"), "\u0645\u062D\u0648 \u0627\u0644\u062A\u0627\u0631\u064A\u062E") : null
+              ))
             )))
           )
         )
@@ -6557,9 +6560,9 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, (row.quantity || "\u2014") + " " + (row.unit || "")),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, row.availability || "\u2014"),
             h("td", { style: { padding: "10px" } }, h("select", { value: row.fabricShippingStatus || "", disabled: readOnly, onChange: (e) => onShippingStatusChange(row, e.target.value), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 110, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" }, "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646"))),
-            h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: row.fabricShippingDate || "", disabled: readOnly, onChange: (e) => updateMaterialField(row.orderId, row.materialId, { fabricShippingDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
+            h("td", { style: { padding: "10px" } }, readOnly ? h("input", { type: "date", value: row.fabricShippingDate || "", disabled: true, style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }) : editableDateWithClear(row.fabricShippingDate || "", (v) => updateMaterialField(row.orderId, row.materialId, { fabricShippingDate: v }))),
             h("td", { style: { padding: "10px" } }, h("select", { value: row.fabricArrivalStatus || "", disabled: readOnly, onChange: (e) => onArrivalStatusChange(row, e.target.value), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))),
-            h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: row.fabricArrivalDate || "", disabled: readOnly, onChange: (e) => updateMaterialField(row.orderId, row.materialId, { fabricArrivalDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }))
+            h("td", { style: { padding: "10px" } }, readOnly ? h("input", { type: "date", value: row.fabricArrivalDate || "", disabled: true, style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }) : editableDateWithClear(row.fabricArrivalDate || "", (v) => updateMaterialField(row.orderId, row.materialId, { fabricArrivalDate: v })))
           )))
         )
       )
@@ -6825,7 +6828,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
         h("option", { value: "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645"),
         h("option", { value: "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" }, "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")
       )),
-      h("td", { style: { padding: "9px 10px" } }, h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: readOnly, onChange: (e) => onUpdate({ ...p, actualDeliveryDate: e.target.value }), style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } })),
+      h("td", { style: { padding: "9px 10px" } }, readOnly ? h("input", { type: "date", value: p.actualDeliveryDate || "", disabled: true, style: { fontSize: 12, padding: "6px 8px", borderRadius: 7, border: `1px solid ${COLORS.border}` } }) : editableDateWithClear(p.actualDeliveryDate || "", (v) => onUpdate({ ...p, actualDeliveryDate: v }))),
       showAchievement ? h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: achBg, color: achColor, whiteSpace: "nowrap" } }, achEmoji + " " + a.type + (a.days ? " " + a.days + " \u064A\u0648\u0645" : "")) : "\u2014") : h("td", { style: { padding: "9px 10px" } }, "\u2014")
     );
   };
@@ -7791,9 +7794,9 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
             h("td", { style: { padding: "10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "—"),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, p.size || "—"),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.productShippingStatus || "", disabled, onChange: (e) => onShippingStatusChange(p, e.target.value), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 110, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "لم يتم الشحن"), h("option", { value: "تم الشحن" }, "تم الشحن"))),
-            h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.shippingDate || "", disabled, onChange: (e) => updatePiece(p, { shippingDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
+            h("td", { style: { padding: "10px" } }, disabled ? h("input", { type: "date", value: p.shippingDate || "", disabled: true, style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }) : editableDateWithClear(p.shippingDate || "", (v) => updatePiece(p, { shippingDate: v }))),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.productArrivalStatus || "", disabled, onChange: (e) => onArrivalStatusChange(p, e.target.value), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "وصل" }, "وصل"), h("option", { value: "لم يصل" }, "لم يصل"))),
-            h("td", { style: { padding: "10px" } }, h("input", { type: "date", value: p.arrivalDate || "", disabled, onChange: (e) => updatePiece(p, { arrivalDate: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } })),
+            h("td", { style: { padding: "10px" } }, disabled ? h("input", { type: "date", value: p.arrivalDate || "", disabled: true, style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }) : editableDateWithClear(p.arrivalDate || "", (v) => updatePiece(p, { arrivalDate: v }))),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.readinessStatus || "", disabled, onChange: (e) => updatePiece(p, { readinessStatus: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 120, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "منتج تام" }, "منتج تام"), h("option", { value: "خشب" }, "خشب"), h("option", { value: "خشب مصبوغ" }, "خشب مصبوغ"), h("option", { value: "نص تنجيد" }, "نص تنجيد"))),
             h("td", { style: { padding: "10px" } }, h("select", { value: p.finishingNeeded || "", disabled, onChange: (e) => updatePiece(p, { finishingNeeded: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 100, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }, h("option", { value: "" }, "غير محدد"), h("option", { value: "يحتاج" }, "يحتاج"), h("option", { value: "لا يحتاج" }, "لا يحتاج"))),
             h("td", { style: { padding: "10px" } }, h("input", { type: "text", value: p.finishingType || "", disabled, placeholder: "نوع التشطيب...", onChange: (e) => updatePiece(p, { finishingType: e.target.value }), style: { fontSize: 13, padding: "10px 8px", minHeight: 40, minWidth: 130, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "#fff" } }))
@@ -7899,7 +7902,7 @@ function FinishingPage({ pieces, onUpdate, onBack, canEdit, productionSuppliers 
     )
   );
 }
-function ProductionDelaysPage({ pieces, onBack }) {
+function ProductionDelaysPage({ pieces, onUpdate, isOwner, onBack }) {
   const [query, setQuery] = useState("");
   const [fLocation, setFLocation] = useState([]);
   const delayedRaw = pieces.filter((p) => {
@@ -7944,7 +7947,7 @@ function ProductionDelaysPage({ pieces, onBack }) {
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, (p.pieceType || "\u2014") + (p._groupSize > 1 ? " (\u00D7" + p._groupSize + ")" : "")),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, p.currentLocation || "\u2014"),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
-            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
+            h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" }, onClick: (isOwner && p._groupSize === 1) ? (e) => e.stopPropagation() : void 0 }, (isOwner && p._groupSize === 1) ? editableDateWithClear(p.agreedDeadline || "", (v) => onUpdate({ ...p._groupPieces[0], agreedDeadline: v })) : (p.agreedDeadline || "\u2014")),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, Math.abs(d) + " \u064A\u0648\u0645"),
             h("td", { style: { padding: "9px 10px", whiteSpace: "nowrap" } }, h("button", { onClick: () => sendReminder(p), style: { fontSize: 11.5, fontWeight: 700, color: "#fff", background: "#25D366", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 } }, h(Emoji, { size: 12 }, "\u{1F4E4}"), "\u062A\u0630\u0643\u064A\u0631"))
           );
@@ -10713,7 +10716,7 @@ function PricingPage({ order, pieces, onUpdate, onUpdatePiece, canEdit, branding
       return h(React.Fragment, null,
         remaining > 0 ? h("div", { style: { marginBottom: 10 } },
           h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0633\u062A\u062D\u0642\u0627\u0642 \u0627\u0644\u0645\u062A\u0628\u0642\u064A"),
-          h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", disabled: !canEdit, value: order.paymentDueDate || "", onChange: (e) => onUpdate({ paymentDueDate: e.target.value }) })
+          canEdit ? editableDateWithClear(order.paymentDueDate || "", (v) => onUpdate({ paymentDueDate: v })) : h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", disabled: true, value: order.paymentDueDate || "" })
         ) : null,
         h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 14.5, fontWeight: 700, background: remaining <= 0 ? "#E8F0E4" : "#FBF2E2", color: remaining <= 0 ? COLORS.green : COLORS.gold, borderRadius: 8, padding: "10px 12px", marginBottom: 10 } },
           h("span", null, remaining <= 0 ? "\u062A\u0645 \u0627\u0644\u0633\u062F\u0627\u062F \u0628\u0627\u0644\u0643\u0627\u0645\u0644" : "\u0627\u0644\u0645\u062A\u0628\u0642\u064A"),
@@ -10810,7 +10813,7 @@ function ProductionPage({ order, onUpdate }) {
   const updateStage = (key, patch) => onUpdate({ productionStages: stages.map((s) => s.key === key ? { ...s, ...patch } : s) });
   const addLog = (entry) => onUpdate({ productionLog: [entry, ...order.productionLog || []] });
   const removeLog = (id) => onUpdate({ productionLog: (order.productionLog || []).filter((l) => l.id !== id) });
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F464}", title: "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 4 } }, /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0637\u0644\u0628 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", file: order.manufacturingOrderFile, onChange: (file) => onUpdate({ manufacturingOrderFile: file }), onRemove: () => onUpdate({ manufacturingOrderFile: null }), folder: "manufacturing-orders" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: order.clientName, onChange: (e) => onUpdate({ clientName: e.target.value }), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: order.engineerName || "", onChange: (e) => onUpdate({ engineerName: e.target.value }), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0645\u0633\u0624\u0648\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u062A\u0639\u0645\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: order.approvalDate, onChange: (e) => onUpdate({ approvalDate: e.target.value }) })), (order.distribution || []).length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4E6}", title: "\u0645\u0644\u062E\u0635 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 } }, order.distribution.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement("span", null, d.description), /* @__PURE__ */ React.createElement("span", { style: { color: COLORS.muted } }, d.pieceCount, " \u0642\u0637\u0639\u0629 \xB7 ", d.supplierName || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0631\u062F"))))), /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F528}", title: "\u0645\u0631\u0627\u062D\u0644 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, PRODUCTION_STAGE_DEFS.map((def) => {
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F464}", title: "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginBottom: 4 } }, /* @__PURE__ */ React.createElement(FileAttachField, { label: "\u0645\u0644\u0641 \u0637\u0644\u0628 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", file: order.manufacturingOrderFile, onChange: (file) => onUpdate({ manufacturingOrderFile: file }), onRemove: () => onUpdate({ manufacturingOrderFile: null }), folder: "manufacturing-orders" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: order.clientName, onChange: (e) => onUpdate({ clientName: e.target.value }), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633"), /* @__PURE__ */ React.createElement("input", { style: fieldStyle, value: order.engineerName || "", onChange: (e) => onUpdate({ engineerName: e.target.value }), placeholder: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0645\u0633\u0624\u0648\u0644" }), /* @__PURE__ */ React.createElement("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u062A\u0639\u0645\u064A\u062F \u0627\u0644\u062A\u0635\u0646\u064A\u0639"), /* @__PURE__ */ editableDateWithClear(order.approvalDate || "", (v) => onUpdate({ approvalDate: v }))), (order.distribution || []).length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4E6}", title: "\u0645\u0644\u062E\u0635 \u0627\u0644\u062A\u0648\u0632\u064A\u0639" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 } }, order.distribution.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between", fontSize: 13.5 } }, /* @__PURE__ */ React.createElement("span", null, d.description), /* @__PURE__ */ React.createElement("span", { style: { color: COLORS.muted } }, d.pieceCount, " \u0642\u0637\u0639\u0629 \xB7 ", d.supplierName || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0631\u062F"))))), /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F528}", title: "\u0645\u0631\u0627\u062D\u0644 \u0627\u0644\u0625\u0646\u062A\u0627\u062C" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, PRODUCTION_STAGE_DEFS.map((def) => {
     const s = stages.find((x) => x.key === def.key) || { supplierName: "", price: "", durationDays: "", status: "not_started", startDate: "", endDate: "" };
     const isCarpentry = def.key === "carpentry";
     return /* @__PURE__ */ React.createElement("div", { key: def.key, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, marginBottom: 8 } }, def.label), /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0627\u0633\u0645 \u0627\u0644\u0645\u0635\u0646\u0639"), /* @__PURE__ */ React.createElement(
@@ -10830,7 +10833,7 @@ function ProductionPage({ order, onUpdate }) {
       background: s.status === opt.key ? opt.color : "#fff",
       color: s.status === opt.key ? "#fff" : COLORS.muted,
       fontWeight: 600
-    } }, opt.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0628\u062F\u0627\u064A\u0629"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, padding: "7px 10px", fontSize: 13.5 }, type: "date", value: s.startDate, onChange: (e) => updateStage(def.key, { startDate: e.target.value }) })), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0646\u0647\u0627\u064A\u0629"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, padding: "7px 10px", fontSize: 13.5 }, type: "date", value: s.endDate, onChange: (e) => updateStage(def.key, { endDate: e.target.value }) }))));
+    } }, opt.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0628\u062F\u0627\u064A\u0629"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, padding: "7px 10px", fontSize: 13.5 }, type: "date", value: s.startDate, onChange: (e) => updateStage(def.key, { startDate: e.target.value }) }), s.startDate ? /* @__PURE__ */ React.createElement("button", { onClick: () => updateStage(def.key, { startDate: "" }), style: { display: "flex", alignItems: "center", gap: 3, background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 10.5, fontWeight: 700, padding: "2px 0" } }, "\u{1F5D1}\uFE0F \u0645\u062D\u0648 \u0627\u0644\u062A\u0627\u0631\u064A\u062E") : null), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("label", { style: { ...labelStyle, marginBottom: 3 } }, "\u0646\u0647\u0627\u064A\u0629"), /* @__PURE__ */ React.createElement("input", { style: { ...fieldStyle, marginBottom: 0, padding: "7px 10px", fontSize: 13.5 }, type: "date", value: s.endDate, onChange: (e) => updateStage(def.key, { endDate: e.target.value }) }), s.endDate ? /* @__PURE__ */ React.createElement("button", { onClick: () => updateStage(def.key, { endDate: "" }), style: { display: "flex", alignItems: "center", gap: 3, background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 10.5, fontWeight: 700, padding: "2px 0" } }, "\u{1F5D1}\uFE0F \u0645\u062D\u0648 \u0627\u0644\u062A\u0627\u0631\u064A\u062E") : null)));
   })), /* @__PURE__ */ React.createElement(SectionHeader, { emoji: "\u{1F4CB}", title: "\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u0625\u0636\u0627\u0641\u064A\u0629" }), (order.productionLog || []).length === 0 && /* @__PURE__ */ React.createElement(EmptyHint, { text: "\u0633\u062C\u0651\u0644\u064A \u0623\u064A \u0645\u0644\u0627\u062D\u0638\u0629 \u062D\u0631\u0629 \u062E\u0627\u0631\u062C \u0645\u0631\u0627\u062D\u0644 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0623\u0633\u0627\u0633\u064A\u0629" }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, (order.productionLog || []).map((l) => /* @__PURE__ */ React.createElement("div", { key: l.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10, display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: COLORS.muted, display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(Emoji, { size: 12 }, "\u{1F4C5}"), l.date), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, marginTop: 3 } }, l.note)), /* @__PURE__ */ React.createElement("button", { onClick: () => removeLog(l.id), style: iconBtnStyle }, /* @__PURE__ */ React.createElement(Emoji, { size: 14, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))))), /* @__PURE__ */ React.createElement("button", { onClick: () => setShowAddLog(true), style: addLinkStyle }, "+ \u0625\u0636\u0627\u0641\u0629 \u062A\u062D\u062F\u064A\u062B"), showAddLog && /* @__PURE__ */ React.createElement(AddLogModal, { onClose: () => setShowAddLog(false), onSave: (l) => {
     addLog(l);
     setShowAddLog(false);
@@ -11402,12 +11405,12 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
       h("label", { style: labelStyle }, "\u0627\u0644\u0628\u064A\u0627\u0646"),
       h("textarea", { style: { ...fieldStyle, marginBottom: 0, minHeight: 50 }, value: piece.description || "", onChange: (e) => updateField("description", e.target.value) }),
       h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
-      h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.customerDeliveryDate || "", onChange: (e) => updateField("customerDeliveryDate", e.target.value) }),
+      editableDateWithClear(piece.customerDeliveryDate || "", (v) => updateField("customerDeliveryDate", v)),
       h("div", { style: { display: "flex", gap: 8 } },
-        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.shippingDate || "", onChange: (e) => updateField("shippingDate", e.target.value) })),
-        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "date", value: piece.arrivalDate || "", onChange: (e) => updateField("arrivalDate", e.target.value) }))
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646"), editableDateWithClear(piece.shippingDate || "", (v) => updateField("shippingDate", v))),
+        h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644"), editableDateWithClear(piece.arrivalDate || "", (v) => updateField("arrivalDate", v)))
       ),
-      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))), h("div", { style: { display: "flex", gap: 8 } }, h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingDate || "", onChange: (e) => updateField("fabricShippingDate", e.target.value) })), h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalDate || "", onChange: (e) => updateField("fabricArrivalDate", e.target.value) }))), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalStatus || "", onChange: (e) => updateField("fabricArrivalStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))) : null,
+      isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635"), h("input", { style: { ...fieldStyle, marginBottom: 0 }, type: "number", value: piece.peopleCount || "", onChange: (e) => updateField("peopleCount", e.target.value) }), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricShippingStatus || "", onChange: (e) => updateField("fabricShippingStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), FABRIC_SHIP_STATUS.map((s) => h("option", { key: s, value: s }, s))), h("div", { style: { display: "flex", gap: 8 } }, h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"), editableDateWithClear(piece.fabricShippingDate || "", (v) => updateField("fabricShippingDate", v))), h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), editableDateWithClear(piece.fabricArrivalDate || "", (v) => updateField("fabricArrivalDate", v)))), h("label", { style: labelStyle }, "\u062D\u0627\u0644\u0629 \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: piece.fabricArrivalStatus || "", onChange: (e) => updateField("fabricArrivalStatus", e.target.value) }, h("option", { value: "" }, "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F"), h("option", { value: "\u0648\u0635\u0644" }, "\u0648\u0635\u0644"), h("option", { value: "\u0644\u0645 \u064A\u0635\u0644" }, "\u0644\u0645 \u064A\u0635\u0644"))) : null,
       isSofaType(piece.pieceType) ? h(React.Fragment, null, h("label", { style: labelStyle }, "\u0627\u0644\u0645\u0648\u0631\u062F \u0627\u0644\u0645\u0642\u0635\u0648\u062F \u0644\u0644\u062A\u0646\u062C\u064A\u062F"), h("select", { style: { ...fieldStyle, marginBottom: 0 }, value: (piece.upholsteryLocation === "\u2014" || piece.upholsteryLocation === "-") ? "" : (piece.upholsteryLocation || ""), onChange: (e) => updateField("upholsteryLocation", e.target.value || "\u2014") },
         h("option", { value: "" }, "\u062A\u062D\u062F\u062F \u0644\u0627\u062D\u0642\u064B\u0627"),
         upholsteryOptions.map((s) => h("option", { key: s, value: s }, s)),
@@ -11444,7 +11447,7 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
             return h("span", { style: { fontSize: 11, fontWeight: 700, color: clr } }, lbl);
           })() : null
         ),
-        h("input", { style: fieldStyle, type: "date", disabled: !(canEditDeadline !== undefined ? canEditDeadline : canEdit), value: piece.agreedDeadline || "", onChange: (e) => { if (canEditDeadline !== undefined ? canEditDeadline : canEdit) onUpdate({ ...piece, agreedDeadline: e.target.value }); } })
+        (canEditDeadline !== undefined ? canEditDeadline : canEdit) ? editableDateWithClear(piece.agreedDeadline || "", (v) => onUpdate({ ...piece, agreedDeadline: v })) : h("input", { style: fieldStyle, type: "date", disabled: true, value: piece.agreedDeadline || "" })
       )
     ),
     h("div", { style: { background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
@@ -11474,10 +11477,10 @@ function PieceBoardCard({ piece, onUpdate, onDelete, onAddPiece, canEdit, canEdi
         h("div", { style: { fontSize: 12.5, fontWeight: 700, marginBottom: 6 } }, stage),
         (piece.stages[stage] && piece.stages[stage].receivedAt) ? h("div", { style: { fontSize: 11, color: COLORS.teal, marginBottom: 6 } }, "\u{1F4E5} \u062F\u062E\u0644\u062A \u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u062F\u064A \u0641\u064A: " + piece.stages[stage].receivedAt.replace("T", " ").slice(0, 16)) : null,
         h("label", { style: labelStyle }, "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0627\u0633\u062A\u0644\u0627\u0645 \u0645\u0646 " + ((piece.stages[stage] && piece.stages[stage].receivedFrom) || "\u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u0633\u0627\u0628\u0642\u0629")),
-        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 6, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].receivedDate) || "", onChange: (e) => updateStageDate(stage, "receivedDate", e.target.value) }),
+        editableDateWithClear((piece.stages[stage] && piece.stages[stage].receivedDate) || "", (v) => updateStageDate(stage, "receivedDate", v)),
         h("div", { style: { display: "flex", gap: 6 } },
-          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].start) || "", onChange: (e) => updateStageDate(stage, "start", e.target.value) })),
-          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, padding: "5px 8px", fontSize: 12 }, value: (piece.stages[stage] && piece.stages[stage].end) || "", onChange: (e) => updateStageDate(stage, "end", e.target.value) }))
+          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), editableDateWithClear((piece.stages[stage] && piece.stages[stage].start) || "", (v) => updateStageDate(stage, "start", v))),
+          h("div", { style: { flex: 1 } }, h("label", { style: labelStyle }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"), editableDateWithClear((piece.stages[stage] && piece.stages[stage].end) || "", (v) => updateStageDate(stage, "end", v)))
         ),
         h("label", { style: { ...labelStyle, marginTop: 6 } }, "\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0627\u0644\u0645\u0631\u062D\u0644\u0629"),
         h("textarea", { style: { ...fieldStyle, marginBottom: 0, padding: "6px 8px", fontSize: 12, minHeight: 44 }, value: (piece.stages[stage] && piece.stages[stage].notes) || "", onChange: (e) => updateStageDate(stage, "notes", e.target.value) })
@@ -11554,7 +11557,7 @@ function ProductionBoardPage({ pieces, orders, productionSuppliers, upholsterySu
       )
     );
   }
-  return h(EntityProductionPage, { entity, pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack: () => setEntity(null), onGoToDeliveries, deepLink: effectiveDeepLink, hideArchive: !!supplierOnlyLoc, canSeeSub, canEditSub, onSubNav });
+  return h(EntityProductionPage, { entity, pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, isOwner, onBack: () => setEntity(null), onGoToDeliveries, deepLink: effectiveDeepLink, hideArchive: !!supplierOnlyLoc, canSeeSub, canEditSub, onSubNav });
 }
 function stageGroupForLocation(location, isDammam) {
   if (location === "\u0627\u0644\u062F\u0647\u0627\u0646") return "painting";
@@ -11661,9 +11664,9 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
                 h("td", { style: { padding: "8px 10px", maxWidth: 180, whiteSpace: "normal" } }, p.description || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? h("input", { type: "date", value: stageInfo.start || "", onChange: (e) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, start: e.target.value } } }), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 } }) : (stageInfo.start || "\u2014")),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? h("input", { type: "date", value: stageInfo.end || "", onChange: (e) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, end: e.target.value } } }), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 } }) : (stageInfo.end || "\u2014")),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? h("input", { type: "date", value: p.agreedDeadline || "", onChange: (e) => onUpdate({ ...p, agreedDeadline: e.target.value }), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 } }) : (p.agreedDeadline || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(stageInfo.start || "", (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, start: v } } })) : (stageInfo.start || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(stageInfo.end || "", (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, end: v } } })) : (stageInfo.end || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(p.agreedDeadline || "", (v) => onUpdate({ ...p, agreedDeadline: v })) : (p.agreedDeadline || "\u2014")),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
                 h("td", { style: { padding: "8px 10px", minWidth: 160 }, onClick: (e) => e.stopPropagation() }, (canEditFn ? canEditFn(p) : true) ? h("textarea", {
                   defaultValue: p.notes || "",
@@ -11919,7 +11922,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
     )
   );
 }
-function EntityProductionPage({ entity, pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onBack, onGoToDeliveries, deepLink, hideArchive, canSeeSub, canEditSub, onSubNav }) {
+function EntityProductionPage({ entity, pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, isOwner, onBack, onGoToDeliveries, deepLink, hideArchive, canSeeSub, canEditSub, onSubNav }) {
   const isDammam = entity === "\u0627\u0644\u062F\u0645\u0627\u0645";
   const [stageKey, setStageKey] = useState((deepLink && deepLink.location) ? stageGroupForLocation(deepLink.location, isDammam) : null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -12006,7 +12009,7 @@ function EntityProductionPage({ entity, pieces, orders, productionSuppliers, uph
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, p.currentLocation || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.supplierName || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? editableDateWithClear(p.agreedDeadline || "", (v) => onUpdate({ ...p, agreedDeadline: v })) : (p.agreedDeadline || "\u2014")),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap", fontWeight: 700, color: COLORS.danger } }, Math.abs(d) + " \u064A\u0648\u0645")
               );
             }))
@@ -12191,22 +12194,32 @@ function LocationArchiveTable({ entries, activeLoc }) {
 }
 
 
+function EditableDateCellInner({ val, onChange }) {
+  const [editing, setEditing] = useState(false);
+  if (!editing) {
+    return h("div", { onClick: () => setEditing(true), style: { display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12 } },
+      h("span", null, val || "\u2014"),
+      h(Emoji, { size: 10 }, "\u270F\uFE0F")
+    );
+  }
+  return h("div", { style: { display: "flex", flexDirection: "column", gap: 2, minWidth: 100 } },
+    h("input", { type: "date", value: val, autoFocus: true, onChange: (e) => onChange(e.target.value), onBlur: () => setEditing(false), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: "100%", boxSizing: "border-box" } }),
+    val ? h("button", { onMouseDown: (e) => e.preventDefault(), onClick: () => { onChange(""); setEditing(false); }, style: { display: "flex", alignItems: "center", gap: 3, background: "transparent", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 10.5, fontWeight: 700, padding: "2px 0" } }, h(Emoji, { size: 11 }, "\u{1F5D1}\uFE0F"), "\u0645\u062D\u0648 \u0627\u0644\u062A\u0627\u0631\u064A\u062E") : null
+  );
+}
+function editableDateWithClear(val, onChange) {
+  return h(EditableDateCellInner, { val, onChange });
+}
 function fieldDateCell(p, field, onUpdate, isOwner, visible) {
   if (visible === false) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, "\u2014");
   const val = p[field] || "";
   if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
-  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", {
-    type: "date", value: val, onChange: (e) => onUpdate({ ...p, [field]: e.target.value }),
-    style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 }
-  }));
+  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, editableDateWithClear(val, (v) => onUpdate({ ...p, [field]: v })));
 }
 function stgCell(p, stageKey, which, onUpdate, isOwner) {
   const val = (p.stages && p.stages[stageKey] && p.stages[stageKey][which]) || "";
   if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
-  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", {
-    type: "date", value: val, onChange: (e) => onUpdate({ ...p, stages: { ...(p.stages || {}), [stageKey]: { ...(p.stages && p.stages[stageKey]), [which]: e.target.value } } }),
-    style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 }
-  }));
+  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, editableDateWithClear(val, (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [stageKey]: { ...(p.stages && p.stages[stageKey]), [which]: v } } })));
 }
 function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders, isOwner) {
   const normName = normCustomerName;
@@ -12451,6 +12464,12 @@ function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers
   });
   const [newEmail, setNewEmail] = useState("");
   const [expandedEmail, setExpandedEmail] = useState(null);
+  const [ownerEmailOverride, setOwnerEmailOverride] = useState(access.ownerEmail);
+  const transferOwnership = (email) => {
+    if (email === ownerEmailOverride) return;
+    if (!window.confirm("هتخليها صاحبة الحساب الرئيسية بدل الحالي؟ ده هيدّيها صلاحيات كاملة ما فيش حد غيرها عنده (زي حذف/تعديل التواريخ يدويًا). التغيير هيتفعّل بمجرد ما تضغطي حفظ.")) return;
+    setOwnerEmailOverride(email);
+  };
   const combinedLocationsByEntity = {};
   Object.keys(productionSuppliers || {}).forEach((en) => {
     combinedLocationsByEntity[en] = Array.from(new Set([...(productionSuppliers[en] || []), ...((upholsterySuppliers || {})[en] || [])]));
@@ -12485,7 +12504,7 @@ function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers
     setMembers([...members, { email: e, roles: ["viewer"], role: "viewer", supplierScope: [], permittedTabs: [] }]);
     setNewEmail("");
   };
-  const removeMember = (email) => { if (email === access.ownerEmail) return; setMembers(members.filter((m) => m.email !== email)); };
+  const removeMember = (email) => { if (email === access.ownerEmail) return; if (email === ownerEmailOverride) setOwnerEmailOverride(access.ownerEmail); setMembers(members.filter((m) => m.email !== email)); };
   const toggleRole = (email, roleKey) => {
     setMembers(members.map((m) => {
       if (m.email !== email) return m;
@@ -12525,10 +12544,11 @@ function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers
     const localEmails = new Set(members.map((m) => m.email));
     const missingFromLocal = (access.members || []).filter((m) => !localEmails.has(m.email));
     const finalMembers = [...members, ...missingFromLocal];
-    onSave({ ...access, allowedEmails: finalMembers.map((m) => m.email), members: finalMembers });
+    onSave({ ...access, ownerEmail: ownerEmailOverride, allowedEmails: finalMembers.map((m) => m.email), members: finalMembers });
   };
   return h(Modal, { title: "إدارة الأدوار والصلاحيات", onClose },
     h("p", { style: { fontSize: 12.5, color: COLORS.muted, marginBottom: 12 } }, 'تقدري تحددي أكتر من دور لنفس المستخدم مع بعض (مثلاً "توزيع" و"تحديث تصنيع" سوا). وتحت كل واحد حددي بالظبط الأقسام اللي يقدر يدخلها من التطبيق — أي قسم مش متحدد هيفضل ظاهر بس مش هيقدر يدخله. جنب كل قسم مسموح بيه، فيه زرار صغير (⚙️/✏️/👁️) تقدري تحدّدي بيه لنفس الشخص إنه "تعديل" أو "مشاهدة فقط" في القسم ده تحديدًا — بحيث لو حبيتي شخص واحد يكون عنده تعديل في قسم ومشاهدة بس في قسم تاني تقدري تظبطيها بالظبط كده. دور "مدير" بيشوف ويعدّل كل حاجة تلقائي. دور "مهندس مبيعات" يقدر يضيف أوردر ويعدل بس في أوردراته هو لحد ما تعتمديها من صفحة الأوردر (زرار ✅ في الأعلى).'),
+    h("p", { style: { fontSize: 12, color: COLORS.gold, background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: 10, marginBottom: 12 } }, "\u{1F511} \"صاحب/ة الحساب\" شخص واحد بس في كل التطبيق، وليه صلاحيات إضافية عن أي أدمن (زي تعديل/مسح تواريخ معيّنة يدويًا). لو داخلة بإيميل مختلف عن اللي اتسجّل بيه صاحب/ة الحساب الأصلي، افتحي بيانات الشخص المفروض يبقى صاحب/ة الحساب من القايمة تحت واضغطي \"تعيين كصاحب/ة الحساب\"."),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
       h("input", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: newEmail, onChange: (e) => setNewEmail(e.target.value), placeholder: "email@example.com", dir: "ltr" }),
       h("button", { onClick: addMember, style: { ...primaryBtn(false), width: 70, padding: "10px 0" } }, "إضافة")
@@ -12536,19 +12556,21 @@ function RolesManagementModal({ access, productionSuppliers, upholsterySuppliers
     h("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 } }, members.map((m) => {
       const roles = memberRoles(m);
       const isOwnerRow = m.email === access.ownerEmail;
+      const isPendingOwnerRow = m.email === ownerEmailOverride;
       const isExpanded = expandedEmail === m.email;
-      return h("div", { key: m.email, style: { border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 10 } },
+      return h("div", { key: m.email, style: { border: `1px solid ${isPendingOwnerRow && !isOwnerRow ? COLORS.gold : COLORS.border}`, borderRadius: 10, padding: 10 } },
         h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }, onClick: () => setExpandedEmail(isExpanded ? null : m.email) },
           h("div", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 } },
             h(Emoji, { size: 13 }, isExpanded ? "\u2304" : "\u2039"),
             h("div", { style: { minWidth: 0 } },
               h("div", { style: { fontSize: 13.5, fontWeight: 700 } }, m.name || m.email.split("@")[0]),
-              h("div", { style: { fontSize: 11, color: COLORS.muted, direction: "ltr", textAlign: "start" } }, m.email, isOwnerRow ? " (صاحبة الحساب)" : "")
+              h("div", { style: { fontSize: 11, color: COLORS.muted, direction: "ltr", textAlign: "start" } }, m.email, isOwnerRow ? " (صاحبة الحساب الحالية)" : "", isPendingOwnerRow && !isOwnerRow ? " (هتبقى صاحبة الحساب بعد الحفظ)" : "")
             )
           ),
           !isOwnerRow ? h("button", { onClick: (e) => { e.stopPropagation(); removeMember(m.email); }, style: iconBtnStyle }, h(Emoji, { size: 14, color: COLORS.danger }, "🗑️")) : null
         ),
         isExpanded ? h("div", { style: { marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLORS.bg}` } },
+          !isPendingOwnerRow ? h("button", { onClick: () => transferOwnership(m.email), style: { ...addLinkStyle, border: `1px solid ${COLORS.gold}`, color: COLORS.gold, borderRadius: 8, padding: "7px 12px", fontSize: 12, marginBottom: 10 } }, "\u{1F511} تعيين كصاحب/ة الحساب") : h("div", { style: { fontSize: 11.5, color: COLORS.gold, fontWeight: 700, marginBottom: 10 } }, "\u2713 محدّدة كصاحبة الحساب — هيتفعّل بعد الحفظ"),
           h("input", { style: { ...fieldStyle, marginBottom: 8 }, value: m.name || "", onChange: (e) => updateMember(m.email, { name: e.target.value }), placeholder: "اسم المستخدم (يظهر بدل الإيميل في التقارير)" }),
           !isOwnerRow ? h(React.Fragment, null,
             h("label", { style: labelStyle }, "المدراء المباشرون (اختياري — تقدري تحددي أكتر من مدير)"),
