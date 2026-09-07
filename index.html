@@ -1971,8 +1971,8 @@ function App() {
         tab === "customers" && h(CustomersHubPage, { orders: activeOrders, pieces: productionPieces, emailToName, onOpen: (id) => openOrder(id), pendingCustomer, onConsumePendingCustomer: () => setPendingCustomer(null), onUpdateOrder: updateOrder, canSeeSub: (k) => canSeeSubTab("customers", k), canEditSub: (k) => canEditSubTab("customers", k), onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "distribution" && h(DistributionEntryPage, { pieces: productionPieces, productionSuppliers, upholsterySuppliers, onAdd: addProductionPiece, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddSupplier: addProductionSupplier, canEdit: canEditTab("distribution"), orders: activeOrders, onUpdateOrder: updateOrder, onSubNav: subNavApi }),
         tab === "egypt-upholstery" && h(EgyptUpholsteryPage, { orders: activeOrders, pieces: productionPieces, onUpdateOrder: updateOrder, readOnly: !canEditTab("egypt-upholstery"), shipmentMedia: fabricShipmentMedia, onUpdateShipmentMedia: updateFabricShipmentMedia, canSeeSub: (k) => canSeeSubTab("egypt-upholstery", k), canEditSub: (k) => canEditSubTab("egypt-upholstery", k), productionSuppliers, upholsterySuppliers }),
-        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, orders: activeOrders, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
-        tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production"), orders: activeOrders }),
+        tab === "production-board" && h(ProductionBoardPage, { pieces: productionPieces, orders: activeOrders, productionSuppliers, upholsterySuppliers, onUpdate: updateProductionPiece, onDelete: deleteProductionPiece, onAddPiece: addProductionPiece, onAddSupplier: addProductionSupplier, onRemoveSupplier: removeProductionSupplier, onRenameSupplier: renameProductionSupplier, onAddUpholsterySupplier: addUpholsterySupplier, onRemoveUpholsterySupplier: removeUpholsterySupplier, onRenameUpholsterySupplier: renameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, isOwner, onGoToDeliveries: () => setTab("deliveries"), deepLink: productionDeepLink, onConsumeDeepLink: () => setProductionDeepLink(null), canSeeSub: (k) => canSeeSubTab("production-board", k), canEditSub: (k) => canEditSubTab("production-board", k), onSubNav: subNavApi }),
+        tab === "full-production" && h(FullProductionPage, { pieces: productionPieces, onUpdate: updateProductionPiece, canEdit: canEditTab("full-production"), orders: activeOrders, isOwner }),
         tab === "dashboard" && h(DashboardPage, { orders: activeOrders, pieces: productionPieces, warrantyRequests, emailToName, isAdminUser: isOwner || hasRole("admin"), onUpdateOrder: updateOrder, onUpdatePiece: updateProductionPiece, canBulkUpdatePieces: isOwner || hasRole("admin") || hasRole("production"), onSubNav: subNavApi }),
         tab === "activity-log" && h(ActivityLogPage, { log: activityLog, emailToName }),
         tab === "supplier-performance" && h(SupplierPerformancePage, { pieces: productionPieces }),
@@ -4787,8 +4787,9 @@ function TechnicalOfficeHubPage({ orders, pieces, onUpdate, onUpdatePiece, onBac
   const [mainView, setMainView] = useState("before");
   const [drawingsFor, setDrawingsFor] = useState(null);
   const orderHasTechnicalPiece = (o) => pieces.some((p) => pieceMatchesOrder(p, o, orders) && isTechnicalOfficePieceType(p.pieceType));
-  const preScoped = orders.filter((o) => o.approved && !o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
-  const scoped = orders.filter((o) => o.approved && o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
+  const hasEnteredReview = (o) => !!o.createdBy && o.salesManagerApproval !== "rejected" && (!o.requiresSalesManagerApproval || o.salesManagerApproval === "approved");
+  const preScoped = orders.filter((o) => hasEnteredReview(o) && !o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
+  const scoped = orders.filter((o) => hasEnteredReview(o) && o.distributionHandled && (isTechnicalOfficeCategory(o.category) || orderHasTechnicalPiece(o)));
   const isDone = (o) => o.technicalOfficeStatus === "\u062A\u0645";
   const isNotNeeded = (o) => o.technicalOfficeStatus === "\u0644\u0627 \u064A\u062D\u062A\u0627\u062C";
   const byStatusTab = (list, t) => list.filter((o) => t === "active" ? (!isDone(o) && !isNotNeeded(o)) : t === "finished" ? isDone(o) : isNotNeeded(o));
@@ -11522,7 +11523,7 @@ function countDistinctOrders(piecesAtLocation) {
   return seen.size;
 }
 const FIXED_STAGE_LOCATIONS = ["\u0627\u0644\u062F\u0647\u0627\u0646", "\u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0627\u0644\u062A\u063A\u0644\u064A\u0641", "\u0627\u0644\u0634\u062D\u0646"];
-function ProductionBoardPage({ pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
+function ProductionBoardPage({ pieces, orders, productionSuppliers, upholsterySuppliers, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, onAddUpholsterySupplier, onRemoveUpholsterySupplier, onRenameUpholsterySupplier, myRoles, mySupplierScope, myProductionAccess, isAdminForProduction, isOwner, onGoToDeliveries, deepLink, onConsumeDeepLink, canSeeSub, canEditSub, onSubNav }) {
   const supplierOnlyLoc = (!myRoles.includes("admin") && myRoles.length === 1 && myRoles.includes("supplier") && mySupplierScope && mySupplierScope.length === 1) ? mySupplierScope[0] : null;
   const effectiveDeepLink = deepLink || (supplierOnlyLoc ? { entity: findEntityForLocation(supplierOnlyLoc, productionSuppliers, upholsterySuppliers), location: supplierOnlyLoc } : null);
   const [entity, setEntity] = useState((effectiveDeepLink && effectiveDeepLink.entity) || null);
@@ -11600,7 +11601,7 @@ function applyPieceStatusChange(piece, newStatus, specificTarget) {
   }
   return p;
 }
-function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn, orders) {
+function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn, orders, isOwner) {
   const orderFileFor = (p) => {
     if (!orders) return null;
     const o = orders.find((x) => pieceMatchesOrder(p, x, orders));
@@ -11660,9 +11661,9 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
                 h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
                 h("td", { style: { padding: "8px 10px", maxWidth: 180, whiteSpace: "normal" } }, p.description || "\u2014"),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stageInfo.start || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stageInfo.end || "\u2014"),
-                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u2014"),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? h("input", { type: "date", value: stageInfo.start || "", onChange: (e) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, start: e.target.value } } }), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 } }) : (stageInfo.start || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? h("input", { type: "date", value: stageInfo.end || "", onChange: (e) => onUpdate({ ...p, stages: { ...(p.stages || {}), [pieceStageKey]: { ...stageInfo, end: e.target.value } } }), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 } }) : (stageInfo.end || "\u2014")),
+                h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" }, onClick: isOwner ? (e) => e.stopPropagation() : void 0 }, isOwner ? h("input", { type: "date", value: p.agreedDeadline || "", onChange: (e) => onUpdate({ ...p, agreedDeadline: e.target.value }), style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 } }) : (p.agreedDeadline || "\u2014")),
                 h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) ? (p.fabricShippingStatus || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F") : "\u2014"),
                 h("td", { style: { padding: "8px 10px", minWidth: 160 }, onClick: (e) => e.stopPropagation() }, (canEditFn ? canEditFn(p) : true) ? h("textarea", {
                   defaultValue: p.notes || "",
@@ -11696,7 +11697,7 @@ function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece,
     })
   );
 }
-function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, statusOnly, siblingLocations, myRoles }) {
+function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack, isAdminUser, isOwner, statusOnly, siblingLocations, myRoles }) {
   const [openPiece, setOpenPiece] = useState(null);
   const [query, setQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -11809,13 +11810,13 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders),
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
   );
 }
-function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, statusOnly, siblingLocations, myRoles, onSubNav }) {
+function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn, isAdminUser, isOwner, statusOnly, siblingLocations, myRoles, onSubNav }) {
   const [scope, setScope] = useState(null);
   useEffect(() => {
     if (!onSubNav || !scope) return;
@@ -11896,7 +11897,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders),
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -11904,7 +11905,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
   }
 
   if (scope) {
-    return h(DatePiecesTablePage, { pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, statusOnly, siblingLocations, myRoles });
+    return h(DatePiecesTablePage, { pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, isOwner, statusOnly, siblingLocations, myRoles });
   }
 
   return h("div", null,
@@ -12018,9 +12019,9 @@ function EntityProductionPage({ entity, pieces, orders, productionSuppliers, uph
     onAddSupplier: group.key === "upholstery" ? onAddUpholsterySupplier : onAddSupplier,
     onRemoveSupplier: group.key === "upholstery" ? onRemoveUpholsterySupplier : onRemoveSupplier,
     onRenameSupplier: group.key === "upholstery" ? onRenameUpholsterySupplier : onRenameSupplier,
-    myRoles, onBack: () => setStageKey(null), deepLink, hideArchive, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
+    myRoles, isOwner, onBack: () => setStageKey(null), deepLink, hideArchive, canEditStage: pageAccessLevel(group.key) === "edit", onSubNav });
 }
-function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
+function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onDelete, onAddPiece, onAddSupplier, onRemoveSupplier, onRenameSupplier, myRoles, isOwner, onBack, deepLink, hideArchive, canEditStage, onSubNav }) {
   const [activeLoc, setActiveLoc] = useState((deepLink && deepLink.location) || null);
   const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
@@ -12105,7 +12106,7 @@ function StageLocationsPage({ entity, group, entityPieces, orders, onUpdate, onD
     ),
     (hideArchive ? "current" : viewMode) === "current" ? (
       locPieces.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0642\u0637\u0639 \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
-        h(LocationPiecesTable, { pieces: locPieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
+        h(LocationPiecesTable, { pieces: locPieces, orders, activeLoc, onUpdate, onDelete, onAddPiece, canEditFn: canEditPiece, isAdminUser: myRoles.includes("admin"), isOwner, statusOnly, siblingLocations: (group.locations || []).filter((l) => l !== activeLoc), myRoles, onSubNav })
     ) : (
       archiveEntries.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0642\u0637\u0639 \u0645\u0624\u0631\u0634\u0641\u0629 \u0644ـ" + activeLoc + " \u0644\u062D\u062F \u0627\u0644\u0622\u0646" }) :
         h(LocationArchiveTable, { entries: archiveEntries, activeLoc })
@@ -12190,7 +12191,24 @@ function LocationArchiveTable({ entries, activeLoc }) {
 }
 
 
-function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders) {
+function fieldDateCell(p, field, onUpdate, isOwner, visible) {
+  if (visible === false) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, "\u2014");
+  const val = p[field] || "";
+  if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
+  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", {
+    type: "date", value: val, onChange: (e) => onUpdate({ ...p, [field]: e.target.value }),
+    style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 }
+  }));
+}
+function stgCell(p, stageKey, which, onUpdate, isOwner) {
+  const val = (p.stages && p.stages[stageKey] && p.stages[stageKey][which]) || "";
+  if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
+  return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, h("input", {
+    type: "date", value: val, onChange: (e) => onUpdate({ ...p, stages: { ...(p.stages || {}), [stageKey]: { ...(p.stages && p.stages[stageKey]), [which]: e.target.value } } }),
+    style: { fontSize: 11, padding: "3px 5px", borderRadius: 6, border: `1px solid ${COLORS.border}`, width: 122 }
+  }));
+}
+function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders, isOwner) {
   const normName = normCustomerName;
   const fabricStatusCache = {};
   const computeFabricStatus = (customerName) => {
@@ -12225,26 +12243,26 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isNonFabricPieceType(p.pieceType) ? "\u2014" : (computeFabricStatus(p.customerName) || "\u2014")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "\u2014") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "\u2014") : "\u2014"),
+          fieldDateCell(p, "fabricShippingDate", onUpdate, isOwner, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631"),
+          fieldDateCell(p, "fabricArrivalDate", onUpdate, isOwner, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
           h("td", { style: { padding: "8px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, isSofaType(p.pieceType) ? (p.peopleCount || "\u2014") : "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, isWoodType(p.pieceType) ? (p.metersCount || "\u2014") : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "\u2014"),
+          fieldDateCell(p, "customerDeliveryDate", onUpdate, isOwner),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.manufacturingEntity || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.supplierName || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u0646\u062C\u0627\u0631\u0629", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u0646\u062C\u0627\u0631\u0629", "end")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062F\u0647\u0627\u0646", "end")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "start")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, stg("\u062A\u0646\u062C\u064A\u062F", "end")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.shippingDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.arrivalDate || "\u2014"),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.actualDeliveryDate || "\u2014"),
+          stgCell(p, "\u0646\u062C\u0627\u0631\u0629", "start", onUpdate, isOwner),
+          stgCell(p, "\u0646\u062C\u0627\u0631\u0629", "end", onUpdate, isOwner),
+          stgCell(p, "\u062F\u0647\u0627\u0646", "start", onUpdate, isOwner),
+          stgCell(p, "\u062F\u0647\u0627\u0646", "end", onUpdate, isOwner),
+          stgCell(p, "\u062A\u0646\u062C\u064A\u062F", "start", onUpdate, isOwner),
+          stgCell(p, "\u062A\u0646\u062C\u064A\u062F", "end", onUpdate, isOwner),
+          fieldDateCell(p, "shippingDate", onUpdate, isOwner),
+          fieldDateCell(p, "arrivalDate", onUpdate, isOwner),
+          fieldDateCell(p, "actualDeliveryDate", onUpdate, isOwner),
           h("td", { style: { padding: "8px 10px", minWidth: 160 } }, canEdit && onUpdate ? h("textarea", {
             defaultValue: p.notes || "",
             placeholder: "\u0645\u0644\u0627\u062D\u0638\u0629...",
@@ -12256,7 +12274,7 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
     )
   );
 }
-function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
+function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState("customer");
   const [showFilters, setShowFilters] = useState(false);
@@ -12325,7 +12343,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
         ),
         h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")
       ),
-      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders))
+      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders, isOwner))
     );
     });
   } else {
@@ -12335,7 +12353,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders }) {
     body = dates.map((date) => h("div", { key: date, style: { marginBottom: 14 } },
       h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, margin: "0 0 6px" } }, h(Emoji, { size: 12 }, "🚩"), date),
       h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", padding: 10 } },
-        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit, orders)
+        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit, orders, isOwner)
       )
     ));
   }
