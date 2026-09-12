@@ -5018,6 +5018,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const queue = orders.filter((o) => o.createdBy && o.reviewStatus !== "تمت المراجعة" && (!o.requiresSalesManagerApproval || o.salesManagerApproval === "approved"));
   const pendingQueue = queue.filter((o) => o.reviewStatus !== "يوجد تعديل");
   const revisionQueue = queue.filter((o) => o.reviewStatus === "يوجد تعديل");
+  const completedOrders = orders.filter((o) => o.createdBy && o.reviewStatus === "تمت المراجعة");
   const activeQueue = subTab === "revisions" ? revisionQueue : pendingQueue;
   const sorted = activeQueue.slice().sort((a, b) => (a.enteredAt || "").localeCompare(b.enteredAt || ""));
   const fmtDateTime = (iso) => iso ? formatLocalDateTime(iso) : "—";
@@ -5025,10 +5026,37 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
   const departmentsFor = (o) => detectOrderDepartments(o.category);
   const deptData = (o, d) => (o.departmentReviews && o.departmentReviews[d]) || {};
   const deptStatusOf = (o, d) => deptData(o, d).reviewStatus || "";
+  const pushHistory = (o, entry) => [...(o.reviewHistory || []), { ...entry, at: (/* @__PURE__ */ new Date()).toISOString() }];
+  const [expandedCompleted, setExpandedCompleted] = useState(null);
+  const formatDuration = (ms) => {
+    if (ms === null || ms === undefined || isNaN(ms) || ms < 0) return "\u2014";
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return mins + " \u062F\u0642\u064A\u0642\u0629";
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + " \u0633\u0627\u0639\u0629" + (mins % 60 ? " \u0648" + (mins % 60) + " \u062F\u0642\u064A\u0642\u0629" : "");
+    const days = Math.floor(hours / 24);
+    return days + " \u064A\u0648\u0645" + (hours % 24 ? " \u0648" + (hours % 24) + " \u0633\u0627\u0639\u0629" : "");
+  };
+  const buildReviewTimeline = (o) => {
+    const steps = [{ label: "\u062F\u062E\u0644 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629", at: o.enteredAt, durationMs: null, kind: "start" }];
+    let prevAt = o.enteredAt;
+    (o.reviewHistory || []).forEach((hEntry) => {
+      const durationMs = (prevAt && hEntry.at) ? (new Date(hEntry.at) - new Date(prevAt)) : null;
+      let label;
+      if (hEntry.type === "flagged") label = "\u0637\u0644\u0628 \u062A\u0639\u062F\u064A\u0644" + (hEntry.dept ? " \u2014 " + hEntry.dept : "") + (hEntry.note ? ": " + hEntry.note : "");
+      else if (hEntry.type === "resubmitted") label = "\u0623\u0639\u0627\u062F \u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0623\u0648\u0631\u062F\u0631 \u0628\u0639\u062F \u0627\u0644\u062A\u0639\u062F\u064A\u0644";
+      else if (hEntry.type === "approved") label = "\u062A\u0645\u062A \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0646\u0647\u0627\u0626\u064A\u0629";
+      else label = hEntry.type;
+      steps.push({ label, at: hEntry.at, durationMs, kind: hEntry.type });
+      prevAt = hEntry.at;
+    });
+    return steps;
+  };
   const setReview = (o, val) => {
     const patch = { reviewStatus: val };
     if (val === "تمت المراجعة") {
       patch.reviewDate = (/* @__PURE__ */ new Date()).toISOString(); patch.approved = true;
+      patch.reviewHistory = pushHistory(o, { type: "approved" });
       if (!o.distributionHandled) patch.distributionHandled = false;
       if (!o.materialsHandled) patch.materialsHandled = false;
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
@@ -5049,6 +5077,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     const patch = { departmentReviews: newDepartmentReviews, reviewStatus: overall };
     if (overall === "تمت المراجعة") {
       patch.reviewDate = now; patch.approved = true;
+      patch.reviewHistory = pushHistory(o, { type: "approved" });
       if (!o.distributionHandled) patch.distributionHandled = false;
       if (!o.materialsHandled) patch.materialsHandled = false;
       if (onNotify && emailsWithTabAccess) onNotify({ toEmails: [...emailsWithTabAccess("distribution"), ...emailsWithTabAccess("materials-hub")], title: "أوردر جاهز للتوزيع وحصر الخامات", body: "أوردر " + (o.clientName || "") + " اعتمد", orderId: o.id, kind: "approved" });
@@ -5181,8 +5210,46 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
     h(SectionHeader, { emoji: "🧾", title: "المراجعة" }),
     h("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
       h(TabButton, { active: subTab === "review", onClick: () => setSubTab("review"), emoji: "🧾", label: "مراجعة (" + pendingQueue.length + ")" }),
-      h(TabButton, { active: subTab === "revisions", onClick: () => setSubTab("revisions"), emoji: "✏️", label: "التعديلات (" + revisionQueue.length + ")" })
+      h(TabButton, { active: subTab === "revisions", onClick: () => setSubTab("revisions"), emoji: "✏️", label: "التعديلات (" + revisionQueue.length + ")" }),
+      h(TabButton, { active: subTab === "completed", onClick: () => setSubTab("completed"), emoji: "✅", label: "تمت المراجعة (" + completedOrders.length + ")" })
     ),
+    subTab === "completed" ? h("div", null,
+      h("input", { style: fieldStyle, placeholder: "ابحثي باسم العميل...", value: query, onChange: (e) => setQuery(e.target.value) }),
+      (() => {
+        const list = completedOrders.filter((o) => !query.trim() || (o.clientName || "").includes(query.trim())).sort((a, b) => (b.reviewDate || "").localeCompare(a.reviewDate || ""));
+        return list.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062E\u0644\u0635\u062A \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627 \u0628\u0639\u062F" }) :
+        h("div", { style: { display: "flex", flexDirection: "column", gap: 10 } }, list.map((o) => {
+          const revisionCount = (o.reviewHistory || []).filter((hEntry) => hEntry.type === "flagged").length;
+          const isOpen = expandedCompleted === o.id;
+          const timeline = isOpen ? buildReviewTimeline(o) : [];
+          return h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12 } },
+            h("div", { onClick: () => setExpandedCompleted(isOpen ? null : o.id), style: { display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" } },
+              h("div", null,
+                h("div", { style: { fontWeight: 700, fontSize: 14 } }, o.clientName || "\u2014"),
+                h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, (o.category || "\u2014") + " \u00B7 " + (o.engineerName || (emailToName && emailToName[o.createdBy]) || o.createdBy || "\u2014"))
+              ),
+              h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                revisionCount > 0 ? h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.gold, background: COLORS.goldSoft, borderRadius: 999, padding: "3px 9px" } }, "\u0631\u062C\u0639 " + revisionCount + (revisionCount === 1 ? " \u0645\u0631\u0629" : " \u0645\u0631\u0627\u062A")) : h("span", { style: { fontSize: 11, fontWeight: 700, color: COLORS.green, background: "#E8F0E4", borderRadius: 999, padding: "3px 9px" } }, "\u0628\u062F\u0648\u0646 \u062A\u0639\u062F\u064A\u0644"),
+                h(Emoji, { size: 13 }, isOpen ? "\u2304" : "\u2039")
+              )
+            ),
+            isOpen ? h("div", { style: { marginTop: 12, paddingTop: 12, borderTop: `1px solid ${COLORS.bg}` } },
+              h("div", { style: { display: "flex", flexDirection: "column" } }, timeline.map((s, idx) => h("div", { key: idx, style: { display: "flex", gap: 12 } },
+                h("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", width: 24, flexShrink: 0 } },
+                  h("div", { style: { width: 20, height: 20, borderRadius: "50%", background: s.kind === "approved" ? COLORS.green : s.kind === "flagged" ? COLORS.danger : COLORS.gold, flexShrink: 0 } }),
+                  idx < timeline.length - 1 ? h("div", { style: { width: 2, flex: 1, minHeight: 22, background: COLORS.border, marginTop: 2 } }) : null
+                ),
+                h("div", { style: { flex: 1, paddingBottom: idx < timeline.length - 1 ? 16 : 0 } },
+                  h("div", { style: { fontSize: 13, fontWeight: 700 } }, s.label),
+                  h("div", { style: { fontSize: 11.5, color: COLORS.muted, marginTop: 2 } }, fmtDateTime(s.at)),
+                  s.durationMs !== null ? h("div", { style: { fontSize: 11, color: COLORS.gold, marginTop: 2 } }, "\u0627\u0633\u062A\u063A\u0631\u0642: " + formatDuration(s.durationMs)) : null
+                )
+              )))
+            ) : null
+          );
+        }));
+      })()
+    ) : h(React.Fragment, null,
     sorted.length > 0 ? h("input", { style: fieldStyle, placeholder: "ابحثي باسم العميل...", value: query, onChange: (e) => setQuery(e.target.value) }) : null,
     sorted.length > 0 ? h("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
       h("button", { onClick: () => setShowFilters(!showFilters), style: { ...addLinkStyle, marginBottom: showFilters ? 10 : 16 } }, (showFilters ? "✕ " : "⚙️ ") + "فلتر"),
@@ -5224,7 +5291,7 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
           });
         }))
       )
-    ),
+    )),
     revisingOrder ? h(RevisionNoteModal, {
       order: { revisionNote: revisingOrder.existingNote, revisionFile: revisingOrder.existingFile },
       onClose: () => setRevisingOrder(null),
@@ -5237,13 +5304,15 @@ function ReviewPage({ orders, onOpen, onUpdateOrder, isAdminUser, emailToName, o
         if (d) {
           const newDepartmentReviews = { ...(o.departmentReviews || {}), [d]: { ...deptData(o, d), ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt } };
           const allDepts = departmentsFor(o);
-          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false });
+          const historyPatch = isNewFlag ? { reviewHistory: pushHistory(o, { type: "flagged", dept: d, note: noteText }) } : {};
+          onUpdateOrder(o.id, { departmentReviews: newDepartmentReviews, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false, ...historyPatch });
           if (isNewFlag && onNotify) {
             const flaggedWithNotes = allDepts.filter((dep) => dep === d || deptStatusOf(o, dep) === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644").map((dep) => { const n = dep === d ? noteText : (deptData(o, dep).revisionNote || ""); return dep + (n ? (": " + n) : ""); }).join("\n");
             onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644:\n" + flaggedWithNotes, orderId: o.id, kind: "revision" });
           }
         } else {
-          onUpdateOrder(o.id, { ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false });
+          const historyPatch = isNewFlag ? { reviewHistory: pushHistory(o, { type: "flagged", note: noteText }) } : {};
+          onUpdateOrder(o.id, { ...patch, reviewStatus: "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644", inRevisionAt, approved: false, ...historyPatch });
           if (isNewFlag && onNotify) {
             onNotify({ toEmails: [o.createdBy], title: "\u0645\u0637\u0644\u0648\u0628 \u062A\u0639\u062F\u064A\u0644 \u0639\u0644\u0649 \u0623\u0648\u0631\u062F\u0631", body: "\u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "") + " \u0645\u062D\u062A\u0627\u062C \u062A\u0639\u062F\u064A\u0644" + (noteText ? ":\n" + noteText : ""), orderId: o.id, kind: "revision" });
           }
@@ -8780,14 +8849,18 @@ function DailyReportsPage({ orders, pieces, onBack }) {
   const [expandedKey, setExpandedKey] = useState(null);
   const WEEKDAY_AR = ["\u0627\u0644\u0623\u062D\u062F", "\u0627\u0644\u0627\u062B\u0646\u064A\u0646", "\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621", "\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621", "\u0627\u0644\u062E\u0645\u064A\u0633", "\u0627\u0644\u062C\u0645\u0639\u0629", "\u0627\u0644\u0633\u0628\u062A"];
   const addDays = (dateStr, n) => { const d = new Date(dateStr + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const addMonths = (dateStr, n) => { const d = new Date(dateStr + "T00:00:00"); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
   const dayOfWeek = (dateStr) => new Date(dateStr + "T00:00:00").getDay();
-  const rangeStartStr = viewMode === "week" ? addDays(selectedDate, -dayOfWeek(selectedDate)) : selectedDate;
-  const rangeEndStr = viewMode === "week" ? addDays(rangeStartStr, 6) : selectedDate;
+  const monthStartStr = (dateStr) => dateStr.slice(0, 7) + "-01";
+  const monthEndStr = (dateStr) => { const d = new Date(dateStr.slice(0, 7) + "-01T00:00:00"); d.setMonth(d.getMonth() + 1); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
+  const rangeStartStr = viewMode === "week" ? addDays(selectedDate, -dayOfWeek(selectedDate)) : viewMode === "month" ? monthStartStr(selectedDate) : selectedDate;
+  const rangeEndStr = viewMode === "week" ? addDays(rangeStartStr, 6) : viewMode === "month" ? monthEndStr(selectedDate) : selectedDate;
   const inRange = (dateVal) => { if (!dateVal) return false; const d = String(dateVal).slice(0, 10); return d >= rangeStartStr && d <= rangeEndStr; };
   const toggle = (key, which) => setExpandedKey((cur) => (cur && cur.key === key && cur.which === which) ? null : { key, which });
   const isExpanded = (key) => (expandedKey && expandedKey.key === key) ? expandedKey.which : null;
   const orderLabel = (o) => (o.clientName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") + (o.category ? " \u2014 " + o.category : "") + (o.orderCode ? " (" + o.orderCode + ")" : "");
   const pieceLabel = (p) => (p.customerName || "\u0628\u062F\u0648\u0646 \u0627\u0633\u0645") + (p.pieceType ? " \u2014 " + p.pieceType : "");
+  const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) : null;
 
   // Section 1: orders added in range
   const addedOrders = orders.filter((o) => inRange(o.enteredAt));
@@ -8825,7 +8898,21 @@ function DailyReportsPage({ orders, pieces, onBack }) {
   // Section 7: delivered in range
   const deliveredPiecesInRange = pieces.filter((p) => p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" && inRange(p.actualDeliveryDate));
 
-  const rangeTitle = viewMode === "week" ? (rangeStartStr + " \u2192 " + rangeEndStr) : (WEEKDAY_AR[dayOfWeek(selectedDate)] + " \u2014 " + selectedDate);
+  const rangeTitle = viewMode === "week" ? (rangeStartStr + " \u2192 " + rangeEndStr) : viewMode === "month" ? ("\u0634\u0647\u0631 " + monthLabelAr(selectedDate.slice(0, 7))) : (WEEKDAY_AR[dayOfWeek(selectedDate)] + " \u2014 " + selectedDate);
+
+  const reportRows = () => {
+    const rows = [];
+    rows.push(["\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062C\u062F\u064A\u062F\u0629 \u0645\u0636\u0627\u0641\u0629", String(addedOrders.length), "\u062A\u0645\u062A \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627: " + addedReviewed.length + " \u00B7 \u0644\u0633\u0647: " + addedNotReviewed.length]);
+    rows.push(["\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062A\u0645\u062A \u0645\u0631\u0627\u062C\u0639\u062A\u0647\u0627", reviewedInRange.length + " \u0645\u0646 " + reviewTotal + (pct(reviewedInRange.length, reviewTotal) !== null ? " (" + pct(reviewedInRange.length, reviewTotal) + "%)" : ""), ""]);
+    rows.push(["\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062A\u0645 \u062D\u0635\u0631 \u062E\u0627\u0645\u0627\u062A\u0647\u0627", materialsDoneInRange.length + " \u0645\u0646 " + materialsTotal + (pct(materialsDoneInRange.length, materialsTotal) !== null ? " (" + pct(materialsDoneInRange.length, materialsTotal) + "%)" : ""), ""]);
+    rows.push(["\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u062A\u0645 \u062A\u0648\u0632\u064A\u0639\u0647\u0627", distDoneInRange.length + " \u0645\u0646 " + distTotal + (pct(distDoneInRange.length, distTotal) !== null ? " (" + pct(distDoneInRange.length, distTotal) + "%)" : ""), ""]);
+    rows.push(["\u0623\u0648\u0631\u062F\u0631\u0627\u062A \u0628\u062F\u0623 \u0625\u0646\u062A\u0627\u062C\u0647\u0627", startedProd.length + " \u0645\u0646 " + distributedInRange.length + (pct(startedProd.length, distributedInRange.length) !== null ? " (" + pct(startedProd.length, distributedInRange.length) + "%)" : ""), ""]);
+    supplierNames.forEach((s) => rows.push(["\u0642\u0637\u0639 \u062A\u0645 \u0625\u0646\u062A\u0627\u062C\u0647\u0627 \u2014 " + s, String(bySupplier[s].length), ""]));
+    rows.push(["\u0623\u0648\u0631\u062F\u0631\u0627\u062A/\u0642\u0637\u0639 \u062A\u0645 \u062A\u0633\u0644\u064A\u0645\u0647\u0627", String(deliveredPiecesInRange.length), ""]);
+    return rows;
+  };
+  const reportHeaders = ["\u0627\u0644\u0628\u0646\u062F", "\u0627\u0644\u0639\u062F\u062F", "\u062A\u0641\u0627\u0635\u064A\u0644"];
+  const reportFileTitle = "\u062A\u0642\u0631\u064A\u0631\u064A \u0627\u0644\u064A\u0648\u0645\u064A\u0629 \u2014 " + rangeTitle;
 
   return h("div", null,
     h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
@@ -8834,16 +8921,21 @@ function DailyReportsPage({ orders, pieces, onBack }) {
     ),
     h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 14 } },
       h("div", { style: { display: "flex", gap: 8, marginBottom: 10 } },
-        h("button", { onClick: () => setViewMode("day"), style: { flex: 1, fontSize: 12.5, fontWeight: 700, padding: "8px", borderRadius: 8, border: `1px solid ${COLORS.gold}`, background: viewMode === "day" ? COLORS.gold : "#fff", color: viewMode === "day" ? "#fff" : COLORS.gold, cursor: "pointer" } }, "\u064A\u0648\u0645 \u0648\u0627\u062D\u062F"),
-        h("button", { onClick: () => setViewMode("week"), style: { flex: 1, fontSize: 12.5, fontWeight: 700, padding: "8px", borderRadius: 8, border: `1px solid ${COLORS.gold}`, background: viewMode === "week" ? COLORS.gold : "#fff", color: viewMode === "week" ? "#fff" : COLORS.gold, cursor: "pointer" } }, "\u0623\u0633\u0628\u0648\u0639 \u0643\u0627\u0645\u0644")
+        h("button", { onClick: () => setViewMode("day"), style: { flex: 1, fontSize: 12, fontWeight: 700, padding: "8px", borderRadius: 8, border: `1px solid ${COLORS.gold}`, background: viewMode === "day" ? COLORS.gold : "#fff", color: viewMode === "day" ? "#fff" : COLORS.gold, cursor: "pointer" } }, "\u064A\u0648\u0645 \u0648\u0627\u062D\u062F"),
+        h("button", { onClick: () => setViewMode("week"), style: { flex: 1, fontSize: 12, fontWeight: 700, padding: "8px", borderRadius: 8, border: `1px solid ${COLORS.gold}`, background: viewMode === "week" ? COLORS.gold : "#fff", color: viewMode === "week" ? "#fff" : COLORS.gold, cursor: "pointer" } }, "\u0623\u0633\u0628\u0648\u0639 \u0643\u0627\u0645\u0644"),
+        h("button", { onClick: () => setViewMode("month"), style: { flex: 1, fontSize: 12, fontWeight: 700, padding: "8px", borderRadius: 8, border: `1px solid ${COLORS.gold}`, background: viewMode === "month" ? COLORS.gold : "#fff", color: viewMode === "month" ? "#fff" : COLORS.gold, cursor: "pointer" } }, "\u0634\u0647\u0631 \u0643\u0627\u0645\u0644")
       ),
       h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-        h("button", { onClick: () => setSelectedDate(addDays(selectedDate, viewMode === "week" ? -7 : -1)), style: iconBtnStyle }, h(Emoji, { size: 16 }, "\u2192")),
-        h("input", { type: "date", value: selectedDate, onChange: (e) => setSelectedDate(e.target.value), style: { ...fieldStyle, marginBottom: 0, flex: 1, textAlign: "center" } }),
-        h("button", { onClick: () => setSelectedDate(addDays(selectedDate, viewMode === "week" ? 7 : 1)), style: iconBtnStyle }, h(Emoji, { size: 16 }, "\u2190")),
+        h("button", { onClick: () => setSelectedDate(viewMode === "week" ? addDays(selectedDate, -7) : viewMode === "month" ? addMonths(selectedDate, -1) : addDays(selectedDate, -1)), style: iconBtnStyle }, h(Emoji, { size: 16 }, "\u2192")),
+        viewMode === "month" ? h("input", { type: "month", value: selectedDate.slice(0, 7), onChange: (e) => setSelectedDate(e.target.value + "-01"), style: { ...fieldStyle, marginBottom: 0, flex: 1, textAlign: "center" } }) : h("input", { type: "date", value: selectedDate, onChange: (e) => setSelectedDate(e.target.value), style: { ...fieldStyle, marginBottom: 0, flex: 1, textAlign: "center" } }),
+        h("button", { onClick: () => setSelectedDate(viewMode === "week" ? addDays(selectedDate, 7) : viewMode === "month" ? addMonths(selectedDate, 1) : addDays(selectedDate, 1)), style: iconBtnStyle }, h(Emoji, { size: 16 }, "\u2190")),
         h("button", { onClick: () => setSelectedDate(todayIso()), style: { ...addLinkStyle, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12 } }, "\u0627\u0644\u064A\u0648\u0645")
       ),
-      h("div", { style: { textAlign: "center", fontSize: 13, fontWeight: 700, color: COLORS.muted, marginTop: 10 } }, rangeTitle)
+      h("div", { style: { textAlign: "center", fontSize: 13, fontWeight: 700, color: COLORS.muted, marginTop: 10, marginBottom: 10 } }, rangeTitle),
+      h(ExportButtons, {
+        onExcel: () => exportToExcel("\u062A\u0642\u0631\u064A\u0631\u064A-\u0627\u0644\u064A\u0648\u0645\u064A\u0629-" + rangeStartStr, [{ name: "\u0627\u0644\u062A\u0642\u0631\u064A\u0631", rows: [reportHeaders].concat(reportRows()) }]),
+        onPdf: () => printAsPdf(reportFileTitle, reportHeaders, reportRows())
+      })
     ),
 
     h(MetricSection, {
@@ -8943,7 +9035,7 @@ function OrderDetail({ order, pieces, branding, onBack, onUpdate, onDelete, canE
   const editOrderModal = showEditOrder && h(NewOrderModal, { existing: order, onClose: () => setShowEditOrder(false), onSave: (patch) => {
     let writePromise;
     if (order.reviewStatus === "\u064A\u0648\u062C\u062F \u062A\u0639\u062F\u064A\u0644") {
-      writePromise = onUpdate({ ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(order), editCount: (order.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString() });
+      writePromise = onUpdate({ ...patch, reviewStatus: "", departmentReviews: departmentReviewsAfterResubmit(order), editCount: (order.editCount || 0) + 1, revisionRespondedAt: (/* @__PURE__ */ new Date()).toISOString(), reviewHistory: [...(order.reviewHistory || []), { type: "resubmitted", at: (/* @__PURE__ */ new Date()).toISOString() }] });
       if (onNotify && reviewTeamEmails) onNotify({ toEmails: reviewTeamEmails(), title: "\u0623\u0648\u0631\u062F\u0631 \u0627\u062A\u0639\u062F\u0644 \u0648\u062C\u0627\u0647\u0632 \u0644\u0644\u0645\u0631\u0627\u062C\u0639\u0629", body: (order.clientName || "") + " \u2014 \u062A\u0639\u062F\u064A\u0644 " + ((order.editCount || 0) + 1), orderId: order.id, kind: "resubmit" });
     } else if (isAdminUser) {
       writePromise = onUpdate(patch);
