@@ -4981,6 +4981,10 @@ function SalesApprovalPage({ orders, onOpen, onUpdateOrder, emailToName, onNotif
     setRejectingId(null);
     setRejectReason("");
   };
+  const sendReminder = (o) => {
+    const msg = "\u0645\u0631\u062D\u0628\u0627 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A\n\u064A\u0631\u062C\u0649 \u0645\u0631\u0627\u062C\u0639\u0629 \u0623\u0648\u0631\u062F\u0631 " + (o.clientName || "\u2014") + "\n\u062A\u0645 \u0625\u0636\u0627\u0641\u062A\u0647: " + (o.enteredAt ? formatLocalDateTime(o.enteredAt) : "\u2014") + "\n\u064A\u0631\u062C\u0649 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629 \u0648\u0634\u0643\u0631\u0627\u064B";
+    window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
+  };
   const card = (o, showReject) => h("div", { key: o.id, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 12, marginBottom: 10 } },
     h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
       h("div", { onClick: () => onOpen(o.id), style: { cursor: "pointer" } },
@@ -4993,6 +4997,7 @@ function SalesApprovalPage({ orders, onOpen, onUpdateOrder, emailToName, onNotif
       h("button", { onClick: () => approve(o), style: { flex: 1, background: COLORS.green, color: "#fff", border: "none", borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u2705 \u0645\u0648\u0627\u0641\u0642\u0629"),
       h("button", { onClick: () => { setRejectingId(o.id); setRejectReason(""); }, style: { flex: 1, background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 0", fontWeight: 700, fontSize: 12.5, cursor: "pointer" } }, "\u274C \u0631\u0641\u0636")
     ) : null,
+    showReject ? h("button", { onClick: () => sendReminder(o), style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 4, width: "100%", background: "#25D366", color: "#fff", border: "none", borderRadius: 8, padding: "7px 0", fontWeight: 700, fontSize: 12, cursor: "pointer", marginTop: 8 } }, h(Emoji, { size: 12 }, "\u{1F4E4}"), "\u062A\u0630\u0643\u064A\u0631 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0628\u064A\u0639\u0627\u062A") : null,
     rejectingId === o.id ? h("div", { style: { marginTop: 10 } },
       h("textarea", { style: { ...fieldStyle, minHeight: 60, marginBottom: 8 }, placeholder: "\u0627\u0643\u062A\u0628\u064A \u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636 (\u0625\u062C\u0628\u0627\u0631\u064A)...", value: rejectReason, onChange: (e) => setRejectReason(e.target.value) }),
       h("div", { style: { display: "flex", gap: 8 } },
