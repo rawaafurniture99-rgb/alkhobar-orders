@@ -2176,7 +2176,7 @@ function App() {
               drill("product-shipments", "product-shipments", null, null),
               drill("finishing", "finishing"),
               simple("today-queue"),
-              drill("delivery-plans", "delivery-plans"),
+              drill("delivery-plans", "delivery-plans", void 0, void 0, isOwner),
               simple("deliveries")
             ] },
             { title: "\u{1F465} \u0627\u0644\u0639\u0645\u0644\u0627\u0621", tiles: [
@@ -2187,15 +2187,15 @@ function App() {
               drill("appointments", "appointments")
             ] },
             { title: "\u{1F4B0} \u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631", tiles: [
-              { key: "pricing", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", emoji: "\u{1F4B0}", visible: canSeeTab("pricing"), onClick: () => setHomeDrilldown({ type: "pricing" }) },
-              { key: "accounting", label: "\u0627\u0644\u0645\u062D\u0627\u0633\u0628\u0629", emoji: "\u{1F4BC}", visible: canSeeTab("accounting"), onClick: () => setHomeDrilldown({ type: "accounting" }) },
-              { key: "customer-statements", label: "\u0643\u0634\u0641 \u062D\u0633\u0627\u0628 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", emoji: "\u{1F4D1}", visible: canSeeTab("customer-statements"), onClick: () => setHomeDrilldown({ type: "customer-statements" }) },
-              simple("dashboard"),
+              { key: "pricing", label: "\u0627\u0644\u062D\u0633\u0627\u0628\u0627\u062A", emoji: "\u{1F4B0}", visible: isOwner, onClick: () => setHomeDrilldown({ type: "pricing" }) },
+              { key: "accounting", label: "\u0627\u0644\u0645\u062D\u0627\u0633\u0628\u0629", emoji: "\u{1F4BC}", visible: isOwner, onClick: () => setHomeDrilldown({ type: "accounting" }) },
+              { key: "customer-statements", label: "\u0643\u0634\u0641 \u062D\u0633\u0627\u0628 \u0627\u0644\u0639\u0645\u0644\u0627\u0621", emoji: "\u{1F4D1}", visible: isOwner, onClick: () => setHomeDrilldown({ type: "customer-statements" }) },
+              { ...simple("dashboard"), visible: isOwner },
               { key: "daily-reports", label: "\u062A\u0642\u0627\u0631\u064A\u0631\u064A \u0627\u0644\u064A\u0648\u0645\u064A\u0629", emoji: "\u{1F4C5}", visible: isOwner, onClick: () => setHomeDrilldown({ type: "daily-reports" }) },
-              simple("supplier-performance"),
-              drill("warranty", "warranty"),
-              { key: "health-check", label: "\u0641\u062D\u0635 \u0627\u0644\u0646\u0638\u0627\u0645", emoji: "\u26A1", visible: isOwner || hasRole("admin"), onClick: () => setHomeDrilldown({ type: "health-check" }) },
-              drill("custom-report", "custom-report")
+              { ...simple("supplier-performance"), visible: isOwner },
+              drill("warranty", "warranty", void 0, void 0, isOwner),
+              { key: "health-check", label: "\u0641\u062D\u0635 \u0627\u0644\u0646\u0638\u0627\u0645", emoji: "\u26A1", visible: isOwner, onClick: () => setHomeDrilldown({ type: "health-check" }) },
+              drill("custom-report", "custom-report", void 0, void 0, isOwner)
             ] },
             { title: "\u2699\uFE0F \u0623\u062F\u0648\u0627\u062A", tiles: [
               drill("quick-tasks", "quick-tasks"),
@@ -3710,6 +3710,60 @@ function LegacyPieceLinkingPage({ orders, pieces, onUpdatePiece, onBack }) {
     }))
   );
 }
+function VoiceNoteRecorder({ onRecorded }) {
+  const [recording, setRecording] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const start = async () => {
+    if (recording || busy) return;
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      window.alert("\u0627\u0644\u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u0635\u0648\u062A\u064A \u0645\u0634 \u0645\u062F\u0639\u0648\u0645 \u0639\u0644\u0649 \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u062F\u0647");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        setBusy(true);
+        try {
+          const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          onRecorded({ kind: "audio", dataUrl, name: "\u0645\u0644\u0627\u062D\u0638\u0629-\u0635\u0648\u062A\u064A\u0629-" + Date.now() + ".webm" });
+        } finally {
+          setBusy(false);
+          if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+        }
+      };
+      mr.start();
+      setRecording(true);
+    } catch (e) {
+      console.error(e);
+      window.alert("\u062A\u0639\u0630\u0631 \u0627\u0644\u0648\u0635\u0648\u0644 \u0644\u0644\u0645\u064A\u0643\u0631\u0648\u0641\u0648\u0646 \u2014 \u062A\u0623\u0643\u062F\u064A \u0625\u0646 \u0627\u0644\u0645\u062A\u0635\u0641\u062D \u0639\u0646\u062F\u0647 \u0625\u0630\u0646 \u0628\u0627\u0644\u0648\u0635\u0648\u0644 \u0644\u0644\u0645\u0627\u064A\u0643");
+    }
+  };
+  const stop = () => {
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
+  };
+  return h("button", {
+    type: "button", onClick: recording ? stop : start, disabled: busy,
+    title: recording ? "\u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0633\u062C\u064A\u0644" : "\u062A\u0633\u062C\u064A\u0644 \u0645\u0644\u0627\u062D\u0638\u0629 \u0635\u0648\u062A\u064A\u0629",
+    style: { background: recording ? "#FBEAE6" : "transparent", border: `1px solid ${recording ? COLORS.danger : COLORS.border}`, borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: busy ? "default" : "pointer", flexShrink: 0 }
+  }, h(Emoji, { size: 15, color: recording ? COLORS.danger : COLORS.teal }, busy ? "\u23F3" : recording ? "\u23F9\uFE0F" : "\u{1F399}\uFE0F"));
+}
 function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onDelete, onBack }) {
   const [text, setText] = useState("");
   const [media, setMedia] = useState([]);
@@ -3742,14 +3796,22 @@ function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onDelete, 
   teamLogs.forEach((l) => { (byEmployee[l.employeeEmail] = byEmployee[l.employeeEmail] || []).push(l); });
   const employees = Object.keys(byEmployee).sort((a, b) => (byEmployee[b][0].at || "").localeCompare(byEmployee[a][0].at || ""));
   const send = () => {
-    if (!text.trim()) return;
+    if (!text.trim() && media.length === 0) return;
     onAdd(text.trim(), media);
     setText("");
     setMedia([]);
   };
-  const renderMedia = (list) => list && list.length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 6 } }, list.map((f, idx) => h("div", { key: idx, style: { borderRadius: 8, overflow: "hidden", border: `1px solid ${COLORS.border}`, aspectRatio: "1" } },
-    f.kind === "image" ? h("img", { src: f.dataUrl, onClick: () => openImageLightbox(f.dataUrl), style: { width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" } }) : f.kind === "video" ? h("video", { src: f.dataUrl, controls: true, style: { width: "100%", height: "100%", objectFit: "cover" } }) : h("div", { style: { width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg } }, h(Emoji, { size: 18 }, f.kind === "audio" ? "\u{1F3A4}" : "\u{1F4C4}"))
-  ))) : null;
+  const renderMedia = (list) => {
+    if (!list || list.length === 0) return null;
+    const visualMedia = list.filter((f) => f.kind === "image" || f.kind === "video");
+    const audioMedia = list.filter((f) => f.kind === "audio");
+    return h(React.Fragment, null,
+      visualMedia.length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 6 } }, visualMedia.map((f, idx) => h("div", { key: idx, style: { borderRadius: 8, overflow: "hidden", border: `1px solid ${COLORS.border}`, aspectRatio: "1" } },
+        f.kind === "image" ? h("img", { src: f.dataUrl, onClick: () => openImageLightbox(f.dataUrl), style: { width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" } }) : h("video", { src: f.dataUrl, controls: true, style: { width: "100%", height: "100%", objectFit: "cover" } })
+      ))) : null,
+      audioMedia.length > 0 ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginTop: 6 } }, audioMedia.map((f, idx) => h("audio", { key: idx, src: f.dataUrl, controls: true, style: { width: "100%", height: 34 } }))) : null
+    );
+  };
   return h("div", { style: { ...body, minHeight: "100vh", background: COLORS.bg, color: COLORS.ink, paddingBottom: 40 } }, h(GlobalStyle, null),
     h("header", { style: { padding: "18px 16px 14px", background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10 } },
       h("button", { onClick: onBack, style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
@@ -3759,17 +3821,21 @@ function EmployeeFollowUpPage({ myLogs, teamLogs, emailToName, onAdd, onDelete, 
       h("p", { style: { fontSize: 12, color: COLORS.muted, marginBottom: 12 } }, "\u0645\u0647\u0627\u0645\u0643 \u0647\u0646\u0627 \u062A\u0648\u0635\u0644 \u0644\u0645\u062F\u064A\u0631\u0643 \u0627\u0644\u0645\u0628\u0627\u0634\u0631 \u0628\u0633 \u2014 \u0645\u0641\u064A\u0634 \u0623\u064A \u062D\u062F \u062A\u0627\u0646\u064A \u064A\u0642\u062F\u0631 \u064A\u0634\u0648\u0641\u0647\u0627."),
       h("div", { style: { display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10 } },
         h("textarea", { style: { ...fieldStyle, minHeight: 60, flex: 1 }, value: text, onChange: (e) => setText(e.target.value), placeholder: "\u0627\u0643\u062A\u0628\u064A \u0627\u0644\u0644\u064A \u0639\u0645\u0644\u062A\u064A\u0647 \u062F\u0644\u0648\u0642\u062A\u064A..." }),
-        h(VoiceInputButton, { onResult: (t) => setText((cur) => (cur + " " + t).trim()) })
+        h(VoiceNoteRecorder, { onRecorded: (att) => setMedia((m) => [...m, att]) })
       ),
-      media.length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 10 } }, media.map((f, idx) => h("div", { key: idx, style: { position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${COLORS.border}`, aspectRatio: "1" } },
-        f.kind === "image" ? h("img", { src: f.dataUrl, style: { width: "100%", height: "100%", objectFit: "cover" } }) : f.kind === "video" ? h("video", { src: f.dataUrl, style: { width: "100%", height: "100%", objectFit: "cover" } }) : h("div", { style: { width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.bg } }, h(Emoji, { size: 20 }, f.kind === "audio" ? "\u{1F3A4}" : "\u{1F4C4}")),
+      media.filter((f) => f.kind === "audio").length > 0 ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 } }, media.map((f, idx) => f.kind === "audio" ? h("div", { key: idx, style: { display: "flex", alignItems: "center", gap: 8 } },
+        h("audio", { src: f.dataUrl, controls: true, style: { flex: 1, height: 34 } }),
+        h("button", { onClick: () => removeMedia(idx), style: iconBtnStyle }, h(Emoji, { size: 15, color: COLORS.danger }, "\u{1F5D1}\uFE0F"))
+      ) : null)) : null,
+      media.filter((f) => f.kind !== "audio").length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 10 } }, media.map((f, idx) => f.kind !== "audio" ? h("div", { key: idx, style: { position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${COLORS.border}`, aspectRatio: "1" } },
+        f.kind === "image" ? h("img", { src: f.dataUrl, style: { width: "100%", height: "100%", objectFit: "cover" } }) : h("video", { src: f.dataUrl, style: { width: "100%", height: "100%", objectFit: "cover" } }),
         h("button", { onClick: () => removeMedia(idx), style: { position: "absolute", top: 4, insetInlineEnd: 4, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 999, width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" } }, h(Emoji, { size: 11, color: "#fff" }, "\u2715"))
-      ))) : null,
+      ) : null)) : null,
       h("label", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: `1px dashed ${COLORS.border}`, borderRadius: 10, padding: "10px", cursor: "pointer", color: COLORS.muted, background: "#fff", fontSize: 13, marginBottom: 12 } },
         h(Emoji, { size: 15 }, "\u2795"), busy ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0631\u0641\u0639..." : "\u0625\u0636\u0627\u0641\u0629 \u0635\u0648\u0631\u0629/\u0641\u064A\u062F\u064A\u0648",
         h("input", { type: "file", accept: "image/*,video/*", multiple: true, disabled: busy, style: { display: "none" }, onChange: (e) => addMedia(e.target.files) })
       ),
-      h("button", { disabled: !text.trim(), style: primaryBtn(!text.trim()), onClick: send }, "\u{1F4E4} \u0625\u0631\u0633\u0627\u0644 \u0644\u0645\u062F\u064A\u0631\u064A"),
+      h("button", { disabled: !text.trim() && media.length === 0, style: primaryBtn(!text.trim() && media.length === 0), onClick: send }, "\u{1F4E4} \u0625\u0631\u0633\u0627\u0644 \u0644\u0645\u062F\u064A\u0631\u064A"),
       h("div", { style: { fontSize: 13, fontWeight: 700, margin: "20px 0 10px" } }, "\u0645\u0647\u0627\u0645\u064A"),
       myDays.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0645\u0647\u0627\u0645 \u0645\u0633\u062C\u0644\u0629 \u0644\u0633\u0629" }) : myDays.map((day) => h("div", { key: day, style: { marginBottom: 14 } },
         h("div", { style: { fontSize: 11.5, fontWeight: 700, color: COLORS.muted, marginBottom: 6 } }, day),
@@ -12306,6 +12372,42 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
     );
   }
 
+  if (scope && scope.type === "queue") {
+    const inProgressPieces = pieces.filter((p) => !p.status || p.status === "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621" || p.status === "\u062C\u0627\u0631\u0649");
+    const queueRows = inProgressPieces.slice().sort((a, b) => (a.agreedDeadline || "9999-99-99").localeCompare(b.agreedDeadline || "9999-99-99"));
+    const queueExportExcel = () => {
+      const rows = [["\u0627\u0644\u062A\u0631\u062A\u064A\u0628", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"]];
+      queueRows.forEach((p, i) => rows.push([i + 1, p.customerName || "\u2014", p.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F"]));
+      exportToExcel(activeLoc + "-\u062A\u0631\u062A\u064A\u0628-\u0627\u0644\u0634\u063A\u0644-\u0627\u0644\u062C\u0627\u0631\u064A", [{ name: activeLoc.slice(0, 28), rows }]);
+    };
+    const queueExportPdf = () => {
+      const dataRows = queueRows.map((p, i) => [i + 1, p.customerName || "\u2014", p.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F"]);
+      printAsPdf(activeLoc + " \u2014 \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0634\u063A\u0644 \u0627\u0644\u062C\u0627\u0631\u064A", ["\u0627\u0644\u062A\u0631\u062A\u064A\u0628", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"], dataRows);
+    };
+    return h("div", null,
+      h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
+        h("button", { onClick: () => setScope(null), style: iconBtnStyle }, h(Emoji, { size: 20 }, "\u203A")),
+        h("div", { style: { ...display, fontSize: 19, fontWeight: 700 } }, "\u{1F4CB} \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0634\u063A\u0644 \u0627\u0644\u062C\u0627\u0631\u064A \u2014 " + activeLoc)
+      ),
+      queueRows.length > 0 ? h(ExportButtons, { onExcel: queueExportExcel, onPdf: queueExportPdf }) : null,
+      queueRows.length === 0 ? h(EmptyHint, { text: "\u0645\u0641\u064A\u0634 \u0634\u063A\u0644 \u062C\u0627\u0631\u064A \u062D\u0627\u0644\u064A\u064B\u0627 \u0639\u0646\u062F " + activeLoc }) :
+      h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 13 } },
+          h("thead", null, h("tr", null,
+            h("th", { style: { padding: "10px 12px", textAlign: "start", color: COLORS.muted, fontSize: 11, borderBottom: `2px solid ${COLORS.border}`, whiteSpace: "nowrap" } }, "\u0627\u0644\u062A\u0631\u062A\u064A\u0628"),
+            h("th", { style: { padding: "10px 12px", textAlign: "start", color: COLORS.muted, fontSize: 11, borderBottom: `2px solid ${COLORS.border}` } }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
+            h("th", { style: { padding: "10px 12px", textAlign: "start", color: COLORS.muted, fontSize: 11, borderBottom: `2px solid ${COLORS.border}`, whiteSpace: "nowrap" } }, "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647")
+          )),
+          h("tbody", null, queueRows.map((p, i) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            h("td", { style: { padding: "9px 12px", fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, i + 1),
+            h("td", { style: { padding: "9px 12px", fontWeight: 700 } }, p.customerName || "\u2014"),
+            h("td", { style: { padding: "9px 12px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F")
+          )))
+        )
+      )
+    );
+  }
+
   if (scope) {
     return h(DatePiecesTablePage, { pieces, orders, activeLoc, scope, onUpdate, onDelete, onAddPiece, canEditFn, onBack: () => setScope(null), isAdminUser, isOwner, statusOnly, siblingLocations, myRoles });
   }
@@ -12314,6 +12416,7 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
     h("input", { style: fieldStyle, placeholder: "\u0627\u0628\u062D\u062B\u064A \u0628\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644...", value: query, onChange: (e) => setQuery(e.target.value) }),
     h("div", { style: { marginTop: 8 } },
       rowBtn(() => setScope({ type: "inprogress" }), "\u{1F528} \u0644\u0633\u0647 \u062C\u0627\u0631\u064A \u0625\u0646\u062A\u0627\u062C", pieces.length - producedCount),
+      rowBtn(() => setScope({ type: "queue" }), "\u{1F4CB} \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0634\u063A\u0644 \u0627\u0644\u062C\u0627\u0631\u064A (\u0628\u0627\u0644\u0645\u0648\u0639\u062F)", pieces.length - producedCount),
       rowBtn(() => setScope({ type: "produced" }), "\u2705 \u062A\u0645 \u0627\u0644\u0625\u0646\u062A\u0627\u062C", producedCount),
       rowBtn(() => setScope({ type: "all" }), "\u{1F4CB} \u0643\u0644 \u0627\u0644\u0642\u0637\u0639", pieces.length),
       monthKeys.map((k) => rowBtn(() => setScope({ type: "month", key: k }), monthLabelAr(k), monthCounts[k])),
