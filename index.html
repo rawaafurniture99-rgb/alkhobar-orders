@@ -2215,9 +2215,11 @@ function App() {
               )
             ),
             TILE_GROUPS.map((group) => {
+            const visibleTiles = group.tiles.filter((t) => t.visible);
+            if (visibleTiles.length === 0) return null;
             return h("div", { key: group.title, style: { marginTop: 22 } },
               h("div", { style: { fontSize: 13, fontWeight: 700, color: COLORS.ink, marginBottom: 10, paddingInlineStart: 2 } }, group.title),
-              h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 } }, group.tiles.map((t) => h(NavTile, { key: t.key, active: false, accent: t.accent, locked: !t.visible, onClick: t.onClick, emoji: t.emoji, label: t.label })))
+              h("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 } }, visibleTiles.map((t) => h(NavTile, { key: t.key, active: false, accent: t.accent, onClick: t.onClick, emoji: t.emoji, label: t.label })))
             );
           }));
         })()
@@ -6639,6 +6641,9 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
   const [fArrivalStatus, setFArrivalStatus] = useState([]);
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [selectedShipments, setSelectedShipments] = useState([]);
+  const [bulkSelectedMat, setBulkSelectedMat] = useState([]);
+  const [bulkDateFieldMat, setBulkDateFieldMat] = useState("fabricShippingDate");
+  const [bulkDateValueMat, setBulkDateValueMat] = useState("");
   const rows = [];
   orders.forEach((o) => {
     (o.materials || []).forEach((m) => {
@@ -6737,11 +6742,32 @@ function EgyptUpholsteryPage({ orders, pieces, onUpdateOrder, readOnly: readOnly
           )
         ) : null
       ),
+      (!readOnly && bulkSelectedMat.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+        h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelectedMat.length + " \u062E\u0627\u0645\u0629 \u0645\u062D\u062F\u062F\u0629"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateFieldMat, onChange: (e) => setBulkDateFieldMat(e.target.value) },
+          h("option", { value: "fabricShippingDate" }, "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634"),
+          h("option", { value: "fabricArrivalDate" }, "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634")
+        ),
+        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateValueMat, onChange: (e) => setBulkDateValueMat(e.target.value) }),
+        h("button", { disabled: !bulkDateValueMat, onClick: () => {
+          filteredRows.filter((r) => bulkSelectedMat.includes(r.orderId + r.materialId)).forEach((r) => updateMaterialField(r.orderId, r.materialId, { [bulkDateFieldMat]: bulkDateValueMat }));
+          setBulkDateValueMat("");
+        }, style: { ...primaryBtn(!bulkDateValueMat), width: "auto", padding: "8px 14px" } }, "\u2705 \u062A\u0637\u0628\u064A\u0642 \u0639\u0644\u0649 \u0627\u0644\u0643\u0644"),
+        h("button", { onClick: () => {
+          if (!window.confirm("\u0645\u0633\u062D " + (bulkDateFieldMat === "fabricShippingDate" ? "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646" : "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644") + " \u0644\u0643\u0644 \u0627\u0644\u062E\u0627\u0645\u0627\u062A \u0627\u0644\u0645\u062D\u062F\u062F\u0629\u061F")) return;
+          filteredRows.filter((r) => bulkSelectedMat.includes(r.orderId + r.materialId)).forEach((r) => updateMaterialField(r.orderId, r.materialId, { [bulkDateFieldMat]: "" }));
+        }, style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F5D1}\uFE0F \u0645\u0633\u062D \u0645\u0646 \u0627\u0644\u0643\u0644"),
+        h("button", { onClick: () => setBulkSelectedMat([]), style: { background: "transparent", border: "none", color: COLORS.muted, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" } }, "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A\u062F")
+      ) : null,
       filteredRows.length === 0 ? h(EmptyHint, { text: "\u0644\u0627 \u062A\u0648\u062C\u062F \u0646\u062A\u0627\u0626\u062C" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1320 } },
-          h("thead", null, h("tr", null, listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1370 } },
+          h("thead", null, h("tr", null,
+            !readOnly ? h("th", { style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}` } }, h("input", { type: "checkbox", checked: filteredRows.length > 0 && filteredRows.every((r) => bulkSelectedMat.includes(r.orderId + r.materialId)), onChange: (e) => setBulkSelectedMat(e.target.checked ? filteredRows.map((r) => r.orderId + r.materialId) : []) })) : null,
+            listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c))
+          )),
           h("tbody", null, filteredRows.map((row) => h("tr", { key: row.orderId + row.materialId, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            !readOnly ? h("td", { style: { padding: "10px" } }, h("input", { type: "checkbox", checked: bulkSelectedMat.includes(row.orderId + row.materialId), onChange: (e) => setBulkSelectedMat((cur) => e.target.checked ? [...cur, row.orderId + row.materialId] : cur.filter((id) => id !== row.orderId + row.materialId)) })) : null,
             h("td", { style: { padding: "10px", fontWeight: 700, whiteSpace: "nowrap" } }, row.clientName),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, row.deliveryDate || "\u2014"),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap", fontWeight: 700, color: remainingColor(row.deliveryDate) } }, remainingLabel(row.deliveryDate)),
@@ -7924,6 +7950,9 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
   const [expandedShipDate, setExpandedShipDate] = useState(null);
   const [shipmentQuery, setShipmentQuery] = useState("");
   const [fArrivalStatus, setFArrivalStatus] = useState([]);
+  const [bulkSelected, setBulkSelected] = useState([]);
+  const [bulkDateField, setBulkDateField] = useState("shippingDate");
+  const [bulkDateValue, setBulkDateValue] = useState("");
   const egyptPieces = pieces.filter((p) => p.manufacturingEntity === "مصر" && (p.currentLocation === "الشحن" || p.currentLocation === "التغليف" || p.productShippingStatus === "تم الشحن" || p.shippingDate)).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || "", "ar"));
   const queryNorm = query.trim();
   const filteredList = egyptPieces.filter((p) =>
@@ -7973,11 +8002,32 @@ function ProductShipmentsPage({ pieces, onBack, onUpdate, onNotify, emailsWithTa
         h("div", { style: { flex: 1 } }, h(MultiSelectFilter, { options: [{ value: "تم الشحن", label: "تم الشحن" }, { value: "__unset__", label: "لم يتم الشحن" }], selected: fShipStatus, onChange: setFShipStatus, placeholder: "كل حالات الشحن" })),
         filteredList.length > 0 ? h(ExportButtons, { onExcel: () => exportToExcel("شحن-المنتج-تصنيع-مصر", [{ name: "تصنيع مصر", rows: [listCols].concat(listExportRows()) }]), onPdf: () => printAsPdf("شحن المنتج — تصنيع مصر", listCols, listExportRows()) }) : null
       ),
+      (!disabled && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+        h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " قطعة محددة"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateField, onChange: (e) => setBulkDateField(e.target.value) },
+          h("option", { value: "shippingDate" }, "تاريخ الشحن"),
+          h("option", { value: "arrivalDate" }, "تاريخ الوصول")
+        ),
+        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateValue, onChange: (e) => setBulkDateValue(e.target.value) }),
+        h("button", { disabled: !bulkDateValue, onClick: () => {
+          filteredList.filter((p) => bulkSelected.includes(p.id)).forEach((p) => updatePiece(p, { [bulkDateField]: bulkDateValue }));
+          setBulkDateValue("");
+        }, style: { ...primaryBtn(!bulkDateValue), width: "auto", padding: "8px 14px" } }, "✅ تطبيق على الكل"),
+        h("button", { onClick: () => {
+          if (!window.confirm("مسح " + (bulkDateField === "shippingDate" ? "تاريخ الشحن" : "تاريخ الوصول") + " لكل القطع المحددة؟")) return;
+          filteredList.filter((p) => bulkSelected.includes(p.id)).forEach((p) => updatePiece(p, { [bulkDateField]: "" }));
+        }, style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" } }, "🗑️ مسح من الكل"),
+        h("button", { onClick: () => setBulkSelected([]), style: { background: "transparent", border: "none", color: COLORS.muted, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" } }, "إلغاء التحديد")
+      ) : null,
       filteredList.length === 0 ? h(EmptyHint, { text: "لا توجد قطع مصنّعة في مصر مطابقة" }) :
       h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
-        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1650 } },
-          h("thead", null, h("tr", null, listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
+        h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: 1700 } },
+          h("thead", null, h("tr", null,
+            !disabled ? h("th", { style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}` } }, h("input", { type: "checkbox", checked: filteredList.length > 0 && filteredList.every((p) => bulkSelected.includes(p.id)), onChange: (e) => setBulkSelected(e.target.checked ? filteredList.map((p) => p.id) : []) })) : null,
+            listCols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c))
+          )),
           h("tbody", null, filteredList.map((p) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+            !disabled ? h("td", { style: { padding: "10px" } }, h("input", { type: "checkbox", checked: bulkSelected.includes(p.id), onChange: (e) => setBulkSelected((cur) => e.target.checked ? [...cur, p.id] : cur.filter((id) => id !== p.id)) })) : null,
             h("td", { style: { padding: "10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName || "—"),
             h("td", { style: { padding: "10px", whiteSpace: "nowrap" } }, p.customerDeliveryDate || "—"),
             h("td", { style: { padding: "10px", textAlign: "center" } }, p.pieceCount || "—"),
@@ -12176,6 +12226,8 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
+  const [bulkDateField, setBulkDateField] = useState("agreedDeadline");
+  const [bulkDateValue, setBulkDateValue] = useState("");
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
   const selectGroup = (ids, shouldSelect) => setBulkSelected((cur) => shouldSelect ? Array.from(new Set([...cur, ...ids])) : cur.filter((id) => !ids.includes(id)));
   const canBulkEdit = isAdminUser || !statusOnly;
@@ -12201,6 +12253,18 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
     setBulkSelected([]);
   };
   const stageDateKey = resolveStageKey(activeLoc);
+  const applyBulkDateTo = (fieldKey, value) => {
+    bulkSelected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (!piece) return;
+      if (fieldKey === "stage_start" || fieldKey === "stage_end") {
+        const which = fieldKey === "stage_start" ? "start" : "end";
+        onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stageDateKey]: { ...(piece.stages && piece.stages[stageDateKey]), [which]: value } } });
+      } else {
+        onUpdate({ ...piece, [fieldKey]: value });
+      }
+    });
+  };
   const scoped = pieces.filter((p) => {
     if (scope.type === "month") return (p.customerDeliveryDate || "").slice(0, 7) === scope.key;
     if (scope.type === "none") return !p.customerDeliveryDate;
@@ -12278,7 +12342,18 @@ function DatePiecesTablePage({ pieces, orders, activeLoc, scope, onUpdate, onDel
       h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
       h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
     ) : null,
-    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
+    (isOwner && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateField, onChange: (e) => setBulkDateField(e.target.value) },
+        h("option", { value: "agreedDeadline" }, "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"),
+        h("option", { value: "stage_start" }, "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"),
+        h("option", { value: "stage_end" }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629")
+      ),
+      h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateValue, onChange: (e) => setBulkDateValue(e.target.value) }),
+      h("button", { disabled: !bulkDateValue, onClick: () => { applyBulkDateTo(bulkDateField, bulkDateValue); setBulkDateValue(""); }, style: { ...primaryBtn(!bulkDateValue), width: "auto", padding: "8px 14px" } }, "\u2705 \u062A\u0637\u0628\u064A\u0642 \u0639\u0644\u0649 \u0627\u0644\u0643\u0644"),
+      h("button", { onClick: () => { if (!window.confirm("\u0645\u0633\u062D \u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0644\u0643\u0644 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u062D\u062F\u062F\u0629\u061F")) return; applyBulkDateTo(bulkDateField, ""); }, style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F5D1}\uFE0F \u0645\u0633\u062D \u0645\u0646 \u0627\u0644\u0643\u0644")
+    ) : null,
+    renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (canBulkEdit || isOwner) ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
     openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
       h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
     ) : null
@@ -12297,6 +12372,8 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkTarget, setBulkTarget] = useState((siblingLocations && siblingLocations[0]) || "");
   const [bulkStatus, setBulkStatus] = useState(BOARD_STATUS[0]);
+  const [bulkDateField, setBulkDateField] = useState("agreedDeadline");
+  const [bulkDateValue, setBulkDateValue] = useState("");
   const toggleBulkSelect = (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
   const selectGroup = (ids, shouldSelect) => setBulkSelected((cur) => shouldSelect ? Array.from(new Set([...cur, ...ids])) : cur.filter((id) => !ids.includes(id)));
   const canBulkEdit = isAdminUser || !statusOnly;
@@ -12322,6 +12399,18 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
     setBulkSelected([]);
   };
   const stageDateKey = resolveStageKey(activeLoc);
+  const applyBulkDateTo = (fieldKey, value) => {
+    bulkSelected.forEach((id) => {
+      const piece = pieces.find((p) => p.id === id);
+      if (!piece) return;
+      if (fieldKey === "stage_start" || fieldKey === "stage_end") {
+        const which = fieldKey === "stage_start" ? "start" : "end";
+        onUpdate({ ...piece, stages: { ...(piece.stages || {}), [stageDateKey]: { ...(piece.stages && piece.stages[stageDateKey]), [which]: value } } });
+      } else {
+        onUpdate({ ...piece, [fieldKey]: value });
+      }
+    });
+  };
 
   const monthCounts = {};
   let noDateCount = 0;
@@ -12365,7 +12454,18 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
         h("select", { style: { ...fieldStyle, marginBottom: 0, flex: 1 }, value: bulkStatus, onChange: (e) => setBulkStatus(e.target.value) }, statusOptionsForLocation(activeLoc).map((s) => h("option", { key: s, value: s }, s))),
         h("button", { onClick: bulkApplyStatus, style: { ...primaryBtn(false), width: "auto", padding: "8px 14px", background: COLORS.teal } }, "\u062A\u063A\u064A\u064A\u0631 \u0627\u0644\u062D\u0627\u0644\u0629")
       ) : null,
-      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, canBulkEdit ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
+      (isOwner && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+        h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+        h("select", { style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateField, onChange: (e) => setBulkDateField(e.target.value) },
+          h("option", { value: "agreedDeadline" }, "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"),
+          h("option", { value: "stage_start" }, "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629"),
+          h("option", { value: "stage_end" }, "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0645\u0631\u062D\u0644\u0629")
+        ),
+        h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateValue, onChange: (e) => setBulkDateValue(e.target.value) }),
+        h("button", { disabled: !bulkDateValue, onClick: () => { applyBulkDateTo(bulkDateField, bulkDateValue); setBulkDateValue(""); }, style: { ...primaryBtn(!bulkDateValue), width: "auto", padding: "8px 14px" } }, "\u2705 \u062A\u0637\u0628\u064A\u0642 \u0639\u0644\u0649 \u0627\u0644\u0643\u0644"),
+        h("button", { onClick: () => { if (!window.confirm("\u0645\u0633\u062D \u0627\u0644\u062A\u0627\u0631\u064A\u062E \u0644\u0643\u0644 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u062D\u062F\u062F\u0629\u061F")) return; applyBulkDateTo(bulkDateField, ""); }, style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F5D1}\uFE0F \u0645\u0633\u062D \u0645\u0646 \u0627\u0644\u0643\u0644")
+      ) : null,
+      renderGroupedPiecesTable(filtered, stageDateKey, openPiece, setOpenPiece, activeLoc, (canBulkEdit || isOwner) ? { selected: bulkSelected, onToggle: toggleBulkSelect, onToggleGroup: selectGroup } : null, onUpdate, canEditFn, orders, isOwner),
       openPiece ? h(Modal, { title: openPiece.customerName, onClose: () => setOpenPiece(null) },
         h(PieceBoardCard, { piece: openPiece, onUpdate: (p) => { onUpdate(p); setOpenPiece(p); }, onDelete: (id) => { onDelete(id); setOpenPiece(null); }, onAddPiece, canEdit: canEditFn(openPiece), canEditDeadline: canEditFn(openPiece) || (myRoles && myRoles.includes("distributor")), isAdminUser, statusOnly })
       ) : null
@@ -12729,7 +12829,7 @@ function stgCell(p, stageKey, which, onUpdate, isOwner) {
   if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
   return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, editableDateWithClear(val, (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [stageKey]: { ...(p.stages && p.stages[stageKey]), [which]: v } } })));
 }
-function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders, isOwner) {
+function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders, isOwner, selection) {
   const normName = normCustomerName;
   const fabricStatusCache = {};
   const computeFabricStatus = (customerName) => {
@@ -12749,12 +12849,16 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
   const cols = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629"].concat(showCustomerCol ? ["\u0627\u0644\u0639\u0645\u064A\u0644"] : []).concat(["\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]);
   return h("div", { style: { overflowX: "auto" } },
     h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 2380 : 2280 } },
-      h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c)))),
+      h("thead", null, h("tr", null,
+        selection ? h("th", { style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}` } }, h("input", { type: "checkbox", checked: piecesList.length > 0 && piecesList.every((p) => selection.selected.includes(p.id)), onChange: (e) => piecesList.forEach((p) => { if (e.target.checked && !selection.selected.includes(p.id)) selection.onToggle(p.id); if (!e.target.checked && selection.selected.includes(p.id)) selection.onToggle(p.id); }) })) : null,
+        cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c))
+      )),
       h("tbody", null, piecesList.map((p) => {
         const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
         const stageStatus = delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
         const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "\u2014";
         return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+          selection ? h("td", { style: { padding: "8px 10px" } }, h("input", { type: "checkbox", checked: selection.selected.includes(p.id), onChange: () => selection.onToggle(p.id) })) : null,
           h("td", { style: { padding: "8px 10px" } }, canEdit && onUpdate ? h("button", {
             onClick: () => onUpdate({ ...p, deliveryConfirmed: delivered ? "" : "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", actualDeliveryDate: delivered ? "" : todayStr() }),
             style: { fontSize: 10.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, whiteSpace: "nowrap", background: delivered ? "#E8F0E4" : "#FBEAE6", color: delivered ? COLORS.green : COLORS.danger, border: "none", cursor: "pointer" }
@@ -12795,9 +12899,36 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
     )
   );
 }
+const FULL_PROD_DATE_FIELDS = [
+  { key: "customerDeliveryDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0644\u0644\u0639\u0645\u064A\u0644" },
+  { key: "agreedDeadline", label: "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647" },
+  { key: "fabricShippingDate", label: "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634" },
+  { key: "fabricArrivalDate", label: "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634" },
+  { key: "stage_\u0646\u062C\u0627\u0631\u0629_start", label: "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u0646\u062C\u0627\u0631\u0629" },
+  { key: "stage_\u0646\u062C\u0627\u0631\u0629_end", label: "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u0646\u062C\u0627\u0631\u0629" },
+  { key: "stage_\u062F\u0647\u0627\u0646_start", label: "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u062F\u0647\u0627\u0646" },
+  { key: "stage_\u062F\u0647\u0627\u0646_end", label: "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062F\u0647\u0627\u0646" },
+  { key: "stage_\u062A\u0646\u062C\u064A\u062F_start", label: "\u0628\u062F\u0627\u064A\u0629 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" },
+  { key: "stage_\u062A\u0646\u062C\u064A\u062F_end", label: "\u0646\u0647\u0627\u064A\u0629 \u0627\u0644\u062A\u0646\u062C\u064A\u062F" },
+  { key: "shippingDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646" },
+  { key: "arrivalDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644" },
+  { key: "actualDeliveryDate", label: "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A" }
+];
+function applyBulkDateField(piece, fieldKey, value) {
+  if (fieldKey.indexOf("stage_") === 0) {
+    const rest = fieldKey.slice(6);
+    const which = rest.slice(rest.lastIndexOf("_") + 1);
+    const stageName = rest.slice(0, rest.lastIndexOf("_"));
+    return { ...piece, stages: { ...(piece.stages || {}), [stageName]: { ...(piece.stages && piece.stages[stageName]), [which]: value } } };
+  }
+  return { ...piece, [fieldKey]: value };
+}
 function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState("customer");
+  const [bulkSelected, setBulkSelected] = useState([]);
+  const [bulkDateFieldFP, setBulkDateFieldFP] = useState(FULL_PROD_DATE_FIELDS[0].key);
+  const [bulkDateValueFP, setBulkDateValueFP] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [fStatus, setFStatus] = useState([]);
   const [fTypes, setFTypes] = useState([]);
@@ -12864,7 +12995,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
         ),
         h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")
       ),
-      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders, isOwner))
+      h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders, isOwner, isOwner ? { selected: bulkSelected, onToggle: (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) } : null))
     );
     });
   } else {
@@ -12874,7 +13005,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
     body = dates.map((date) => h("div", { key: date, style: { marginBottom: 14 } },
       h("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: COLORS.gold, margin: "0 0 6px" } }, h(Emoji, { size: 12 }, "🚩"), date),
       h("div", { style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", padding: 10 } },
-        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit, orders, isOwner)
+        renderFullProductionTable(dateGroups[date], true, onUpdate, canEdit, orders, isOwner, isOwner ? { selected: bulkSelected, onToggle: (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) } : null)
       )
     ));
   }
@@ -12958,6 +13089,23 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
           h("input", { type: "date", value: fStageTo, onChange: (e) => setFStageTo(e.target.value), style: { ...fieldStyle, marginBottom: 0, flex: 1 } })
         )
       )
+    ) : null,
+    (isOwner && bulkSelected.length > 0) ? h("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.goldSoft, border: `1px solid ${COLORS.gold}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 } },
+      h("span", { style: { fontSize: 12.5, fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, bulkSelected.length + " \u0642\u0637\u0639\u0629 \u0645\u062D\u062F\u062F\u0629"),
+      h("select", { style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateFieldFP, onChange: (e) => setBulkDateFieldFP(e.target.value) },
+        FULL_PROD_DATE_FIELDS.map((f) => h("option", { key: f.key, value: f.key }, f.label))
+      ),
+      h("input", { type: "date", style: { ...fieldStyle, marginBottom: 0, width: "auto" }, value: bulkDateValueFP, onChange: (e) => setBulkDateValueFP(e.target.value) }),
+      h("button", { disabled: !bulkDateValueFP, onClick: () => {
+        pieces.filter((p) => bulkSelected.includes(p.id)).forEach((p) => onUpdate(applyBulkDateField(p, bulkDateFieldFP, bulkDateValueFP)));
+        setBulkDateValueFP("");
+      }, style: { ...primaryBtn(!bulkDateValueFP), width: "auto", padding: "8px 14px" } }, "\u2705 \u062A\u0637\u0628\u064A\u0642 \u0639\u0644\u0649 \u0627\u0644\u0643\u0644"),
+      h("button", { onClick: () => {
+        const fieldLabel = (FULL_PROD_DATE_FIELDS.find((f) => f.key === bulkDateFieldFP) || {}).label || "";
+        if (!window.confirm("\u0645\u0633\u062D " + fieldLabel + " \u0644\u0643\u0644 \u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u062D\u062F\u062F\u0629\u061F")) return;
+        pieces.filter((p) => bulkSelected.includes(p.id)).forEach((p) => onUpdate(applyBulkDateField(p, bulkDateFieldFP, "")));
+      }, style: { background: "transparent", color: COLORS.danger, border: `1px solid ${COLORS.danger}`, borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" } }, "\u{1F5D1}\uFE0F \u0645\u0633\u062D \u0645\u0646 \u0627\u0644\u0643\u0644"),
+      h("button", { onClick: () => setBulkSelected([]), style: { background: "transparent", border: "none", color: COLORS.muted, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" } }, "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062D\u062F\u064A\u062F")
     ) : null,
     body
   );
