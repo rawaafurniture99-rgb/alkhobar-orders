@@ -12374,15 +12374,21 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
 
   if (scope && scope.type === "queue") {
     const inProgressPieces = pieces.filter((p) => !p.status || p.status === "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621" || p.status === "\u062C\u0627\u0631\u0649");
-    const queueRows = inProgressPieces.slice().sort((a, b) => (a.agreedDeadline || "9999-99-99").localeCompare(b.agreedDeadline || "9999-99-99"));
+    const queueGroups = {};
+    inProgressPieces.forEach((p) => {
+      const key = (p.customerName || "") + "||" + (p.agreedDeadline || "");
+      if (!queueGroups[key]) queueGroups[key] = { customerName: p.customerName, agreedDeadline: p.agreedDeadline, count: 0 };
+      queueGroups[key].count += 1;
+    });
+    const queueRows = Object.values(queueGroups).sort((a, b) => (a.agreedDeadline || "9999-99-99").localeCompare(b.agreedDeadline || "9999-99-99"));
     const queueExportExcel = () => {
-      const rows = [["\u0627\u0644\u062A\u0631\u062A\u064A\u0628", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"]];
-      queueRows.forEach((p, i) => rows.push([i + 1, p.customerName || "\u2014", p.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F"]));
+      const rows = [["\u0627\u0644\u062A\u0631\u062A\u064A\u0628", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"]];
+      queueRows.forEach((g, i) => rows.push([i + 1, g.customerName || "\u2014", g.count, g.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F"]));
       exportToExcel(activeLoc + "-\u062A\u0631\u062A\u064A\u0628-\u0627\u0644\u0634\u063A\u0644-\u0627\u0644\u062C\u0627\u0631\u064A", [{ name: activeLoc.slice(0, 28), rows }]);
     };
     const queueExportPdf = () => {
-      const dataRows = queueRows.map((p, i) => [i + 1, p.customerName || "\u2014", p.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F"]);
-      printAsPdf(activeLoc + " \u2014 \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0634\u063A\u0644 \u0627\u0644\u062C\u0627\u0631\u064A", ["\u0627\u0644\u062A\u0631\u062A\u064A\u0628", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"], dataRows);
+      const dataRows = queueRows.map((g, i) => [i + 1, g.customerName || "\u2014", g.count, g.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F"]);
+      printAsPdf(activeLoc + " \u2014 \u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0634\u063A\u0644 \u0627\u0644\u062C\u0627\u0631\u064A", ["\u0627\u0644\u062A\u0631\u062A\u064A\u0628", "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647"], dataRows);
     };
     return h("div", null,
       h("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 14 } },
@@ -12398,10 +12404,10 @@ function LocationPiecesTable({ pieces, orders, activeLoc, onUpdate, onDelete, on
             h("th", { style: { padding: "10px 12px", textAlign: "start", color: COLORS.muted, fontSize: 11, borderBottom: `2px solid ${COLORS.border}` } }, "\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644"),
             h("th", { style: { padding: "10px 12px", textAlign: "start", color: COLORS.muted, fontSize: 11, borderBottom: `2px solid ${COLORS.border}`, whiteSpace: "nowrap" } }, "\u0627\u0644\u0645\u0648\u0639\u062F \u0627\u0644\u0645\u062A\u0641\u0642 \u0639\u0644\u064A\u0647")
           )),
-          h("tbody", null, queueRows.map((p, i) => h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
+          h("tbody", null, queueRows.map((g, i) => h("tr", { key: i, style: { borderBottom: `1px solid ${COLORS.border}` } },
             h("td", { style: { padding: "9px 12px", fontWeight: 700, color: COLORS.gold, whiteSpace: "nowrap" } }, i + 1),
-            h("td", { style: { padding: "9px 12px", fontWeight: 700 } }, p.customerName || "\u2014"),
-            h("td", { style: { padding: "9px 12px", whiteSpace: "nowrap" } }, p.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F")
+            h("td", { style: { padding: "9px 12px", fontWeight: 700 } }, (g.customerName || "\u2014") + (g.count > 1 ? " (\u00D7" + g.count + ")" : "")),
+            h("td", { style: { padding: "9px 12px", whiteSpace: "nowrap" } }, g.agreedDeadline || "\u0628\u062F\u0648\u0646 \u0645\u0648\u0639\u062F")
           )))
         )
       )
