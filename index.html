@@ -566,6 +566,19 @@ function printAsPdf(title, headers, rows) {
   win.document.close();
   win.onload = () => { win.print(); };
 }
+function printGroupedPdf(title, headers, groups) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  const styles = "body{font-family:'IBM Plex Sans Arabic',Arial,sans-serif;direction:rtl;padding:24px;color:#2A211B}h1{font-size:19px;margin-bottom:16px}table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px}th,td{border:1px solid #ddd;padding:6px 8px;text-align:right;vertical-align:middle}th{background:#F1E3C8}a{color:#B8873D}.group-title{background:#2A211B;color:#fff;font-weight:700;font-size:13.5px;padding:9px 10px;border-radius:6px;margin:0 0 6px}.group-block{break-inside:avoid;margin-bottom:16px}@media print{body{padding:0}.group-block{page-break-inside:avoid}}";
+  const theadHtml = "<tr>" + headers.map((c) => "<th>" + (c == null ? "" : String(c)) + "</th>").join("") + "</tr>";
+  const groupsHtml = groups.map((g) => {
+    const tbodyHtml = g.rows.map((r) => "<tr>" + r.map((c) => "<td>" + pdfCellHtml(c) + "</td>").join("") + "</tr>").join("");
+    return '<div class="group-block"><div class="group-title">' + g.label + '</div><table><thead>' + theadHtml + "</thead><tbody>" + tbodyHtml + "</tbody></table></div>";
+  }).join("");
+  win.document.write('<html><head><meta charset="utf-8"><title>' + title + '</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap"><style>' + styles + "</style></head><body><h1>" + title + "</h1>" + groupsHtml + "</body></html>");
+  win.document.close();
+  win.onload = () => { win.print(); };
+}
 function zatcaTlvField(tag, value) {
   const valueBytes = Array.from(new TextEncoder().encode(String(value)));
   return [tag, valueBytes.length, ...valueBytes];
@@ -7048,6 +7061,19 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
       showAchievement ? h("td", { style: { padding: "9px 10px" } }, a ? h("span", { style: { fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 999, background: achBg, color: achColor, whiteSpace: "nowrap" } }, achEmoji + " " + a.type + (a.days ? " " + a.days + " \u064A\u0648\u0645" : "")) : "\u2014") : h("td", { style: { padding: "9px 10px" } }, "\u2014")
     );
   };
+  const renderGroupedBody = (list, showAchievement) => {
+    const groups = {};
+    list.forEach((p) => { const k = p.customerName || "\u2014"; (groups[k] = groups[k] || []).push(p); });
+    const names = Object.keys(groups).sort((a, b) => {
+      const da = groups[a].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+      const db2 = groups[b].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+      return da.localeCompare(db2);
+    });
+    return names.map((name) => h(React.Fragment, { key: "g-" + name },
+      h("tr", null, h("td", { colSpan: 20, style: { background: COLORS.ink, color: "#fff", padding: "7px 10px", fontWeight: 700, fontSize: 12.5 } }, name + " (" + groups[name].length + " \u0642\u0637\u0639\u0629)")),
+      groups[name].map((p) => renderRow(p, showAchievement))
+    ));
+  };
   return h("div", null,
     h(SectionHeader, { emoji: "\u{1F69A}", title: "\u0627\u0644\u062C\u0627\u0647\u0632\u064A\u0629 \u0648\u0627\u0644\u062A\u0633\u0644\u064A\u0645" }),
     delivered.length > 0 ? h("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 } },
@@ -7115,7 +7141,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
             h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-              h("tbody", null, ready.map((p) => renderRow(p, false)))
+              h("tbody", null, renderGroupedBody(ready, false))
             )
           )
       ) : view === "delayed" ? (
@@ -7123,7 +7149,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
             h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-              h("tbody", null, delayed.map((p) => renderRow(p, false)))
+              h("tbody", null, renderGroupedBody(delayed, false))
             )
           )
       ) : (
@@ -7131,7 +7157,7 @@ function DeliveriesPage({ pieces, onUpdate, readOnly: readOnlyProp, canSeeSub, c
           h("div", { style: { overflowX: "auto", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12 } },
             h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 1080 } },
               h("thead", null, h("tr", null, cols.map((c) => h("th", { key: c, style: { padding: "9px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, fontSize: 11, whiteSpace: "nowrap" } }, c)))),
-              h("tbody", null, delivered.map((p) => renderRow(p, true)))
+              h("tbody", null, renderGroupedBody(delivered, true))
             )
           )
       )
@@ -12122,7 +12148,7 @@ function applyPieceStatusChange(piece, newStatus, specificTarget) {
 function renderGroupedPiecesTable(pieces, stageDateKey, openPiece, setOpenPiece, activeLoc, selection, onUpdate, canEditFn, orders, isOwner) {
   const orderFileFor = (p) => {
     if (!orders) return null;
-    const o = orders.find((x) => pieceMatchesOrder(p, x, orders));
+    const o = orders.find((x) => pieceMatchesOrder(p, x, orders) && x.manufacturingOrderFile) || orders.find((x) => !p.orderId && normCustomerName(x.clientName) === normCustomerName(p.customerName) && x.manufacturingOrderFile);
     return (o && o.manufacturingOrderFile) || null;
   };
   const dateGroups = {};
@@ -12829,6 +12855,28 @@ function stgCell(p, stageKey, which, onUpdate, isOwner) {
   if (!isOwner) return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, val || "\u2014");
   return h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, editableDateWithClear(val, (v) => onUpdate({ ...p, stages: { ...(p.stages || {}), [stageKey]: { ...(p.stages && p.stages[stageKey]), [which]: v } } })));
 }
+function dedupeSplitPieces(piecesArr) {
+  const seenGroups = new Set();
+  const result = [];
+  piecesArr.forEach((p) => {
+    if (p.splitGroupId) {
+      if (seenGroups.has(p.splitGroupId)) return;
+      seenGroups.add(p.splitGroupId);
+    }
+    result.push(p);
+  });
+  return result;
+}
+function splitCombinedStatusFor(p, piecesArr) {
+  if (!p.splitGroupId) return null;
+  const siblings = piecesArr.filter((x) => x.splitGroupId === p.splitGroupId);
+  if (siblings.length <= 1) return null;
+  return siblings.map((s) => (s.status || "—") + (s.currentLocation ? " - " + s.currentLocation : "")).join(" / ");
+}
+function splitCombinedCount(p, piecesArr) {
+  if (!p.splitGroupId) return p.pieceCount;
+  return p.splitOriginalCount || p.pieceCount;
+}
 function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdit, orders, isOwner, selection) {
   const normName = normCustomerName;
   const fabricStatusCache = {};
@@ -12850,12 +12898,13 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
   return h("div", { style: { overflowX: "auto" } },
     h("table", { style: { borderCollapse: "collapse", width: "100%", fontSize: 11.5, minWidth: showCustomerCol ? 2380 : 2280 } },
       h("thead", null, h("tr", null,
-        selection ? h("th", { style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}` } }, h("input", { type: "checkbox", checked: piecesList.length > 0 && piecesList.every((p) => selection.selected.includes(p.id)), onChange: (e) => piecesList.forEach((p) => { if (e.target.checked && !selection.selected.includes(p.id)) selection.onToggle(p.id); if (!e.target.checked && selection.selected.includes(p.id)) selection.onToggle(p.id); }) })) : null,
+        selection ? h("th", { style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}` } }, h("input", { type: "checkbox", checked: dedupeSplitPieces(piecesList).length > 0 && dedupeSplitPieces(piecesList).every((p) => selection.selected.includes(p.id)), onChange: (e) => dedupeSplitPieces(piecesList).forEach((p) => { if (e.target.checked && !selection.selected.includes(p.id)) selection.onToggle(p.id); if (!e.target.checked && selection.selected.includes(p.id)) selection.onToggle(p.id); }) })) : null,
         cols.map((c) => h("th", { key: c, style: { padding: "8px 10px", borderBottom: `2px solid ${COLORS.border}`, textAlign: "start", color: COLORS.muted, whiteSpace: "nowrap", fontSize: 11 } }, c))
       )),
-      h("tbody", null, piecesList.map((p) => {
+      h("tbody", null, dedupeSplitPieces(piecesList).map((p) => {
         const delivered = p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645";
-        const stageStatus = delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
+        const splitStatus = splitCombinedStatusFor(p, piecesList);
+        const stageStatus = delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : splitStatus ? splitStatus : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
         const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "\u2014";
         return h("tr", { key: p.id, style: { borderBottom: `1px solid ${COLORS.border}` } },
           selection ? h("td", { style: { padding: "8px 10px" } }, h("input", { type: "checkbox", checked: selection.selected.includes(p.id), onChange: () => selection.onToggle(p.id) })) : null,
@@ -12863,14 +12912,14 @@ function renderFullProductionTable(piecesList, showCustomerCol, onUpdate, canEdi
             onClick: () => onUpdate({ ...p, deliveryConfirmed: delivered ? "" : "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", actualDeliveryDate: delivered ? "" : todayStr() }),
             style: { fontSize: 10.5, fontWeight: 700, padding: "5px 10px", borderRadius: 999, whiteSpace: "nowrap", background: delivered ? "#E8F0E4" : "#FBEAE6", color: delivered ? COLORS.green : COLORS.danger, border: "none", cursor: "pointer" }
           }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") : h("span", { style: { fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 999, whiteSpace: "nowrap", background: delivered ? "#E8F0E4" : "#FBEAE6", color: delivered ? COLORS.green : COLORS.danger } }, delivered ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645")),
-          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap", fontWeight: 600 } }, stageStatus),
+          h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap", fontWeight: 600 } }, splitStatus ? h("span", { title: "قطعة مقسّمة لأكثر من جهة" }, "\u{1F500} ", stageStatus) : stageStatus),
           showCustomerCol ? h("td", { style: { padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" } }, p.customerName) : null,
           h("td", { style: { padding: "8px 10px" } }, p.image ? h("img", { src: p.image.dataUrl, onClick: () => openImageLightbox(p.image.dataUrl), style: { width: 36, height: 36, borderRadius: 6, objectFit: "cover", cursor: "zoom-in" } }) : "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.pieceType || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, isNonFabricPieceType(p.pieceType) ? "\u2014" : (computeFabricStatus(p.customerName) || "\u2014")),
           fieldDateCell(p, "fabricShippingDate", onUpdate, isOwner, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631"),
           fieldDateCell(p, "fabricArrivalDate", onUpdate, isOwner, isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631"),
-          h("td", { style: { padding: "8px 10px", textAlign: "center" } }, p.pieceCount),
+          h("td", { style: { padding: "8px 10px", textAlign: "center" } }, splitCombinedCount(p, piecesList)),
           h("td", { style: { padding: "8px 10px", maxWidth: 160, whiteSpace: "normal" } }, p.description || "\u2014"),
           h("td", { style: { padding: "8px 10px", whiteSpace: "nowrap" } }, p.size || "\u2014"),
           h("td", { style: { padding: "8px 10px", textAlign: "center" } }, isSofaType(p.pieceType) ? (p.peopleCount || "\u2014") : "\u2014"),
@@ -12941,7 +12990,7 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
   const [fStageFrom, setFStageFrom] = useState("");
   const [fStageTo, setFStageTo] = useState("");
   const searched = query.trim() ? pieces.filter((p) => p.customerName.includes(query)) : pieces;
-  const stageStatusOf = (p) => (p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
+  const stageStatusOf = (p) => (p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645") ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : p.productShippingStatus === "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" ? "\u062A\u0645 \u0627\u0644\u0634\u062D\u0646" : splitCombinedStatusFor(p, pieces) ? splitCombinedStatusFor(p, pieces) : (p.status || "\u2014") + (p.currentLocation ? " - " + p.currentLocation : "") + (p.secondaryLocation ? " / " + (p.secondaryStatus || "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0628\u062F\u0621") + " - " + p.secondaryLocation : "");
   const statusOptions = Array.from(new Set(pieces.map(stageStatusOf))).sort();
   const typeOptions = Array.from(new Set(pieces.map((p) => p.pieceType).filter(Boolean)));
   const entityOptions = Array.from(new Set(pieces.map((p) => p.manufacturingEntity).filter(Boolean)));
@@ -12985,15 +13034,20 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
       return dateA.localeCompare(dateB);
     });
     body = names.map((name) => {
-      const groupOrder = orders && orders.find((o) => pieceMatchesOrder(groups[name][0], o, orders));
-      const groupFile = groupOrder && groupOrder.manufacturingOrderFile;
+      const groupFiles = [];
+      if (orders) {
+        const seenF = new Set();
+        const addF = (o) => { const f = o && o.manufacturingOrderFile; if (f && f.dataUrl && !seenF.has(f.dataUrl)) { seenF.add(f.dataUrl); groupFiles.push(f); } };
+        groups[name].forEach((p) => orders.forEach((o) => { if (pieceMatchesOrder(p, o, orders)) addF(o); }));
+        if (groupFiles.length === 0) orders.forEach((o) => { if (normCustomerName(o.clientName) === normCustomerName(name)) addF(o); });
+      }
       return h("div", { key: name, style: { background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 } },
       h("div", { style: { background: COLORS.ink, color: "#fff", padding: "10px 14px", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" } },
         h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
           h("span", null, name),
-          groupFile ? h("a", { href: groupFile.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.gold, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none", fontWeight: 600 } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631") : null
+          groupFiles.map((gf, gi) => h("a", { key: gi, href: gf.dataUrl, target: "_blank", rel: "noreferrer", style: { fontSize: 11.5, color: COLORS.gold, display: "inline-flex", alignItems: "center", gap: 3, textDecoration: "none", fontWeight: 600 } }, h(Emoji, { size: 12 }, "\u{1F4CE}"), "\u0645\u0644\u0641 \u0627\u0644\u0623\u0648\u0631\u062F\u0631" + (groupFiles.length > 1 ? " " + (gi + 1) : "")))
         ),
-        h("span", { style: { fontSize: 12, opacity: 0.7 } }, groups[name].length + " قطعة")
+        h("span", { style: { fontSize: 12, opacity: 0.7 } }, dedupeSplitPieces(groups[name]).length + " قطعة")
       ),
       h("div", { style: { padding: 10 } }, renderFullProductionTable(groups[name].slice().sort(byDate), false, onUpdate, canEdit, orders, isOwner, isOwner ? { selected: bulkSelected, onToggle: (id) => setBulkSelected((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) } : null))
     );
@@ -13019,21 +13073,42 @@ function FullProductionPage({ pieces, onUpdate, canEdit, orders, isOwner }) {
     const onOrderCount = allMaterials.filter((m) => m.availability === "\u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628").length;
     return onOrderCount === 0 ? "\u0645\u062A\u0648\u0641\u0631" : onOrderCount <= 2 ? "\u0628\u0627\u0642\u064A " + onOrderCount + " \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628" : "\u0643\u0644 \u0627\u0644\u0639\u0645\u064A\u0644 \u062A\u062D\u062A \u0627\u0644\u0637\u0644\u0628";
   };
-  const exportExcel = () => {
-    const rows = [["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"]];
-    filtered.slice().sort(byDate).forEach((p) => {
-      const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      rows.push([p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.productShippingStatus === "تم الشحن" ? "تم الشحن" : (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : "")), p.customerName || "", p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""]);
+  const prodHeaders = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
+  const pieceRow = (p, forPdf) => {
+    const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
+    const splitStatusRow = splitCombinedStatusFor(p, filtered);
+    return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.productShippingStatus === "تم الشحن" ? "تم الشحن" : splitStatusRow ? splitStatusRow : (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : "")), p.customerName || "", forPdf ? (p.image ? { type: "image", url: p.image.dataUrl } : "\u2014") : (p.image ? "\u0645\u0631\u0641\u0642\u0629" : "\u2014"), p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", splitCombinedCount(p, filtered) || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""];
+  };
+  const groupedByCustomerForExport = () => {
+    const groups = {};
+    filtered.forEach((p) => { (groups[p.customerName] = groups[p.customerName] || []).push(p); });
+    const names = Object.keys(groups).sort((a, b) => {
+      const dateA = groups[a].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+      const dateB = groups[b].map((p) => p.customerDeliveryDate).filter(Boolean).sort()[0] || "9999-99-99";
+      return dateA.localeCompare(dateB);
     });
+    return names.map((name) => ({ name, pieces: dedupeSplitPieces(groups[name].slice().sort(byDate)) }));
+  };
+  const exportExcel = () => {
+    const rows = [prodHeaders];
+    if (viewMode === "customer") {
+      groupedByCustomerForExport().forEach((g) => {
+        rows.push([g.name + " (" + g.pieces.length + " \u0642\u0637\u0639\u0629)"]);
+        g.pieces.forEach((p) => rows.push(pieceRow(p, false)));
+        rows.push([]);
+      });
+    } else {
+      dedupeSplitPieces(filtered.slice().sort(byDate)).forEach((p) => rows.push(pieceRow(p, false)));
+    }
     exportToExcel("\u0627\u0644\u0625\u0646\u062A\u0627\u062C-\u0627\u0644\u0643\u0627\u0645\u0644", [{ name: "\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", rows }]);
   };
   const exportPdf = () => {
-    const headers = ["\u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u0627\u0644\u062D\u0627\u0644\u0629", "\u0627\u0644\u0639\u0645\u064A\u0644", "\u0627\u0644\u0635\u0648\u0631\u0629", "\u0627\u0644\u0635\u0646\u0641", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0634\u062D\u0646 \u0627\u0644\u0642\u0645\u0627\u0634", "\u062A\u0627\u0631\u064A\u062E \u0648\u0635\u0648\u0644 \u0627\u0644\u0642\u0645\u0627\u0634", "\u0639\u062F\u062F \u0627\u0644\u0642\u0637\u0639", "\u0627\u0644\u0628\u064A\u0627\u0646", "\u0627\u0644\u0645\u0642\u0627\u0633", "\u0639\u062F\u062F \u0627\u0644\u0623\u0634\u062E\u0627\u0635", "\u0639\u062F\u062F \u0627\u0644\u0623\u0645\u062A\u0627\u0631", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645", "\u062C\u0647\u0629 \u0627\u0644\u062A\u0635\u0646\u064A\u0639", "\u0627\u0644\u0645\u0635\u0646\u0639", "\u0645\u0643\u0627\u0646 \u0627\u0644\u062A\u0646\u062C\u064A\u062F", "\u0628\u062F\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0646\u0647\u0627\u064A\u0629 \u0646\u062C\u0627\u0631\u0629", "\u0628\u062F\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0646\u0647\u0627\u064A\u0629 \u062F\u0647\u0627\u0646", "\u0628\u062F\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u0646\u0647\u0627\u064A\u0629 \u062A\u0646\u062C\u064A\u062F", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0634\u062D\u0646", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0648\u0635\u0648\u0644", "\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0641\u0639\u0644\u064A", "\u0645\u0644\u0627\u062D\u0638\u0627\u062A"];
-    const dataRows = filtered.slice().sort(byDate).map((p) => {
-      const stg = (key, which) => (p.stages && p.stages[key] && p.stages[key][which]) || "";
-      return [p.deliveryConfirmed === "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" ? "\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645" : "\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u062A\u0633\u0644\u064A\u0645", (p.productShippingStatus === "تم الشحن" ? "تم الشحن" : (p.status || "") + (p.currentLocation ? " - " + p.currentLocation : "")), p.customerName || "", p.image ? { type: "image", url: p.image.dataUrl } : "\u2014", p.pieceType || "", (isNonFabricPieceType(p.pieceType) ? "\u2014" : computeFabricStatusFP(p.customerName)), isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricShippingDate || "") : "", isSofaType(p.pieceType) && p.manufacturingEntity === "\u0645\u0635\u0631" ? (p.fabricArrivalDate || "") : "", p.pieceCount || "", p.description || "", p.size || "", isSofaType(p.pieceType) ? (p.peopleCount || "") : "", isWoodType(p.pieceType) ? (p.metersCount || "") : "", p.customerDeliveryDate || "", p.manufacturingEntity || "", p.supplierName || "", (isSofaType(p.pieceType) && p.upholsteryLocation && p.upholsteryLocation !== "\u2014" ? p.upholsteryLocation : ""), stg("\u0646\u062C\u0627\u0631\u0629", "start"), stg("\u0646\u062C\u0627\u0631\u0629", "end"), stg("\u062F\u0647\u0627\u0646", "start"), stg("\u062F\u0647\u0627\u0646", "end"), stg("\u062A\u0646\u062C\u064A\u062F", "start"), stg("\u062A\u0646\u062C\u064A\u062F", "end"), p.shippingDate || "", p.arrivalDate || "", p.actualDeliveryDate || "", p.notes || ""];
-    });
-    printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", headers, dataRows);
+    if (viewMode === "customer") {
+      const pdfGroups = groupedByCustomerForExport().map((g) => ({ label: g.name + " (" + g.pieces.length + " \u0642\u0637\u0639\u0629)", rows: g.pieces.map((p) => pieceRow(p, true)) }));
+      printGroupedPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644 \u2014 \u062D\u0633\u0628 \u0627\u0644\u0639\u0645\u064A\u0644", prodHeaders, pdfGroups);
+    } else {
+      printAsPdf("\u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0627\u0644\u0643\u0627\u0645\u0644", prodHeaders, filtered.slice().sort(byDate).map((p) => pieceRow(p, true)));
+    }
   };
   return h("div", null,
     h(SectionHeader, { emoji: "📇", title: "الإنتاج الكامل" }),
